@@ -1,0 +1,33 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# builds
+dist/
+build/
+.next/
+out/
+*.tsbuildinfo
+next-env.d.ts
+
+# test output
+coverage/
+playwright-report/
+test-results/
+blob-report/
+
+# env
+.env
+.env.*
+!.env.example
+
+# logs / os
+*.log
+.DS_Store
+
+# local data
+/data/
+/backups/
+
+# python
+__pycache__/
