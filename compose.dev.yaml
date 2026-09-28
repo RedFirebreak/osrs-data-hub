@@ -1,19 +1,22 @@
 # Local development database only: docker compose -f compose.dev.yaml up -d
 # Then: cp .env.example .env, set DATABASE_URL=postgres://hub:hub@localhost:5432/hub
+# Tests use the same server (they create and drop their own databases).
 name: osrs-data-hub-dev
 
 services:
   db:
-    image: timescale/timescaledb:2.30.1-pg17
+    image: timescale/timescaledb:2.30.1-pg18
     environment:
       POSTGRES_USER: hub
       POSTGRES_PASSWORD: hub
       POSTGRES_DB: hub
       TIMESCALEDB_TELEMETRY: 'off'
+      TS_TUNE_MEMORY: 2GB
+      TS_TUNE_MAX_CONNS: '100'
     ports:
       - '127.0.0.1:5432:5432'
     volumes:
-      - dev-db-data:/var/lib/postgresql/data
+      - dev-db-data:/var/lib/postgresql
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U hub -d hub']
       interval: 2s

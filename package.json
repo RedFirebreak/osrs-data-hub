@@ -1,0 +1,39 @@
+{
+  "name": "osrs-data-hub",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @hub/web dev",
+    "dev:worker": "pnpm --filter @hub/worker dev",
+    "build": "pnpm -r build",
+    "lint": "eslint .",
+    "typecheck": "pnpm -r typecheck",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "db:generate": "pnpm --filter @hub/db generate",
+    "db:migrate": "pnpm --filter @hub/db migrate",
+    "db:check": "pnpm --filter @hub/db check",
+    "gotchas": "python3 tools/check_gotchas.py"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@opentelemetry/api": "1.9.1",
+    "@types/node": "^24.19.0",
+    "@types/pg": "8.23.1",
+    "eslint": "10.11.0",
+    "eslint-config-next": "16.3.6",
+    "globals": "^17.12.0",
+    "kysely": "0.29.6",
+    "pg": "8.23.0",
+    "prettier": "3.9.9",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.71.0",
+    "vitest": "5.0.2"
+  }
+}

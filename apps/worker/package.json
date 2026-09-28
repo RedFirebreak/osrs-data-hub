@@ -1,0 +1,28 @@
+{
+  "name": "@hub/worker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "build": "tsup",
+    "start": "node dist/main.js",
+    "migrate": "tsx src/migrate.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "@hub/core": "workspace:*",
+    "@hub/db": "workspace:*",
+    "@hub/server": "workspace:*",
+    "drizzle-orm": "0.45.3",
+    "pg": "8.23.0",
+    "pg-boss": "12.35.0",
+    "pino": "10.3.1"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.23.1",
+    "tsup": "8.5.1",
+    "tsx": "4.23.15"
+  }
+}

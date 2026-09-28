@@ -11,15 +11,21 @@ services:
   db:
     # Pinned to a Postgres major that TimescaleDB supports. Community features (hypertables,
     # compression, retention, continuous aggregates) are included in this (non -oss) image.
-    image: timescale/timescaledb:2.30.1-pg17
+    image: timescale/timescaledb:2.30.1-pg18
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-hub}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: ${POSTGRES_DB:-hub}
+      # The image enables telemetry unless told otherwise (privacy page: nothing leaves the VM).
       TIMESCALEDB_TELEMETRY: 'off'
+      # timescaledb-tune sizes memory from the HOST's RAM without these, and sets max_connections=25
+      # below 4 GB, which the web + worker + pg-boss pools exceed (DB-5).
+      TS_TUNE_MEMORY: ${DB_MEMORY:-2GB}
+      TS_TUNE_MAX_CONNS: '100'
     volumes:
-      - db-data:/var/lib/postgresql/data
+      # pg18 images keep PGDATA under /var/lib/postgresql/18/docker; mount the parent (TSDB-6).
+      - db-data:/var/lib/postgresql
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
       interval: 5s
@@ -31,9 +37,9 @@ services:
     <<: *app-env
     build:
       context: .
-      dockerfile: apps/worker/Dockerfile
+      target: worker
     image: osrs-data-hub-worker:local
-    command: ['node', 'dist/migrate.js']
+    command: ['node', '--enable-source-maps', 'dist/migrate.js']
     restart: 'no'
     depends_on:
       db:
@@ -43,7 +49,7 @@ services:
     <<: *app-env
     build:
       context: .
-      dockerfile: apps/web/Dockerfile
+      target: web
     image: osrs-data-hub-web:local
     ports:
       # Bound to localhost: the reverse proxy on the VM terminates TLS and forwards here.
@@ -55,7 +61,7 @@ services:
   worker:
     <<: *app-env
     image: osrs-data-hub-worker:local
-    command: ['node', 'dist/main.js']
+    command: ['node', '--enable-source-maps', 'dist/main.js']
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -63,7 +69,7 @@ services:
   # Optional nightly pg_dump: docker compose --profile backup up -d
   backup:
     profiles: ['backup']
-    image: timescale/timescaledb:2.30.1-pg17
+    image: timescale/timescaledb:2.30.1-pg18
     restart: unless-stopped
     env_file: .env
     environment:

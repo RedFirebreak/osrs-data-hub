@@ -1,0 +1,110 @@
+name: CI
+
+# Runs on every pull request (main is protected: merge only when these checks pass) and on main.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NEXT_TELEMETRY_DISABLED: '1'
+
+jobs:
+  # Static checks. Job names are stable so they can be required in branch protection.
+  lint:
+    name: Lint & typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Gotcha registry is consistent
+        run: python3 tools/check_gotchas.py
+      - name: Formatting
+        run: pnpm format:check
+      # `next typegen` (part of the web typecheck) must run before type-aware linting (NEXT-8).
+      - name: Typecheck
+        run: pnpm typecheck
+      # Not `next lint`: removed in Next 16, and the leftover command exits 0 (NEXT-7).
+      - name: Lint
+        run: pnpm lint
+      - name: Migrations match the schema
+        run: |
+          pnpm db:check
+          pnpm db:generate
+          if [ -n "$(git status --porcelain packages/db/drizzle)" ]; then
+            echo "::error::The Drizzle schema changed without a migration. Run 'pnpm db:generate' and commit the result."
+            git status --porcelain packages/db/drizzle
+            exit 1
+          fi
+
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      db:
+        image: timescale/timescaledb:2.30.1-pg18
+        env:
+          POSTGRES_USER: hub
+          POSTGRES_PASSWORD: hub
+          POSTGRES_DB: hub
+          TIMESCALEDB_TELEMETRY: 'off'
+          TS_TUNE_MEMORY: 2GB
+          TS_TUNE_MAX_CONNS: '100'
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U hub -d hub"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 30
+    env:
+      TEST_DATABASE_URL: postgres://hub:hub@127.0.0.1:5432/postgres
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+
+  docker:
+    name: Docker images
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build web image
+        run: docker build --target web -t osrs-data-hub-web:ci .
+      - name: Build worker image
+        run: docker build --target worker -t osrs-data-hub-worker:ci .
