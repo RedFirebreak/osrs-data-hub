@@ -45,7 +45,7 @@ still serves v1.4, which the hub refuses.
 ## Tests and the database
 
 Tests that touch the database use one server and isolate by **database**: a Vitest `globalSetup`
-migrates a template database once per run, and each test file clones it (`createTestDatabase()` from
+migrates a template database of its own once per run (so concurrent runs never collide), and each test file clones it (`createTestDatabase()` from
 `@hub/db/testing`, about 30 ms) and drops it afterwards. The template is locked against connections,
 because TimescaleDB's scheduler otherwise races the clone (TSDB-4). Point `TEST_DATABASE_URL` at an admin
 connection if your server isn't the dev compose one (default

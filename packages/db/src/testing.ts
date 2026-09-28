@@ -9,8 +9,9 @@
  */
 import { randomBytes } from 'node:crypto';
 import pg from 'pg';
+import { inject } from 'vitest';
 import { createDb, type DbHandle } from './client';
-import { TEMPLATE_DB, TEST_ADMIN_URL, urlForDatabase } from './testing/config';
+import { TEST_ADMIN_URL, urlForDatabase } from './testing/config';
 
 export interface TestDatabase extends DbHandle {
   url: string;
@@ -23,10 +24,12 @@ export async function createTestDatabase(label = 'test'): Promise<TestDatabase> 
     .replace(/[^a-z0-9]/gi, '')
     .toLowerCase()
     .slice(0, 20)}_${randomBytes(4).toString('hex')}`;
+  const template = inject('hubTemplateDb');
+  if (!template) throw new Error('createTestDatabase needs the globalSetup packages/db/src/testing/global-setup.ts');
   const admin = new pg.Client({ connectionString: TEST_ADMIN_URL });
   await admin.connect();
   try {
-    await admin.query(`CREATE DATABASE ${name} TEMPLATE ${TEMPLATE_DB}`);
+    await admin.query(`CREATE DATABASE ${name} TEMPLATE ${template}`);
   } finally {
     await admin.end();
   }

@@ -1,16 +1,22 @@
 /**
- * Vitest globalSetup: builds a migrated template database once per run. Each test file then clones it
- * (CREATE DATABASE … TEMPLATE, ~30 ms) via createTestDatabase().
+ * Vitest globalSetup: builds a migrated template database once per run and provides its name to the
+ * test files, which clone it (CREATE DATABASE … TEMPLATE, ~30 ms) via createTestDatabase().
+ *
+ * Each run gets its OWN template (hub_tpl_<random>), so concurrent runs (several projects, several
+ * developers or agents on one server) never drop each other's template mid-clone.
  *
  * TimescaleDB's background scheduler connects to every database that has the extension, which makes
  * template clones fail with 55006 "source database is being accessed by other users". The template is
  * therefore locked (ALLOW_CONNECTIONS false) and its sessions terminated after migrating (TSDB-4).
  */
+import { randomBytes } from 'node:crypto';
 import pg from 'pg';
+import type { TestProject } from 'vitest/node';
 import { runMigrations } from '../migrate';
-import { TEMPLATE_DB, TEST_ADMIN_URL, urlForDatabase } from './config';
+import { TEMPLATE_PREFIX, TEST_ADMIN_URL, urlForDatabase } from './config';
 
-export default async function setup() {
+export default async function setup(project: TestProject) {
+  const template = `${TEMPLATE_PREFIX}${randomBytes(5).toString('hex')}`;
   const admin = new pg.Client({ connectionString: TEST_ADMIN_URL });
   try {
     await admin.connect();
@@ -23,17 +29,27 @@ export default async function setup() {
     );
   }
   try {
-    await admin.query(`DROP DATABASE IF EXISTS ${TEMPLATE_DB} WITH (FORCE)`);
-    await admin.query(`CREATE DATABASE ${TEMPLATE_DB}`);
-    await runMigrations(urlForDatabase(TEST_ADMIN_URL, TEMPLATE_DB));
-    await admin.query(`ALTER DATABASE ${TEMPLATE_DB} WITH ALLOW_CONNECTIONS false`);
+    await admin.query(`CREATE DATABASE ${template}`);
+    await runMigrations(urlForDatabase(TEST_ADMIN_URL, template));
+    await admin.query(`ALTER DATABASE ${template} WITH ALLOW_CONNECTIONS false`);
     await admin.query(
       'SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()',
-      [TEMPLATE_DB],
+      [template],
     );
   } finally {
     await admin.end();
   }
+  project.provide('hubTemplateDb', template);
+
+  return async function teardown() {
+    const a = new pg.Client({ connectionString: TEST_ADMIN_URL });
+    await a.connect();
+    try {
+      await a.query(`DROP DATABASE IF EXISTS ${template} WITH (FORCE)`);
+    } finally {
+      await a.end();
+    }
+  };
 }
 
 function redact(url: string) {
