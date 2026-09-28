@@ -12,7 +12,10 @@ function notImplemented(name: string): never {
  * (presenceTimeoutSeconds(latest_state.tick_delay)): ended_at = the session's last_seen_at,
  * end_reason = 'timeout'. Special worlds send nothing, so a hop to one ends the session here.
  */
-export async function closeStaleSessions(db: Db, opts: { now?: Date } = {}): Promise<{ closed: number }> {
+export async function closeStaleSessions(
+  db: Db,
+  opts: { now?: Date } = {},
+): Promise<{ closed: number }> {
   return notImplemented('closeStaleSessions');
 }
 

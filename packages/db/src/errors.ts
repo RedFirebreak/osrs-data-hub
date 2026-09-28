@@ -67,8 +67,16 @@ export function isTransientDbError(err: unknown): boolean {
   );
 }
 
-/** Errors caused by the payload itself (bad data): answer 400 so the plugin drops it (PLUGIN-3). */
+/**
+ * Errors caused by the payload itself: answer 400 so the plugin drops it instead of retrying a
+ * deterministic failure (PLUGIN-3). Classes 22 (data exception, e.g. 22021 NUL in text, 22P02 a lone
+ * surrogate in jsonb), 23 except the retryable 23505, and 54 (program limit exceeded, e.g. an index
+ * row too large).
+ */
 export function isDataDbError(err: unknown): boolean {
   const code = pgErrorCode(err);
-  return !!code && (code.startsWith('22') || (code.startsWith('23') && code !== '23505'));
+  return (
+    !!code &&
+    (code.startsWith('22') || code.startsWith('54') || (code.startsWith('23') && code !== '23505'))
+  );
 }

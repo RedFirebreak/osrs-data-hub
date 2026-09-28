@@ -15,6 +15,13 @@ type Skills = Record<string, { xp: number; level: number }>;
 const fixtureSkills = () =>
   fixtureJson<{ player: { stats: { skills: Skills } } }>('snapshot-normal').player.stats.skills;
 
+describe('KNOWN_SKILLS', () => {
+  it('is the order the plugin sends (Skill.values(), Sailing last, no Overall)', () => {
+    expect(Object.keys(fixtureSkills())).toEqual([...KNOWN_SKILLS]);
+    expect(KNOWN_SKILLS).not.toContain(OVERALL);
+  });
+});
+
 describe('realLevel', () => {
   it('caps virtual levels at 99', () => {
     expect(realLevel(1)).toBe(1);
@@ -55,7 +62,9 @@ describe('overallXp', () => {
   });
 
   it('excludes an Overall entry', () => {
-    expect(overallXp({ Attack: { xp: 100 }, Defence: { xp: 50 }, [OVERALL]: { xp: 999 } })).toBe(150);
+    expect(overallXp({ Attack: { xp: 100 }, Defence: { xp: 50 }, [OVERALL]: { xp: 999 } })).toBe(
+      150,
+    );
   });
 
   it('goes beyond 2^31 without overflow (24 × 200M)', () => {

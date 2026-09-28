@@ -143,16 +143,26 @@ function createAuth(config: HubConfig) {
         if (source.method !== 'oauth' || source.oauth?.providerId !== 'discord') {
           return { error: 'unsupported_sign_in', errorDescription: 'Sign in with Discord.' };
         }
-        const check = (source.oauth.profile as { hubGuildCheck?: GuildCheck } | undefined)?.hubGuildCheck;
+        const check = (source.oauth.profile as { hubGuildCheck?: GuildCheck } | undefined)
+          ?.hubGuildCheck;
         switch (check) {
           case 'ok':
             return;
           case 'not_member':
-            return { error: 'not_guild_member', errorDescription: `Not a member of ${config.discord.guildName}` };
+            return {
+              error: 'not_guild_member',
+              errorDescription: `Not a member of ${config.discord.guildName}`,
+            };
           case 'missing_role':
-            return { error: 'missing_role', errorDescription: `Missing a required role in ${config.discord.guildName}` };
+            return {
+              error: 'missing_role',
+              errorDescription: `Missing a required role in ${config.discord.guildName}`,
+            };
           default:
-            return { error: 'discord_unavailable', errorDescription: 'Could not verify guild membership, try again' };
+            return {
+              error: 'discord_unavailable',
+              errorDescription: 'Could not verify guild membership, try again',
+            };
         }
       },
     },
@@ -169,7 +179,11 @@ function createAuth(config: HubConfig) {
         create: {
           before: async (user) => {
             const snap = await memberSnapshot.get();
-            if (!snap) throw new APIError('FORBIDDEN', { code: 'not_guild_member', message: 'Membership not verified' });
+            if (!snap)
+              throw new APIError('FORBIDDEN', {
+                code: 'not_guild_member',
+                message: 'Membership not verified',
+              });
             return {
               data: {
                 ...user,

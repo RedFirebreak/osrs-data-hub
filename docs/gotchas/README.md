@@ -1,6 +1,6 @@
 # Gotchas
 
-66 traps, grouped into five files, found while building osrs-data-hub. Each is written up
+67 traps, grouped into five files, found while building osrs-data-hub. Each is written up
 once under a stable ID and referenced by ID from everywhere else, so there is exactly one place to edit
 when something changes. Package-agnostic: things that are true of the shared layer (the HA Exporter
 plugin protocol, Next.js, Better Auth, Drizzle, Postgres/TimescaleDB, pg-boss, the Discord API, and the
@@ -26,7 +26,7 @@ defeats the point of them being separate.
 | [database.md](database.md) | `DB`, `TSDB` — Postgres behaviour, drizzle-orm 0.45 and drizzle-kit 0.31 (queries, errors, the migrator), and TimescaleDB 2.30 (hypertables, compression, continuous aggregates, policies, the Docker image) | 24 |
 | [nextjs.md](nextjs.md) | `NEXT` — Next.js 16 (route handlers, server actions, RSC, proxy.ts, instrumentation, basePath, standalone output, the dev and build CLI) | 10 |
 | [plugin.md](plugin.md) | `PLUGIN` — the HA Exporter v1.5 wire protocol as seen from the hub (payload shapes, Gson serialization, the OkHttp transport, status handling, the retry queue, the pairing panel) | 13 |
-| [toolchain.md](toolchain.md) | `PGBOSS`, `TOOL`, `ZOD` — build, lint and package tooling (TypeScript, ESLint, pnpm, tsup, shadcn, Docker base images) and the pg-boss and zod libraries | 8 |
+| [toolchain.md](toolchain.md) | `PGBOSS`, `TOOL`, `ZOD` — build, lint and package tooling (TypeScript, ESLint, pnpm, tsup, shadcn, Docker base images) and the pg-boss and zod libraries | 9 |
 | [open-questions.md](open-questions.md) | read from docs, not yet observed — no IDs, not in the index | — |
 
 **Source key.** Every entry ends with the source it was settled from:
@@ -114,6 +114,7 @@ The `gotcha` skill walks this, including a trap that fits no existing file.
 | [TOOL-4](toolchain.md#tool-4) | Toolchain | The tsup-bundled worker crashes at start with `Error: Dynamic require of "events" is not supported`, or with `ReferenceError: __dirname is not defined in ES module scope` from pino. |
 | [TOOL-5](toolchain.md#tool-5) | Toolchain | `node_modules/.pnpm` holds several `drizzle-orm@0.45.3_<peers>` directories, and workspace packages resolve different ones. |
 | [TOOL-6](toolchain.md#tool-6) | Toolchain | A Docker build on `node:26-alpine` fails with `sh: corepack: not found`. |
+| [TOOL-7](toolchain.md#tool-7) | Toolchain | After `pnpm format`, `tools/check_gotchas.py` reports `has no '*Source: ...*' line` for every entry, and doc tables are re-padded. |
 | [ZOD-1](toolchain.md#zod-1) | zod | Unknown or new fields in a plugin payload vanish after parsing: stored event data lacks keys the plugin sent. |
 
 ## Retired IDs

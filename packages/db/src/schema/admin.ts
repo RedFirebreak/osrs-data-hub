@@ -18,7 +18,9 @@ const tstz = (name: string) => timestamp(name, { withTimezone: true });
 export const apiKeys = pgTable(
   'api_keys',
   {
-    id: uuid('id').primaryKey().default(sql`uuidv7()`),
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`uuidv7()`),
     userId: text('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),

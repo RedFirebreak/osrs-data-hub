@@ -1,1 +1,13 @@
-{"events":[{"type":"clientShutdown","data":"Logout","eventId":"843d1e9e-8255-4781-9229-6a36ef4bfb40","timestamp":1789999400944}],"state":"LOGIN_SCREEN","tickDelay":0,"timestamp":1789999400945}
+{
+  "events": [
+    {
+      "type": "clientShutdown",
+      "data": "Logout",
+      "eventId": "843d1e9e-8255-4781-9229-6a36ef4bfb40",
+      "timestamp": 1789999400944
+    }
+  ],
+  "state": "LOGIN_SCREEN",
+  "tickDelay": 0,
+  "timestamp": 1789999400945
+}

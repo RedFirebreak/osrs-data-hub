@@ -19,9 +19,7 @@ export const MIN_PRESENCE_TIMEOUT_S = 60;
  * or not finite, which the plugin never sends).
  */
 export function presenceTimeoutSeconds(tickDelay: number | null | undefined): number {
-  if (tickDelay === null || tickDelay === undefined || !Number.isFinite(tickDelay) || tickDelay <= 0) {
-    return DEFAULT_PRESENCE_TIMEOUT_S;
-  }
+  if (!tickDelay || !Number.isFinite(tickDelay) || tickDelay < 0) return DEFAULT_PRESENCE_TIMEOUT_S;
   // 3.1 × 0.6 = 1.86, in integer arithmetic so the floor is exact for any integer tickDelay.
   return Math.max(MIN_PRESENCE_TIMEOUT_S, Math.floor((tickDelay * 186) / 100));
 }

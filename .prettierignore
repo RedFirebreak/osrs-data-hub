@@ -4,3 +4,7 @@ pnpm-lock.yaml
 **/dist/**
 docs/design/**
 .claude/**
+
+# Markdown is not formatted: Prettier rewrites *italics* to _italics_ and re-pads tables, which
+# breaks the gotcha registry validator (TOOL-7).
+**/*.md

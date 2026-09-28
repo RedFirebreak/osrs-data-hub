@@ -35,7 +35,12 @@ export interface DiscordGuildMember {
 export type MemberLookup =
   | { kind: 'member'; member: DiscordGuildMember }
   | { kind: 'not_member' }
-  | { kind: 'error'; status: number; code?: number; reason: 'config' | 'auth' | 'rate_limited' | 'unavailable' };
+  | {
+      kind: 'error';
+      status: number;
+      code?: number;
+      reason: 'config' | 'auth' | 'rate_limited' | 'unavailable';
+    };
 
 export type FetchFn = typeof fetch;
 
@@ -49,7 +54,12 @@ interface LookupOptions {
 
 const defaultSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-async function lookup(url: string, authorization: string, route: 'user' | 'bot', opts: LookupOptions): Promise<MemberLookup> {
+async function lookup(
+  url: string,
+  authorization: string,
+  route: 'user' | 'bot',
+  opts: LookupOptions,
+): Promise<MemberLookup> {
   const fetchFn = opts.fetchFn ?? fetch;
   const sleep = opts.sleep ?? defaultSleep;
   const maxRetries = opts.maxRetries ?? 2;
@@ -65,12 +75,19 @@ async function lookup(url: string, authorization: string, route: 'user' | 'bot',
     }
     if (res.ok) {
       const member = (await res.json()) as DiscordGuildMember;
-      return { kind: 'member', member: { ...member, roles: Array.isArray(member.roles) ? member.roles : [] } };
+      return {
+        kind: 'member',
+        member: { ...member, roles: Array.isArray(member.roles) ? member.roles : [] },
+      };
     }
-    const body = (await res.json().catch(() => null)) as { code?: number; retry_after?: number } | null;
+    const body = (await res.json().catch(() => null)) as {
+      code?: number;
+      retry_after?: number;
+    } | null;
     const code = typeof body?.code === 'number' ? body.code : undefined;
     if (res.status === 429) {
-      if (attempt >= maxRetries) return { kind: 'error', status: 429, code, reason: 'rate_limited' };
+      if (attempt >= maxRetries)
+        return { kind: 'error', status: 429, code, reason: 'rate_limited' };
       const retryAfterS =
         typeof body?.retry_after === 'number'
           ? body.retry_after
@@ -83,18 +100,33 @@ async function lookup(url: string, authorization: string, route: 'user' | 'bot',
       if (code === 10007) return { kind: 'not_member' };
       return { kind: 'error', status: 404, code, reason: 'config' };
     }
-    if (res.status === 401 || res.status === 403) return { kind: 'error', status: res.status, code, reason: 'auth' };
+    if (res.status === 401 || res.status === 403)
+      return { kind: 'error', status: res.status, code, reason: 'auth' };
     return { kind: 'error', status: res.status, code, reason: 'unavailable' };
   }
 }
 
 /** GET /users/@me/guilds/{guild}/member with the user's OAuth token. */
-export function fetchOwnGuildMember(accessToken: string, guildId: string, opts: LookupOptions = {}) {
-  return lookup(`${DISCORD_API}/users/@me/guilds/${encodeURIComponent(guildId)}/member`, `Bearer ${accessToken}`, 'user', opts);
+export function fetchOwnGuildMember(
+  accessToken: string,
+  guildId: string,
+  opts: LookupOptions = {},
+) {
+  return lookup(
+    `${DISCORD_API}/users/@me/guilds/${encodeURIComponent(guildId)}/member`,
+    `Bearer ${accessToken}`,
+    'user',
+    opts,
+  );
 }
 
 /** GET /guilds/{guild}/members/{user} with the bot token (no privileged intent needed). */
-export function fetchGuildMemberAsBot(botToken: string, guildId: string, userId: string, opts: LookupOptions = {}) {
+export function fetchGuildMemberAsBot(
+  botToken: string,
+  guildId: string,
+  userId: string,
+  opts: LookupOptions = {},
+) {
   return lookup(
     `${DISCORD_API}/guilds/${encodeURIComponent(guildId)}/members/${encodeURIComponent(userId)}`,
     `Bot ${botToken}`,
@@ -104,7 +136,10 @@ export function fetchGuildMemberAsBot(botToken: string, guildId: string, userId:
 }
 
 /** GET /users/@me with the user's OAuth token. */
-export async function fetchCurrentUser(accessToken: string, fetchFn: FetchFn = fetch): Promise<DiscordUser | null> {
+export async function fetchCurrentUser(
+  accessToken: string,
+  fetchFn: FetchFn = fetch,
+): Promise<DiscordUser | null> {
   try {
     const res = await fetchFn(`${DISCORD_API}/users/@me`, {
       headers: { authorization: `Bearer ${accessToken}` },

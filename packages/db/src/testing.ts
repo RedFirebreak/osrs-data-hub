@@ -19,7 +19,10 @@ export interface TestDatabase extends DbHandle {
 }
 
 export async function createTestDatabase(label = 'test'): Promise<TestDatabase> {
-  const name = `hub_t_${label.replace(/[^a-z0-9]/gi, '').toLowerCase().slice(0, 20)}_${randomBytes(4).toString('hex')}`;
+  const name = `hub_t_${label
+    .replace(/[^a-z0-9]/gi, '')
+    .toLowerCase()
+    .slice(0, 20)}_${randomBytes(4).toString('hex')}`;
   const admin = new pg.Client({ connectionString: TEST_ADMIN_URL });
   await admin.connect();
   try {

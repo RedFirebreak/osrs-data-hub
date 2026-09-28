@@ -87,5 +87,4 @@ export interface ParsedPayload {
 }
 
 export type ParseResult =
-  | { ok: true; payload: ParsedPayload }
-  | { ok: false; error: 'not_json' | 'not_object' };
+  { ok: true; payload: ParsedPayload } | { ok: false; error: 'not_json' | 'not_object' };

@@ -40,7 +40,12 @@ describe('migrations', () => {
   it('upserts XP with GREATEST and rolls up with last()', async () => {
     const [acc] = await t.db
       .insert(osrsAccounts)
-      .values({ publicId: 'p1', accountHash: 'h'.repeat(56), currentName: 'Zezima', nameNormalized: 'zezima' })
+      .values({
+        publicId: 'p1',
+        accountHash: 'h'.repeat(56),
+        currentName: 'Zezima',
+        nameNormalized: 'zezima',
+      })
       .returning({ id: osrsAccounts.id });
     const accountId = acc!.id;
     const bucket = new Date('2026-09-28T10:05:00Z');
@@ -55,13 +60,23 @@ describe('migrations', () => {
     await upsert(1000);
     await upsert(900);
     await upsert(1200);
-    await t.db.insert(xpSamples).values({ accountId, skillId: 1, bucket: new Date('2026-09-28T10:45:00Z'), xp: 1500, level: 2 });
+    await t.db.insert(xpSamples).values({
+      accountId,
+      skillId: 1,
+      bucket: new Date('2026-09-28T10:45:00Z'),
+      xp: 1500,
+      level: 2,
+    });
     const rows = await t.db.execute<{ bucket: Date; xp: number }>(
       sql`SELECT bucket, xp FROM xp_hourly WHERE account_id = ${accountId} AND skill_id = 1`,
     );
     expect(rows.rows).toHaveLength(1);
     expect(rows.rows[0]!.xp).toBe(1500);
-    const raw = await t.db.select().from(xpSamples).where(sql`${xpSamples.accountId} = ${accountId}`).orderBy(xpSamples.bucket);
+    const raw = await t.db
+      .select()
+      .from(xpSamples)
+      .where(sql`${xpSamples.accountId} = ${accountId}`)
+      .orderBy(xpSamples.bucket);
     expect(raw.map((r) => r.xp)).toEqual([1200, 1500]);
   });
 

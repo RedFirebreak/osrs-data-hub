@@ -74,7 +74,9 @@ export async function applyTimescalePolicies(db: Db, c: PolicyConfig): Promise<s
         sql`(config->>'compress_after')::interval = ${after}::interval`,
       );
       if (ok) return;
-      await tx.execute(sql`SELECT remove_compression_policy(${table}::regclass, if_exists => true)`);
+      await tx.execute(
+        sql`SELECT remove_compression_policy(${table}::regclass, if_exists => true)`,
+      );
       await tx.execute(
         sql`SELECT add_compression_policy(${table}::regclass, compress_after => ${after}::interval)`,
       );

@@ -35,7 +35,10 @@ function normalizeIp(entry: string): string | null {
 
 function isIPv4(s: string): boolean {
   const parts = s.split('.');
-  return parts.length === 4 && parts.every((p) => /^(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])$/.test(p));
+  return (
+    parts.length === 4 &&
+    parts.every((p) => /^(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])$/.test(p))
+  );
 }
 
 const HEX_GROUP = /^[0-9a-fA-F]{1,4}$/;

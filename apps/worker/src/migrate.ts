@@ -22,6 +22,13 @@ try {
   process.exit(0);
 } catch (err) {
   const code = (err as { cause?: { code?: string } })?.cause?.code;
-  console.error(JSON.stringify({ level: 'error', msg: 'migration failed', code, error: String((err as Error)?.cause ?? err).split('\n')[0] }));
+  console.error(
+    JSON.stringify({
+      level: 'error',
+      msg: 'migration failed',
+      code,
+      error: String((err as Error)?.cause ?? err).split('\n')[0],
+    }),
+  );
   process.exit(1);
 }

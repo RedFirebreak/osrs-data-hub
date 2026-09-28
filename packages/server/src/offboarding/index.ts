@@ -22,7 +22,14 @@ export interface OffboardResult {
  */
 export async function offboardUser(
   db: Db,
-  opts: { userId: string; reason: OffboardReason; graceDays: number; now?: Date; actorUserId?: string | null; actorLabel?: string },
+  opts: {
+    userId: string;
+    reason: OffboardReason;
+    graceDays: number;
+    now?: Date;
+    actorUserId?: string | null;
+    actorLabel?: string;
+  },
 ): Promise<OffboardResult> {
   return notImplemented('offboardUser');
 }

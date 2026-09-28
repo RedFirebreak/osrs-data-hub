@@ -19,6 +19,7 @@ export default async function setup() {
       `Cannot reach the test database at ${redact(TEST_ADMIN_URL)}. Start it with ` +
         '`docker compose -f compose.dev.yaml up -d` or set TEST_DATABASE_URL. ' +
         `(${(err as Error).message})`,
+      { cause: err },
     );
   }
   try {

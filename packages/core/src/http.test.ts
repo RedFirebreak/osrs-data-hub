@@ -62,6 +62,9 @@ describe('clientIpFromHeaders', () => {
     expect(clientIpFromHeaders(xff('::ffff:203.0.113.9'), 1)).toBe('::ffff:203.0.113.9');
     expect(clientIpFromHeaders(xff('fe80::1%eth0'), 1)).toBe('fe80::1%eth0');
     expect(clientIpFromHeaders(xff('1::'), 1)).toBe('1::');
+    expect(clientIpFromHeaders(xff('1:2:3:4:5:6:7::'), 1)).toBe('1:2:3:4:5:6:7::');
+    expect(clientIpFromHeaders(xff('1:2:3:4:5:6:192.0.2.1'), 1)).toBe('1:2:3:4:5:6:192.0.2.1');
+    expect(clientIpFromHeaders(xff('[::FFFF:192.0.2.1]:8080'), 1)).toBe('::ffff:192.0.2.1');
   });
 
   it.each([
@@ -85,6 +88,10 @@ describe('clientIpFromHeaders', () => {
     '1::2:',
     ':::',
     '12345::1',
+    '1:2:3:4:5:6:7:8::',
+    '1:2:3:4:5:6:7:192.0.2.1',
+    '1:2:3:4:5:6::192.0.2.1',
+    '192.0.2.1::',
     '::ffff:1.2.3.256',
     'fe80::1%',
     '2001:db8::1 extra',

@@ -68,5 +68,6 @@ export function payloadFilesOnDisk(): string[] {
 export const FIXTURE_ACCOUNTS = {
   zezima: fixtureJson<{ player: { accountHash: string } }>('snapshot-normal').player.accountHash,
   lynxTitan: fixtureJson<{ player: { accountHash: string } }>('event-pkloot').player.accountHash,
-  ironMira: fixtureJson<{ player: { accountHash: string } }>('event-death-dangerous').player.accountHash,
+  ironMira: fixtureJson<{ player: { accountHash: string } }>('event-death-dangerous').player
+    .accountHash,
 } as const;

@@ -32,7 +32,11 @@ if (!config.databaseUrl) {
 
 // Pools are capped: web + worker + pg-boss must stay under max_connections (DB-5).
 const { db, pool } = createDb(config.databaseUrl, { max: 4, applicationName: 'hub-worker' });
-const boss = new PgBoss({ connectionString: config.databaseUrl, max: 3, application_name: 'hub-pgboss' });
+const boss = new PgBoss({
+  connectionString: config.databaseUrl,
+  max: 3,
+  application_name: 'hub-pgboss',
+});
 // Without a listener an 'error' event would crash the process; work() on a missing queue only emits
 // errors (PGBOSS-1).
 boss.on('error', (err) => log.error({ err: String(err) }, 'pg-boss error'));

@@ -1,3 +1,4 @@
+import { httpCapture } from '@hub/fixtures';
 import { describe, expect, it } from 'vitest';
 import { compareVersions, formatVersion, meetsMinimumVersion, parsePluginVersion } from './version';
 
@@ -74,6 +75,15 @@ describe('meetsMinimumVersion', () => {
     expect(meetsMinimumVersion(undefined, '1.5')).toBe(false);
     expect(meetsMinimumVersion('', '1.5')).toBe(false);
     expect(meetsMinimumVersion('v1.5', '1.5')).toBe(false);
+  });
+
+  it('accepts the header of the v1.5 plugin captures', () => {
+    for (const capture of ['events-request', 'pair-request']) {
+      const header = /^X-Osrs-Exporter-Version: (.*)$/im.exec(httpCapture(capture))?.[1];
+      expect(header?.trim()).toBe('1.5');
+      expect(meetsMinimumVersion(header, '1.5')).toBe(true);
+      expect(meetsMinimumVersion(header, '1.5.1')).toBe(false);
+    }
   });
 
   it('throws on an unparsable minimum (a configuration error)', () => {

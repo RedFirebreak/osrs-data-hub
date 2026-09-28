@@ -51,14 +51,18 @@ const EnvSchema = z.object({
         return z.NEVER;
       }
       if (url.protocol !== 'https:' && url.protocol !== 'http:') {
-        ctx.addIssue({ code: 'custom', message: 'must start with https:// (or http:// for local use)' });
+        ctx.addIssue({
+          code: 'custom',
+          message: 'must start with https:// (or http:// for local use)',
+        });
         return z.NEVER;
       }
       // Next's basePath is build-time only, so the hub is served at the origin root (D-26, NEXT-1).
       if (url.pathname !== '/' || url.search || url.hash) {
         ctx.addIssue({
           code: 'custom',
-          message: 'must be an origin without a path (e.g. https://hub.example.com); path prefixes are not supported',
+          message:
+            'must be an origin without a path (e.g. https://hub.example.com); path prefixes are not supported',
         });
         return z.NEVER;
       }

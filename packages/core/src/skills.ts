@@ -1,6 +1,7 @@
 export const OVERALL = 'Overall';
 
 /** RuneLite Skill.values() order (the plugin's send order). Not authoritative: new skills can appear. */
+// prettier-ignore
 export const KNOWN_SKILLS = [
   'Attack', 'Defence', 'Strength', 'Hitpoints', 'Ranged', 'Prayer', 'Magic', 'Cooking',
   'Woodcutting', 'Fletching', 'Fishing', 'Firemaking', 'Crafting', 'Smithing', 'Mining',
@@ -9,6 +10,7 @@ export const KNOWN_SKILLS = [
 ] as const;
 
 /** In-game skill-tab grid order (3 columns), for display. Unknown skills go last. */
+// prettier-ignore
 export const SKILL_GRID_ORDER = [
   'Attack', 'Hitpoints', 'Mining', 'Strength', 'Agility', 'Smithing', 'Defence', 'Herblore',
   'Fishing', 'Ranged', 'Thieving', 'Cooking', 'Prayer', 'Crafting', 'Firemaking', 'Magic',
@@ -41,7 +43,9 @@ export function overallXp(skills: Record<string, { xp: number }>): number {
   return total;
 }
 
-const GRID_RANK: ReadonlyMap<string, number> = new Map(SKILL_GRID_ORDER.map((name, i) => [name, i]));
+const GRID_RANK: ReadonlyMap<string, number> = new Map(
+  SKILL_GRID_ORDER.map((name, i) => [name, i]),
+);
 
 /** Overall → -1, known skills → their grid index, unknown → Infinity (ties broken by name). */
 function displayRank(name: string): number {

@@ -1,1 +1,7 @@
-{"player":{"health":{"current":99,"max":99}},"events":[],"state":"LOGGED_IN","tickDelay":0,"timestamp":1789999460018}
+{
+  "player": { "health": { "current": 99, "max": 99 } },
+  "events": [],
+  "state": "LOGGED_IN",
+  "tickDelay": 0,
+  "timestamp": 1789999460018
+}

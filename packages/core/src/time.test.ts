@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import {
   EVENT_CLAMP_MS,
   LOCATION_BUCKET_MS,
+  LOCATION_STALE_MS,
+  TOAST_MAX_AGE_MS,
   XP_BUCKET_MS,
   clampEventTime,
   floorTo,
@@ -13,6 +15,16 @@ import {
 
 const recv = new Date('2026-09-21T13:40:00.000Z');
 const R = recv.getTime();
+
+describe('constants', () => {
+  it('match the handoff (§7.3, §9, §11, §13)', () => {
+    expect(XP_BUCKET_MS).toBe(5 * 60_000);
+    expect(LOCATION_BUCKET_MS).toBe(60_000);
+    expect(EVENT_CLAMP_MS).toBe(15 * 60_000);
+    expect(TOAST_MAX_AGE_MS).toBe(15 * 60_000);
+    expect(LOCATION_STALE_MS).toBe(2 * 60_000);
+  });
+});
 
 describe('payloadTime', () => {
   it('is the root timestamp when it is in the past', () => {
@@ -94,6 +106,23 @@ describe('floorTo', () => {
     );
   });
 
+  it('is exact for any epoch-ms time (no float rounding across a bucket edge)', () => {
+    // Compare with integer arithmetic around real timestamps, bucket edges included.
+    const base = 1_790_000_000_000;
+    for (let i = 0; i < 5000; i++) {
+      const ms = base + i * 299_993 + (i % 7) - 3;
+      for (const bucket of [XP_BUCKET_MS, LOCATION_BUCKET_MS, 86_400_000]) {
+        const expected = BigInt(ms) - (BigInt(ms) % BigInt(bucket));
+        expect(BigInt(floorTo(new Date(ms), bucket).getTime())).toBe(expected);
+      }
+    }
+  });
+
+  it('returns a new Date', () => {
+    const edge = new Date('2026-09-21T13:45:00.000Z');
+    expect(floorTo(edge, XP_BUCKET_MS)).not.toBe(edge);
+  });
+
   it('floors dates before the epoch downwards', () => {
     expect(floorTo(new Date(-1), 60_000)).toEqual(new Date(-60_000));
   });
@@ -138,7 +167,20 @@ describe('isStaleSnapshot', () => {
   it('is never stale without a previous snapshot, device or time', () => {
     expect(isStaleSnapshot(null, 'dev-a', t(-1))).toBe(false);
     expect(isStaleSnapshot({ sourceDeviceId: null, sourceTs: t(0) }, 'dev-a', t(-1))).toBe(false);
-    expect(isStaleSnapshot({ sourceDeviceId: 'dev-a', sourceTs: null }, 'dev-a', t(-1))).toBe(false);
+    expect(isStaleSnapshot({ sourceDeviceId: 'dev-a', sourceTs: null }, 'dev-a', t(-1))).toBe(
+      false,
+    );
+  });
+
+  it('skips the older burst payload that arrives second (same tick, out of order)', () => {
+    type P = { timestamp: number };
+    const at = (
+      name: 'snapshot-combat-burst-1' | 'snapshot-combat-burst-2' | 'snapshot-combat-burst-3',
+    ) => payloadTime(fixtureJson<P>(name).timestamp, new Date(fixtureJson<P>(name).timestamp + 40));
+    const applied = { sourceDeviceId: 'dev-a', sourceTs: at('snapshot-combat-burst-2') };
+    expect(isStaleSnapshot(applied, 'dev-a', at('snapshot-combat-burst-1'))).toBe(true);
+    expect(isStaleSnapshot(applied, 'dev-a', at('snapshot-combat-burst-2'))).toBe(false);
+    expect(isStaleSnapshot(applied, 'dev-a', at('snapshot-combat-burst-3'))).toBe(false);
   });
 
   it('flags the resent payload that the overtaking snapshot already replaced', () => {
@@ -146,7 +188,10 @@ describe('isStaleSnapshot', () => {
     const overtakingTs = fixtureJson<P>('retry-overtaking-snapshot').timestamp;
     const overtaking = payloadTime(overtakingTs, new Date(overtakingTs + 50));
     // The resend arrives ~30 s later but keeps its original, older root timestamp.
-    const resend = payloadTime(fixtureJson<P>('retry-duplicate-b').timestamp, new Date(overtakingTs + 30_000));
+    const resend = payloadTime(
+      fixtureJson<P>('retry-duplicate-b').timestamp,
+      new Date(overtakingTs + 30_000),
+    );
     const applied = { sourceDeviceId: 'dev-a', sourceTs: overtaking };
     expect(isStaleSnapshot(applied, 'dev-a', resend)).toBe(true);
     expect(isStaleSnapshot(applied, 'dev-b', resend)).toBe(false);

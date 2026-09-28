@@ -70,7 +70,9 @@ export const locationSamples = pgTable(
 export const rawPayloads = pgTable(
   'raw_payloads',
   {
-    id: uuid('id').notNull().default(sql`uuidv7()`),
+    id: uuid('id')
+      .notNull()
+      .default(sql`uuidv7()`),
     receivedAt: tstz('received_at').notNull(),
     deviceId: uuid('device_id'),
     accountId: integer('account_id'),

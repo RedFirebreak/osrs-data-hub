@@ -28,7 +28,9 @@ export const events = pgTable(
   'events',
   {
     /** Public id (uuid v7). */
-    id: uuid('id').primaryKey().default(sql`uuidv7()`),
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`uuidv7()`),
     /** API/SSE cursor. Assigned at insert, not commit: readers must allow for gaps (DB-4). */
     seq: bigint('seq', { mode: 'number' }).generatedAlwaysAsIdentity().notNull(),
     pluginEventId: text('plugin_event_id').notNull(),
@@ -42,7 +44,9 @@ export const events = pgTable(
     occurredAt: tstz('occurred_at').notNull(),
     receivedAt: tstz('received_at').notNull(),
     /** clock_timestamp() at insert: the cursor feed only serves rows older than a few seconds. */
-    insertedAt: tstz('inserted_at').default(sql`clock_timestamp()`).notNull(),
+    insertedAt: tstz('inserted_at')
+      .default(sql`clock_timestamp()`)
+      .notNull(),
     valueGp: bigint('value_gp', { mode: 'number' }),
     itemId: integer('item_id'),
     npcId: integer('npc_id'),
@@ -69,7 +73,9 @@ export type SessionEndReason = (typeof SESSION_END_REASONS)[number];
 export const playSessions = pgTable(
   'play_sessions',
   {
-    id: uuid('id').primaryKey().default(sql`uuidv7()`),
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`uuidv7()`),
     accountId: integer('account_id')
       .notNull()
       .references(() => osrsAccounts.id, { onDelete: 'cascade' }),
@@ -79,7 +85,10 @@ export const playSessions = pgTable(
     lastSeenAt: tstz('last_seen_at').notNull(),
     endedAt: tstz('ended_at'),
     endReason: text('end_reason', { enum: SESSION_END_REASONS }),
-    worlds: integer('worlds').array().default(sql`'{}'::integer[]`).notNull(),
+    worlds: integer('worlds')
+      .array()
+      .default(sql`'{}'::integer[]`)
+      .notNull(),
   },
   (t) => [
     uniqueIndex('play_sessions_open_uidx')

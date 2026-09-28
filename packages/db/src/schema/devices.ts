@@ -11,7 +11,9 @@ export type DeviceRevokeReason = (typeof DEVICE_REVOKE_REASONS)[number];
 export const devices = pgTable(
   'devices',
   {
-    id: uuid('id').primaryKey().default(sql`uuidv7()`),
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`uuidv7()`),
     userId: text('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
@@ -38,7 +40,9 @@ export const devices = pgTable(
 export const pairingCodes = pgTable(
   'pairing_codes',
   {
-    id: uuid('id').primaryKey().default(sql`uuidv7()`),
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`uuidv7()`),
     code: text('code').notNull(),
     userId: text('user_id')
       .notNull()

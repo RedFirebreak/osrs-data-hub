@@ -45,7 +45,10 @@ const g = globalThis as unknown as { __hubDb?: DbHandle };
  * Process-wide pool on globalThis. Next.js runs route handlers and RSC/server code in separate module
  * instances, so a module-level singleton would create one pool per instance (NEXT-3).
  */
-export function getDb(connectionString = process.env.DATABASE_URL, opts: CreateDbOptions = {}): DbHandle {
+export function getDb(
+  connectionString = process.env.DATABASE_URL,
+  opts: CreateDbOptions = {},
+): DbHandle {
   if (!g.__hubDb) {
     if (!connectionString) throw new Error('DATABASE_URL is not set');
     g.__hubDb = createDb(connectionString, opts);

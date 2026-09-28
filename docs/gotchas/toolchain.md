@@ -11,6 +11,7 @@ Build, lint and package tooling (TypeScript, ESLint, pnpm, tsup, shadcn, Docker 
 | [TOOL-4](#tool-4) | The tsup-bundled worker crashes at start with `Error: Dynamic require of "events" is not supported`, or with `ReferenceError: __dirname is not defined in ES module scope` from pino. |
 | [TOOL-5](#tool-5) | `node_modules/.pnpm` holds several `drizzle-orm@0.45.3_<peers>` directories, and workspace packages resolve different ones. |
 | [TOOL-6](#tool-6) | A Docker build on `node:26-alpine` fails with `sh: corepack: not found`. |
+| [TOOL-7](#tool-7) | After `pnpm format`, `tools/check_gotchas.py` reports `has no '*Source: ...*' line` for every entry, and doc tables are re-padded. |
 | [ZOD-1](#zod-1) | Unknown or new fields in a plugin payload vanish after parsing: stored event data lacks keys the plugin sent. |
 
 ### PGBOSS-1
@@ -88,6 +89,16 @@ corepack ships with `node:24-alpine` and `node:22-alpine` (0.36.0) but not with 
 `mirror.gcr.io/library/node:24-alpine` is the same image.
 
 *Source: `OBSERVED` (research sandbox, `node:22-alpine`, `node:24-alpine` and `node:26-alpine`, 2026-09-28)*
+
+### TOOL-7
+**After `pnpm format`, `tools/check_gotchas.py` reports `has no '*Source: ...*' line` for every entry, and doc tables are re-padded.**
+Prettier formats Markdown by default: it rewrites `*emphasis*` to `_emphasis_` and re-aligns table cells.
+The registry validator looks for the literal `*Source: …*` line of each entry, so one repo-wide
+`prettier --write .` fails every entry (the PostToolUse hook only runs after Edit/Write, not after a
+shell command, so nothing flags it until CI). Fix: `**/*.md` is in `.prettierignore`; if Markdown was
+already rewritten, `git checkout -- docs/` and re-run `python3 tools/check_gotchas.py`.
+
+*Source: `OBSERVED` (this repo, `pnpm format` with prettier 3.9.9, 2026-09-28)*
 
 ### ZOD-1
 **Unknown or new fields in a plugin payload vanish after parsing: stored event data lacks keys the plugin sent.**

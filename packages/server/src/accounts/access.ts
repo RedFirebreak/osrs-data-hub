@@ -39,7 +39,11 @@ export async function loadAccountAccess(
   if (ids.length === 0) return out;
   const [accounts, links, sharing, grants] = await Promise.all([
     db
-      .select({ id: osrsAccounts.id, status: osrsAccounts.status, ownerUserId: osrsAccounts.ownerUserId })
+      .select({
+        id: osrsAccounts.id,
+        status: osrsAccounts.status,
+        ownerUserId: osrsAccounts.ownerUserId,
+      })
       .from(osrsAccounts)
       .where(inArray(osrsAccounts.id, ids)),
     db
@@ -52,7 +56,11 @@ export async function loadAccountAccess(
       .from(accountLinks)
       .where(inArray(accountLinks.accountId, ids)),
     db
-      .select({ accountId: accountSharing.accountId, category: accountSharing.category, audience: accountSharing.audience })
+      .select({
+        accountId: accountSharing.accountId,
+        category: accountSharing.category,
+        audience: accountSharing.audience,
+      })
       .from(accountSharing)
       .where(inArray(accountSharing.accountId, ids)),
     db
@@ -65,11 +73,22 @@ export async function loadAccountAccess(
       .where(inArray(accountShareGrants.accountId, ids)),
   ]);
   for (const a of accounts) {
-    out.set(a.id, { status: a.status, ownerUserId: a.ownerUserId, links: [], sharing: {}, grants: [] });
+    out.set(a.id, {
+      status: a.status,
+      ownerUserId: a.ownerUserId,
+      links: [],
+      sharing: {},
+      grants: [],
+    });
   }
   for (const l of links) {
     const acc = out.get(l.accountId);
-    if (acc) (acc.links as AccountAccess['links'][number][]).push({ userId: l.userId, role: l.role, blocked: l.blocked });
+    if (acc)
+      (acc.links as AccountAccess['links'][number][]).push({
+        userId: l.userId,
+        role: l.role,
+        blocked: l.blocked,
+      });
   }
   for (const s of sharing) {
     const acc = out.get(s.accountId);
@@ -80,7 +99,10 @@ export async function loadAccountAccess(
   for (const gr of grants) {
     const acc = out.get(gr.accountId);
     if (acc && isCategory(gr.category)) {
-      (acc.grants as AccountAccess['grants'][number][]).push({ category: gr.category, userId: gr.userId });
+      (acc.grants as AccountAccess['grants'][number][]).push({
+        category: gr.category,
+        userId: gr.userId,
+      });
     }
   }
   return out;

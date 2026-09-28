@@ -29,13 +29,24 @@ describe('presenceTimeoutSeconds', () => {
   });
 
   it('is 25 minutes when tickDelay is unknown', () => {
-    expect(presenceTimeoutSeconds(0)).toBe(DEFAULT_PRESENCE_TIMEOUT_S);
+    expect(DEFAULT_PRESENCE_TIMEOUT_S).toBe(1500);
     expect(presenceTimeoutSeconds(0)).toBe(1500);
     expect(presenceTimeoutSeconds(null)).toBe(1500);
     expect(presenceTimeoutSeconds(undefined)).toBe(1500);
     expect(presenceTimeoutSeconds(-5)).toBe(1500);
     expect(presenceTimeoutSeconds(Number.NaN)).toBe(1500);
     expect(presenceTimeoutSeconds(Number.POSITIVE_INFINITY)).toBe(1500);
+  });
+});
+
+describe('IN_GAME_STATES', () => {
+  it('holds exactly the D-28 states (the plugin also sends from LOADING/HOPPING)', () => {
+    expect([...IN_GAME_STATES].sort()).toEqual([
+      'CONNECTION_LOST',
+      'HOPPING',
+      'LOADING',
+      'LOGGED_IN',
+    ]);
   });
 });
 
@@ -50,7 +61,14 @@ describe('isOnline', () => {
   });
 
   it('is offline on the login screen, an unknown state or no state', () => {
-    for (const gameState of ['LOGIN_SCREEN', 'LOGIN_SCREEN_AUTHENTICATOR', 'LOGGING_IN', 'STARTING', 'UNKNOWN', null]) {
+    for (const gameState of [
+      'LOGIN_SCREEN',
+      'LOGIN_SCREEN_AUTHENTICATOR',
+      'LOGGING_IN',
+      'STARTING',
+      'UNKNOWN',
+      null,
+    ]) {
       expect(isOnline({ gameState, lastSeen: ago(1), tickDelay: 100 }, now)).toBe(false);
     }
   });
@@ -67,7 +85,11 @@ describe('isOnline', () => {
   });
 
   it('uses 25 minutes for tickDelay 0/null', () => {
-    const s = (lastSeen: Date, tickDelay: number | null) => ({ gameState: 'LOGGED_IN', lastSeen, tickDelay });
+    const s = (lastSeen: Date, tickDelay: number | null) => ({
+      gameState: 'LOGGED_IN',
+      lastSeen,
+      tickDelay,
+    });
     expect(isOnline(s(ago(1499), 0), now)).toBe(true);
     expect(isOnline(s(ago(1500), 0), now)).toBe(false);
     expect(isOnline(s(ago(1499), null), now)).toBe(true);

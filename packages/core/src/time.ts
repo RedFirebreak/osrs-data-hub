@@ -27,7 +27,9 @@ export function clampEventTime(ts: number | null | undefined, recv: Date): Date 
 
 /** Floors to a multiple of `bucketMs` since the epoch (UTC). Throws on a non-positive bucket. */
 export function floorTo(date: Date, bucketMs: number): Date {
-  if (!Number.isFinite(bucketMs) || bucketMs <= 0) throw new RangeError(`invalid bucket: ${bucketMs}`);
+  if (!Number.isFinite(bucketMs) || bucketMs <= 0) {
+    throw new RangeError(`invalid bucket: ${bucketMs}`);
+  }
   return new Date(Math.floor(date.getTime() / bucketMs) * bucketMs);
 }
 

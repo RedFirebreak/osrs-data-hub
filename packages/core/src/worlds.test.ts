@@ -8,7 +8,9 @@ describe('isSpecialWorld', () => {
     expect(isSpecialWorld(null)).toBe(false);
     expect(isSpecialWorld([])).toBe(false);
     expect(isSpecialWorld(['MEMBERS'])).toBe(false);
-    expect(isSpecialWorld(['MEMBERS', 'PVP', 'HIGH_RISK', 'SKILL_TOTAL', 'LAST_MAN_STANDING'])).toBe(false);
+    expect(
+      isSpecialWorld(['MEMBERS', 'PVP', 'HIGH_RISK', 'SKILL_TOTAL', 'LAST_MAN_STANDING']),
+    ).toBe(false);
   });
 
   it('is true when any type is special', () => {
@@ -39,7 +41,9 @@ describe('isSpecialWorld', () => {
     type P = { player: { worldTypes: string[] } };
     expect(isSpecialWorld(fixtureJson<P>('special-world-seasonal').player.worldTypes)).toBe(true);
     // The stale hop payload still carries SEASONAL although the client is on a normal world now.
-    expect(isSpecialWorld(fixtureJson<P>('hop-from-special-world-stale').player.worldTypes)).toBe(true);
+    expect(isSpecialWorld(fixtureJson<P>('hop-from-special-world-stale').player.worldTypes)).toBe(
+      true,
+    );
     expect(isSpecialWorld(fixtureJson<P>('snapshot-normal').player.worldTypes)).toBe(false);
     expect(isSpecialWorld(fixtureJson<P>('snapshot-world-hop').player.worldTypes)).toBe(false);
   });

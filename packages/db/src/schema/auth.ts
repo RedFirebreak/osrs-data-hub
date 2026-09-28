@@ -43,7 +43,10 @@ export const users = pgTable('users', {
     .notNull(),
   discordId: text('discord_id').unique(),
   nickname: text('nickname'),
-  roles: text('roles').array().default(sql`'{}'::text[]`).notNull(),
+  roles: text('roles')
+    .array()
+    .default(sql`'{}'::text[]`)
+    .notNull(),
   isAdmin: boolean('is_admin').default(false).notNull(),
   status: text('status', { enum: USER_STATUSES }).default('active').notNull(),
   graceUntil: tstz('grace_until'),

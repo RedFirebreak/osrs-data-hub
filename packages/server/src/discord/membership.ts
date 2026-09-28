@@ -24,8 +24,15 @@ export function evaluateMembership(lookup: MemberLookup, policy: GuildPolicy): M
   return { kind: 'ok', member: lookup.member };
 }
 
-export function isAdmin(discordUserId: string, roles: readonly string[], policy: GuildPolicy): boolean {
-  return policy.adminUserIds.includes(discordUserId) || roles.some((r) => policy.adminRoleIds.includes(r));
+export function isAdmin(
+  discordUserId: string,
+  roles: readonly string[],
+  policy: GuildPolicy,
+): boolean {
+  return (
+    policy.adminUserIds.includes(discordUserId) ||
+    roles.some((r) => policy.adminRoleIds.includes(r))
+  );
 }
 
 /** Display name: guild nick > global name > username. */
@@ -34,7 +41,11 @@ export function displayName(user: DiscordUser, member?: DiscordGuildMember | nul
 }
 
 /** Avatar URL: guild avatar > user avatar > default avatar. */
-export function avatarUrl(user: DiscordUser, guildId: string, member?: DiscordGuildMember | null): string {
+export function avatarUrl(
+  user: DiscordUser,
+  guildId: string,
+  member?: DiscordGuildMember | null,
+): string {
   if (member?.avatar) {
     const ext = member.avatar.startsWith('a_') ? 'gif' : 'png';
     return `https://cdn.discordapp.com/guilds/${guildId}/users/${user.id}/avatars/${member.avatar}.${ext}`;
@@ -43,14 +54,15 @@ export function avatarUrl(user: DiscordUser, guildId: string, member?: DiscordGu
     const ext = user.avatar.startsWith('a_') ? 'gif' : 'png';
     return `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.${ext}`;
   }
-  let idx = 0;
+  return `https://cdn.discordapp.com/embed/avatars/${defaultAvatarIndex(user)}.png`;
+}
+
+function defaultAvatarIndex(user: DiscordUser): number {
   try {
-    idx =
-      !user.discriminator || user.discriminator === '0'
-        ? Number((BigInt(user.id) >> 22n) % 6n)
-        : Number.parseInt(user.discriminator, 10) % 5;
+    return !user.discriminator || user.discriminator === '0'
+      ? Number((BigInt(user.id) >> 22n) % 6n)
+      : Number.parseInt(user.discriminator, 10) % 5;
   } catch {
-    idx = 0;
+    return 0;
   }
-  return `https://cdn.discordapp.com/embed/avatars/${idx}.png`;
 }
