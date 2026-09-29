@@ -1,6 +1,6 @@
 # Gotchas
 
-72 traps, grouped into five files, found while building osrs-data-hub. Each is written up
+76 traps, grouped into five files, found while building osrs-data-hub. Each is written up
 once under a stable ID and referenced by ID from everywhere else, so there is exactly one place to edit
 when something changes. Package-agnostic: things that are true of the shared layer (the HA Exporter
 plugin protocol, Next.js, Better Auth, Drizzle, Postgres/TimescaleDB, pg-boss, the Discord API, and the
@@ -22,11 +22,11 @@ defeats the point of them being separate.
 
 | File | Covers | Entries |
 |---|---|---|
-| [auth.md](auth.md) | `AUTH`, `DISCORD` — Better Auth 1.7 (Discord provider, Drizzle adapter, hooks, sessions, endpoints) and the Discord HTTP API (OAuth, guild member lookups) | 11 |
+| [auth.md](auth.md) | `AUTH`, `DISCORD` — Better Auth 1.7 (Discord provider, Drizzle adapter, hooks, sessions, endpoints) and the Discord HTTP API (OAuth, guild member lookups) | 14 |
 | [database.md](database.md) | `DB`, `TSDB` — Postgres behaviour, drizzle-orm 0.45 and drizzle-kit 0.31 (queries, errors, the migrator), and TimescaleDB 2.30 (hypertables, compression, continuous aggregates, policies, the Docker image) | 27 |
 | [nextjs.md](nextjs.md) | `NEXT` — Next.js 16 (route handlers, server actions, RSC, proxy.ts, instrumentation, basePath, standalone output, the dev and build CLI) | 12 |
 | [plugin.md](plugin.md) | `PLUGIN` — the HA Exporter v1.5 wire protocol as seen from the hub (payload shapes, Gson serialization, the OkHttp transport, status handling, the retry queue, the pairing panel) | 13 |
-| [toolchain.md](toolchain.md) | `PGBOSS`, `TOOL`, `ZOD` — build, lint and package tooling (TypeScript, ESLint, pnpm, tsup, shadcn, Docker base images) and the pg-boss and zod libraries | 9 |
+| [toolchain.md](toolchain.md) | `PGBOSS`, `TOOL`, `ZOD` — build, lint and package tooling (TypeScript, ESLint, pnpm, tsup, shadcn, Docker base images) and the pg-boss and zod libraries | 10 |
 | [open-questions.md](open-questions.md) | read from docs, not yet observed — no IDs, not in the index | — |
 
 **Source key.** Every entry ends with the source it was settled from:
@@ -55,6 +55,9 @@ The `gotcha` skill walks this, including a trap that fits no existing file.
 | [AUTH-8](auth.md#auth-8) | Better Auth | A session deleted from the database (sign-out everywhere, offboarding) keeps working in the browser for up to 5 minutes. |
 | [AUTH-9](auth.md#auth-9) | Better Auth | Behind the reverse proxy, Better Auth rate-limits all users together: one busy client gets everyone 429s. |
 | [AUTH-10](auth.md#auth-10) | Better Auth | A signed-in user renames themselves with `POST /api/auth/update-user`, overriding the name that comes from Discord. |
+| [AUTH-11](auth.md#auth-11) | Better Auth | A cross-origin `POST /api/auth/sign-out` (or any cookie-carrying POST to Better Auth) succeeds in vitest with a foreign or missing `Origin`, although production answers 403. |
+| [AUTH-12](auth.md#auth-12) | Better Auth | Signed-in users who use the hub every day are still signed out about 7 days after signing in; the `session` row's `expires_at` keeps moving forward, the browser's cookie doesn't. |
+| [AUTH-13](auth.md#auth-13) | Better Auth | While the database is down, every signed-in route answers 500 instead of 503, and the log shows `[Better Auth]: INTERNAL_SERVER_ERROR DrizzleQueryError: Failed query: select … from "session" … params: <session token>`. |
 | [DISCORD-1](auth.md#discord-1) | Discord | Re-verification marks every member, or a large share of them, as having left the guild in a single run. |
 | **[database.md](database.md)** | | |
 | [DB-1](database.md#db-1) | Database | An insert fails with `22P02 invalid input syntax for type json` or `unsupported Unicode escape sequence` (`\u0000 cannot be converted to text`). |
@@ -113,6 +116,7 @@ The `gotcha` skill walks this, including a trap that fits no existing file.
 | [PLUGIN-13](plugin.md#plugin-13) | Plugin | In the plugin's pairing panel, Submit does nothing: no dialog, no request reaches the hub, and the button stays disabled. |
 | **[toolchain.md](toolchain.md)** | | |
 | [PGBOSS-1](toolchain.md#pgboss-1) | pg-boss | pg-boss throws `Queue <name> does not exist` (or `not found`) on send or schedule, a worker never runs while `error` events repeat every poll, or a handler finds `job.data` undefined. |
+| [PGBOSS-2](toolchain.md#pgboss-2) | pg-boss | After changing a queue's `policy` in code, `getQueue()` still reports the old one, and `updateQueue(name, { policy })` throws `queue policy cannot be changed after creation`. |
 | [TOOL-1](toolchain.md#tool-1) | Toolchain | After `pnpm add -D typescript`, typescript-eslint or Next's type check breaks; or `tsc` fails with `TS2591 Cannot find name 'node:crypto'`, `TS5101` (baseUrl) or `TS5107` (moduleResolution node). |
 | [TOOL-2](toolchain.md#tool-2) | Toolchain | `shadcn init` in a script exits 0 having created nothing, or `next build` fails offline with `next/font: error … fonts.googleapis.com`. |
 | [TOOL-3](toolchain.md#tool-3) | Toolchain | ESLint crashes with `TypeError: Error while loading rule 'react/display-name': contextOrFilename.getFilename is not a function`. |

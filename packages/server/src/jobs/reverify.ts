@@ -63,7 +63,7 @@ const HOUR_MS = 3_600_000;
 export const BREAKER_MIN_CHECKED = 5;
 /** More than this share of departures (in a batch, or in the window) is a config problem (D-34). */
 export const BREAKER_MAX_DEPARTURE_SHARE = 0.2;
-/** The rolling breaker lets at least this many departures through per window, however few users. */
+/** (D-62) The rolling breaker lets at least this many departures through per window, however few users. */
 export const BREAKER_WINDOW_MIN_DEPARTURES = 3;
 /** The offboarding reasons re-verification gives (and the rolling breaker counts). */
 const REVERIFY_REASONS = ['left_guild', 'lost_role'] as const;

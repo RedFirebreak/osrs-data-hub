@@ -5,7 +5,7 @@
  * |----------------------------|----------------------------------|
  * | close-stale-sessions       | every minute                     |
  * | reverify-members           | every 15 min, a batch of users due (staggered 6-hourly checks) |
- * | expire-grace               | hourly                           |
+ * | expire-grace               | hourly: grace expiry, then the orphaned-account purge (D-61) |
  * | prune-audit-log            | daily                            |
  * | Timescale policies         | reconciled at startup            |
  *
@@ -21,6 +21,7 @@ import {
   getLogger,
   getMetrics,
   pruneAuditLog,
+  purgeOrphanedAccounts,
   reverifyDueMembers,
 } from '@hub/server';
 import { PgBoss, type Job } from 'pg-boss';
@@ -90,7 +91,21 @@ async function main() {
     );
   });
   await boss.work(JOBS.expireGrace.name, async (_jobs: Job[]) => {
-    await timed(log, 'expire-grace', () => expireGracePeriods(db, {}));
+    await timed(log, 'expire-grace', async () => {
+      // Grace expiry first (it transfers or deletes the accounts of users who leave), then the
+      // time-gated purge of accounts nobody can reclaim (D-61). The purge runs even when some users
+      // failed to expire; the first failure is reported afterwards.
+      let expired: Awaited<ReturnType<typeof expireGracePeriods>> | null = null;
+      let failure: unknown = null;
+      try {
+        expired = await expireGracePeriods(db, {});
+      } catch (err) {
+        failure = err;
+      }
+      const purged = await purgeOrphanedAccounts(db, { graceDays: config.offboardGraceDays });
+      if (failure) throw failure;
+      return { ...expired, ...purged };
+    });
   });
   await boss.work(JOBS.pruneAuditLog.name, async (_jobs: Job[]) => {
     await timed(log, 'prune-audit-log', () =>

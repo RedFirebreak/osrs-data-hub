@@ -5,6 +5,7 @@ Build, lint and package tooling (TypeScript, ESLint, pnpm, tsup, shadcn, Docker 
 | ID | Symptom |
 |---|---|
 | [PGBOSS-1](#pgboss-1) | pg-boss throws `Queue <name> does not exist` (or `not found`) on send or schedule, a worker never runs while `error` events repeat every poll, or a handler finds `job.data` undefined. |
+| [PGBOSS-2](#pgboss-2) | After changing a queue's `policy` in code, `getQueue()` still reports the old one, and `updateQueue(name, { policy })` throws `queue policy cannot be changed after creation`. |
 | [TOOL-1](#tool-1) | After `pnpm add -D typescript`, typescript-eslint or Next's type check breaks; or `tsc` fails with `TS2591 Cannot find name 'node:crypto'`, `TS5101` (baseUrl) or `TS5107` (moduleResolution node). |
 | [TOOL-2](#tool-2) | `shadcn init` in a script exits 0 having created nothing, or `next build` fails offline with `next/font: error … fonts.googleapis.com`. |
 | [TOOL-3](#tool-3) | ESLint crashes with `TypeError: Error while loading rule 'react/display-name': contextOrFilename.getFilename is not a function`. |
@@ -25,6 +26,17 @@ startup `createQueue` (idempotent) every queue before `schedule` or `work`, alwa
 `boss.on('error', …)`, iterate the jobs array, and don't rely on to-the-second cron timing (apps/worker).
 
 *Source: `OBSERVED` (research sandbox, pg-boss 12.35.0 on timescale/timescaledb:2.30.1-pg17, 2026-09-28); `SOURCE` (pg-boss dist/manager.js:853, timekeeper.js:845, types.d.ts:899)*
+
+### PGBOSS-2
+**After changing a queue's `policy` in code, `getQueue()` still reports the old one, and `updateQueue(name, { policy })` throws `queue policy cannot be changed after creation`.**
+pg-boss 12 creates a queue with `INSERT … ON CONFLICT DO NOTHING`, so `createQueue(name, { policy })`
+on an existing queue silently keeps the policy it was first created with, and `updateQueue` refuses a
+policy change. A deployment that adds or changes a policy therefore runs with the old one for ever.
+Fix: at startup compare `getQueue(name).policy`, and when it differs `deleteQueue` (which also drops the
+queue's waiting jobs and, by cascade, its schedule) and create it again, then write the schedule again
+(apps/worker/src/queues.ts `ensureScheduledQueues`).
+
+*Source: `SOURCE` (pg-boss 12.35.0 dist/manager.js, plans.js `create_queue`); `OBSERVED` (apps/worker/src/queues.test.ts on timescale/timescaledb:2.30.1-pg18, 2026-09-29)*
 
 ### TOOL-1
 **After `pnpm add -D typescript`, typescript-eslint or Next's type check breaks; or `tsc` fails with `TS2591 Cannot find name 'node:crypto'`, `TS5101` (baseUrl) or `TS5107` (moduleResolution node).**

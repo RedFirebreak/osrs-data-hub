@@ -30,7 +30,7 @@ export const SCHEDULED_QUEUE_POLICY: QueuePolicy = 'stately';
  *
  * A queue created by an earlier version keeps its old policy: createQueue on an existing name does
  * nothing (ON CONFLICT DO NOTHING) and updateQueue refuses a policy change ("queue policy cannot be
- * changed after creation"). Such a queue is deleted and created again; deleteQueue also deletes its
+ * changed after creation", PGBOSS-2). Such a queue is deleted and created again; deleteQueue also deletes its
  * waiting jobs and (by cascade) its schedule, which is written again right after. Losing a waiting
  * run of a cron job costs nothing: the next tick sends another. Returns the queues re-created.
  */

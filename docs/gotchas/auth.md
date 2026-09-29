@@ -17,6 +17,9 @@ Better Auth paths are relative to the installed packages: `better-auth/dist`, `@
 | [AUTH-8](#auth-8) | A session deleted from the database (sign-out everywhere, offboarding) keeps working in the browser for up to 5 minutes. |
 | [AUTH-9](#auth-9) | Behind the reverse proxy, Better Auth rate-limits all users together: one busy client gets everyone 429s. |
 | [AUTH-10](#auth-10) | A signed-in user renames themselves with `POST /api/auth/update-user`, overriding the name that comes from Discord. |
+| [AUTH-11](#auth-11) | A cross-origin `POST /api/auth/sign-out` (or any cookie-carrying POST to Better Auth) succeeds in vitest with a foreign or missing `Origin`, although production answers 403. |
+| [AUTH-12](#auth-12) | Signed-in users who use the hub every day are still signed out about 7 days after signing in; the `session` row's `expires_at` keeps moving forward, the browser's cookie doesn't. |
+| [AUTH-13](#auth-13) | While the database is down, every signed-in route answers 500 instead of 503, and the log shows `[Better Auth]: INTERNAL_SERVER_ERROR DrizzleQueryError: Failed query: select … from "session" … params: <session token>`. |
 | [DISCORD-1](#discord-1) | Re-verification marks every member, or a large share of them, as having left the guild in a single run. |
 
 ### AUTH-1
@@ -123,6 +126,46 @@ value is silently skipped), but the core `name` field stays writable by the user
 and avatars come only from Discord, through the hooks.
 
 *Source: `OBSERVED` (research sandbox, better-auth 1.7.6 probe P19, 2026-09-28)*
+
+### AUTH-11
+**A cross-origin `POST /api/auth/sign-out` (or any cookie-carrying POST to Better Auth) succeeds in vitest with a foreign or missing `Origin`, although production answers 403.**
+Better Auth defaults `advanced.disableOriginCheck` to `isTest()` (`NODE_ENV === 'test'` or `TEST` set,
+read once at import), and with it skips both the callbackURL validation and the Origin/CSRF check
+(context/create-context.mjs:211, api/middlewares/origin-check.mjs). vitest sets `NODE_ENV=test`, so a
+test of the auth routes proves nothing about CSRF, and a request builder that forgets `Origin` still
+passes. Fix: in tests, switch it back on after creating the instance:
+`(await auth.$context).skipOriginCheck = false` (apps/web `withTestDb` does), or set
+`advanced.disableOriginCheck: false` in the config. Direct `auth.api.*` calls without a request are never
+origin-checked either way.
+
+*Source: `OBSERVED` (apps/web vitest, better-auth 1.7.6, 2026-09-29: sign-out with `Origin: https://evil.example.com` → 200 until re-enabled, then 403); `SOURCE` (better-auth context/create-context.mjs:211, @better-auth/core env/env-impl.mjs:36)*
+
+### AUTH-12
+**Signed-in users who use the hub every day are still signed out about 7 days after signing in; the `session` row's `expires_at` keeps moving forward, the browser's cookie doesn't.**
+`auth.api.getSession` renews a session older than `session.updateAge` on read: it moves `expires_at` in
+the database, then sets a fresh cookie (api/routes/session.mjs:183-215). Called from a Server Component,
+the `nextCookies()` plugin tries `cookies().set()`, which Next only allows in Route Handlers and Server
+Actions, and swallows the error (integrations/next-js.mjs:94); it skips the renewal only for client
+navigations that carry `RSC: 1` (next-js.mjs:67-69), not for a full page load. So a page render renews
+the row but not the cookie, and every route that asks later finds nothing to renew: the cookie keeps the
+Max-Age of sign-in. Fix: page-side reads pass `query: { disableRefresh: true }`; let route handlers renew
+(Next merges `cookies().set()` into a Route Handler's own Response), e.g. one every page calls anyway.
+apps/web: lib/session.ts.
+
+*Source: `OBSERVED` (apps/web standalone `next start`, Next 16.3.6, better-auth 1.7.6, 2026-09-29: a full page load moved `expires_at` by two days with no `Set-Cookie`, and the next route handler then had nothing to renew; with page reads on `disableRefresh`, `GET /api/live/events` renewed the row and answered `Set-Cookie`); `SOURCE` (better-auth api/routes/session.mjs:183-215, integrations/next-js.mjs:67-94; next app-route/module.js appendMutableCookies)*
+
+### AUTH-13
+**While the database is down, every signed-in route answers 500 instead of 503, and the log shows `[Better Auth]: INTERNAL_SERVER_ERROR DrizzleQueryError: Failed query: select … from "session" … params: <session token>`.**
+`getSession` catches every failure of its store, logs the raw error with its own logger
+(`logger.error("INTERNAL_SERVER_ERROR", error)`) and throws a bare `APIError` 500 `FAILED_TO_GET_SESSION`
+without a `cause` (api/routes/session.mjs:231-232). The logged `DrizzleQueryError` carries every bound
+parameter, here the session token ([DB-3](database.md#db-3)); and `pgErrorCode`/`isTransientDbError` see
+nothing on the thrown error, so an outage looks like a bug. Fix: map a Better Auth `APIError` with a 5xx
+`statusCode` (`isAPIError` from `better-auth/api`) to 503 + `Retry-After` in the route's error mapper
+(apps/web lib/http.ts does), and give `betterAuth()` a `logger.log` that logs errors by name,
+`pgErrorCode` and `safeDbErrorMessage` only, never the error object.
+
+*Source: `OBSERVED` (apps/web vitest, database unreachable, better-auth 1.7.6 + drizzle-orm 0.45.3, 2026-09-29: the token appeared twice on stderr, `handleApi` answered 500); `SOURCE` (better-auth api/routes/session.mjs:231-232)*
 
 ### DISCORD-1
 **Re-verification marks every member, or a large share of them, as having left the guild in a single run.**

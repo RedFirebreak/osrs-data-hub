@@ -3,3 +3,4 @@
  */
 export { offboardUser, restoreUser, type OffboardResult } from './offboard';
 export { expireGracePeriods } from './expire';
+export { purgeOrphanedAccounts } from './purge';

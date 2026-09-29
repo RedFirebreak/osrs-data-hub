@@ -120,9 +120,10 @@ until a route handler imports the module: a top-level `path.join(import.meta.dir
 'drizzle')` in packages/db/src/migrate.ts breaks every route that imports `@hub/db`, even though the web
 app never migrates. packages/fixtures/src/index.ts has the same pattern. Fix: in any package the web app
 imports, don't read `import.meta.dirname`/`filename` at module top level; derive the path from
-`import.meta.url` (the build passes with `new URL(import.meta.url).pathname`), or resolve it lazily inside
-the function that needs it. Compare ([NEXT-10](#next-10)), the other workspace-package trap only
-`next build` shows.
+`import.meta.url` (the build passes with `path.dirname(new URL(import.meta.url).pathname)`), or resolve it
+lazily inside the function that needs it. Not `new URL('../drizzle', import.meta.url)`: Turbopack takes
+that form for an asset import and fails with `Module not found: Can't resolve '../drizzle'`. Compare
+([NEXT-10](#next-10)), the other workspace-package trap only `next build` shows.
 
 *Source: `OBSERVED` (apps/web `next build`, Next 16.3.6 Turbopack, 2026-09-29: fails with the migrate.ts line, passes with it derived from `import.meta.url`)*
 
