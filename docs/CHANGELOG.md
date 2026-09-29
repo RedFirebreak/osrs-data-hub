@@ -21,7 +21,7 @@ switch). Status per milestone: [ARCHITECTURE.md §14](ARCHITECTURE.md#14-milesto
 - A `readBodyCapped` test no longer depends on how far Node's streams read ahead (Node 24 reads
   one chunk more than Node 22).
 
-### M3 — public API (in progress)
+### M3 — public API
 
 - Decisions D-69 … D-77: key format and storage, access per request (creator ∩ categories ∩
   scope, 404 outside it, no admin override), `/api/v1` conventions and CORS, rate limits, the cursor
@@ -32,6 +32,21 @@ switch). Status per milestone: [ARCHITECTURE.md §14](ARCHITECTURE.md#14-milesto
   endpoint of handoff §13; the `/events` cursor feed over the settled prefix (10 s, D-73) with
   location redaction; `/snapshot` with a content ETag and `since`; per-key, snapshot and failed-auth
   rate limits (`WindowLimiter.usage` added to core). 136 tests.
+- Web half (`apps/web`): every `/api/v1` endpoint of handoff §13, `/api/v1/openapi.json` and a JSON 404
+  for unknown v1 paths, all behind one wrapper (`withApiKey`): bearer keys only, the failed-auth limit
+  per IP answered before any database access, one 401 for every refused key, per-key and 1/s snapshot
+  limits with `X-RateLimit-*`, CORS on every response and OPTIONS → 204. snake_case JSON through typed
+  mappers (D-77); `/snapshot` with a weak ETag, `If-None-Match` → 304 and `since`; `/events` with
+  `meta.next_cursor`. OpenAPI 3.1 generated per request from the routes' zod schemas (D-75), which the
+  route tests also parse every response with. `/docs/api`: Scalar 1.72.2 from jsDelivr with SRI.
+- The API keys page (`/api-keys`) and `/api/app/api-keys` routes: create (shown once), list, revoke
+  (D-76), and an "API keys" item in the navigation. The header now switches to the full navigation at
+  1024 px instead of 768 px: at tablet widths six items wrapped and cut off the hub's name.
+- `errorResponse` maps the server's `ApiError` and `ApiKeyError`. 105 web tests; the web suite passes on
+  Node 22 and 24, and the standalone build was checked on Node 24 (NEXT-13). The screenshot run covers
+  the API keys page, its dialog, the header at 820 and 1024 px, and `/docs/api`.
+- `docs/API.md`: the consumer guide (authentication, conventions, rate limits, CORS, every endpoint with
+  an example, the events cursor, the known consumers).
 
 ### Process and docs
 

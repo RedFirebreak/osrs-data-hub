@@ -39,14 +39,19 @@ tunes for, and `TS_TUNE_MAX_CONNS=100` keeps enough connections for the web, wor
 
 ## 3. Reverse proxy
 
-Terminate TLS in the proxy you already run and forward to `127.0.0.1:3000`. Three requirements:
+Terminate TLS in the proxy you already run and forward to `127.0.0.1:3000`. Four requirements:
 
 1. **Don't buffer `text/event-stream`.** The live stream (`/api/live/stream`) sends
    `X-Accel-Buffering: no`, which nginx honours; Caddy and Traefik stream by default.
 2. **Forward the host.** Keep the original `Host` or set `X-Forwarded-Host`, and append the client address
    to `X-Forwarded-For`. `TRUST_PROXY_HOPS` (default 1) is the number of proxies whose
    `X-Forwarded-For` entries the hub trusts for rate limits.
-3. **Never redirect `/api/osrs-data/*`.** The plugin turns a 301/302 into a body-less GET and doesn't
+3. **Leave `/api/v1/*` to the hub.** Don't add CORS or caching headers in the proxy: the hub sets
+   `Access-Control-Allow-Origin: *`, `ETag` and `Cache-Control` itself. `TRUST_PROXY_HOPS` also keys
+   the API's failed-authentication limit (30 per minute per client IP, D-72): when it is wrong, every
+   client appears as the proxy's address, and one client with a bad key locks every API client out
+   for about a minute.
+4. **Never redirect `/api/osrs-data/*`.** The plugin turns a 301/302 into a body-less GET and doesn't
    follow 307/308, so data is lost silently (PLUGIN-2). Redirect http → https for the UI only, or tell
    players to use the `https://` URL exactly as the wizard shows it.
 

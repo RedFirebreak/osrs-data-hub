@@ -270,6 +270,8 @@ menu (`next-themes`). Every page works at phone width.
 | `/accounts/[publicId]` | Header (type, live presence, owner, previous names), skills table (real level with the virtual one beside it, D-44; gains today/7/30/365 days), XP chart, sessions and playtime per local day, events timeline (type filters, "load more", live), vitals, live location as text, gear by slot with its change log, the inventory, wealth per day, and the sharing panel (audiences, grants, block/unblock/remove, transfer, claim; D-52). |
 | `/guild` | Members with their visible accounts and live online dots, the activity feed, gains leaderboards per period and skill. |
 | `/settings` | Toast filter (types, minimum loot value) and time zone. |
+| `/api-keys` | The user's API keys (name, `ohub_<prefix>_…`, categories, scope, created, last used, expiry, status) with Revoke, and "Create key" (categories, every visible account or picked ones, expiry; the key shown once with Copy). D-69, D-76. |
+| `/docs/api` | Public: the interactive API reference (Scalar from jsDelivr at a pinned version with SRI) over `/api/v1/openapi.json` (D-75). |
 | `/privacy` | Public: what is stored and for how long (from the configuration), the sharing defaults, what admins can see, what returning to the guild restores. |
 | `/admin/*` | Users (offboard, restore), devices (revoke), ingest health (rates, rejections since start), raw payloads (filters and an audited viewer), audit log, configuration (secrets redacted), decommission switch. |
 
@@ -293,6 +295,15 @@ Rules every page and route follows:
   `/login`. Better Auth's own log lines go through pino without error objects (AUTH-13).
 - **URLs.** Absolute URLs come from `APP_URL` (D-26), never from `request.url` (NEXT-2); links are
   checked by `typedRoutes`, with `as Route` only for strings built at run time.
+- **Public API.** `/api/v1/*` handlers run inside `withApiKey` (`lib/api-v1`): bearer keys only (cookies
+  are never read), the failed-authentication limit per client IP before any database access, one 401 for
+  every refused key, the per-key limits, then the handler inside `handleApi` (D-70 … D-72). Every
+  response carries the CORS headers. Query parameters and responses are zod schemas
+  (`lib/api-v1/schemas.ts`) that also generate the OpenAPI document and check the route tests'
+  responses; `lib/api-v1/wire.ts` maps each read model to snake_case (D-77). Consumer guide:
+  [API.md](API.md).
+- **Navigation.** The header shows the full navigation from the `lg` breakpoint (1024 px); narrower
+  screens get the menu button, so six labelled items never wrap.
 
 The web app's Vitest project covers every route handler and page-level access rule against a real
 database; Playwright covers the wizard end to end (`pnpm test:e2e`, D-13) and takes screenshots of every
@@ -310,7 +321,7 @@ defaults, and [`OPERATIONS.md`](OPERATIONS.md) for deploys, backups and the reve
 | M0 Scaffold | monorepo, compose, DB + Timescale migrations, CI, fixtures | done; the fixtures are built from the plugin source (`0ec2a36`), not yet captured from a live client (the Plugin Hub serves 1.5 since 2026-09-29) |
 | M1 Ingest + onboarding | login + guild gate, pairing, ingest, wizard, devices, dashboard, toasts, default sharing | done, with the wizard e2e test |
 | M2 History & sharing | charts, aggregates/retention, sessions, equipment, wealth, locations, sharing UI, guild page, re-verification/offboarding, admin basics | done; the 30-day location trail is stored and served (`/api/app/accounts/[id]/locations`) but not drawn |
-| M3 Public API | API keys, `/api/v1/*`, OpenAPI, cursor feed, `/snapshot` | in progress: the server half is built (`packages/server/src/api/`: keys, key access, every endpoint's read model, the cursor feed, the snapshot, rate limits); the `/api/v1` routes, OpenAPI, the docs page and the API keys page are next |
+| M3 Public API | API keys, `/api/v1/*`, OpenAPI, cursor feed, `/snapshot` | done: keys, key access and a read model per endpoint (`packages/server/src/api/`); every `/api/v1` endpoint of handoff §13 behind one bearer-key wrapper, snake_case JSON through typed mappers (D-77), CORS, OpenAPI 3.1 at `/api/v1/openapi.json`, the Scalar reference at `/docs/api`, the API keys page; consumer guide in [API.md](API.md) |
 | M4 Hardening | metrics dashboards, verified restores, export/delete, leaderboards, decommission switch | partly: gains leaderboards (guild page), the decommission switch (D-56) and `/metrics` are built; dashboards, a verified restore, "download my data" and "delete my data" are not |
 
 ## Decision log
@@ -396,4 +407,4 @@ Decisions are permanent IDs; a reversed decision is marked superseded, never del
 | D-74 | `/snapshot` returns the current state of every account in the key's scope, section by section per category, with a weak `ETag` over the key and the response content (`online` and `stale` change with the clock alone, and sharing changes alter the response without new data); `If-None-Match` → 304; `since` returns the accounts that changed after it, re-sending those changed up to 30 s before it (late commits, DB-4). A location older than 2 minutes has `stale: true`. | Built for polling every 2–10 s by the live map and Home Assistant (handoff §13). | Build (M3) |
 | D-75 | OpenAPI 3.1 is generated at request time from the same zod schemas the routes validate with (zod 4 `z.toJSONSchema`, no extra dependency) and served at `/api/v1/openapi.json`; the interactive reference at `/docs/api` loads Scalar from jsDelivr at a pinned version. | One source of truth for validation and docs; no build step. | Build (M3) |
 | D-76 | Keys are managed on an **API keys** page (`/api-keys`) through `/api/app/api-keys` routes; creating and revoking a key is audited. | Handoff §12 lists the page for M3. | Build (M3) |
-| D-77 | `/api/v1` names every JSON key the hub defines in **snake_case** (`last_seen`, `updated_at`, `next_cursor`, `occurred_at`, `received_at`, `value_gp`), like its query parameters. The web layer maps the camelCase read models with explicit, typed mappers per response type; never a generic key converter, because some keys are data (skill, slot, item and account names) and pass through unchanged. An event's `data` object passes through as the hub normalized it. | The handoff's endpoint table uses these names; Python consumers (Home Assistant) expect them; typed mappers let `tsc` catch drift between the docs and the responses. | Build (M3) |
+| D-77 | `/api/v1` names every JSON key the hub defines in **snake_case** (`last_seen`, `updated_at`, `next_cursor`, `occurred_at`, `received_at`, `value_gp`), like its query parameters. The web layer maps the camelCase read models with explicit, typed mappers per response type; never a generic key converter, because some keys are data (skill, slot, item and account names) and pass through unchanged. An event's `data` object passes through as stored: the plugin's event, with its own camelCase keys. | The handoff's endpoint table uses these names; Python consumers (Home Assistant) expect them; typed mappers let `tsc` catch drift between the docs and the responses. | Build (M3) |

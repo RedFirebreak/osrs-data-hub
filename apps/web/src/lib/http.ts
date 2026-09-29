@@ -12,14 +12,21 @@
  *     });
  *   }
  *
- * handleApi turns thrown ApiError/SharingError/AdminError/ZodError into JSON 4xx
- * `{ error: { code, message } }`, transient database errors into 503 + Retry-After, and anything else
- * into a 500 that leaks nothing. Absolute URLs are never built from request.url (NEXT-2): use
+ * handleApi turns thrown ApiError/SharingError/AdminError/ZodError (and the public API's
+ * ServerApiError/ApiKeyError from @hub/server) into JSON 4xx `{ error: { code, message } }`, transient
+ * database errors into 503 + Retry-After, and anything else into a 500 that leaks nothing. Absolute URLs are never built from request.url (NEXT-2): use
  * getConfig().appOrigin.
  */
 import { clientIpFromHeaders, getConfig } from '@hub/core';
 import { isDataDbError, isTransientDbError, pgErrorCode, safeDbErrorMessage } from '@hub/db';
-import { AdminError, SharingError, getLogger, type PluginResponse } from '@hub/server';
+import {
+  AdminError,
+  ApiKeyError,
+  ApiError as ServerApiError,
+  SharingError,
+  getLogger,
+  type PluginResponse,
+} from '@hub/server';
 import { isAPIError as isAuthApiError } from 'better-auth/api';
 import { unstable_rethrow } from 'next/navigation';
 import { ZodError } from 'zod';
@@ -182,6 +189,11 @@ const TYPED_ERROR_STATUS = { not_found: 404, forbidden: 403, invalid: 400 } as c
 /**
  * Runs a route's body and maps what it throws to JSON:
  * - ApiError → its status; SharingError/AdminError → 404/403/400 by code (their messages are safe);
+ * - the public API's errors from @hub/server (imported as ServerApiError, its name clashes with ours):
+ *   `invalid` → 400 `invalid_request`, `not_found` → 404 `not_found` (an account named in a list
+ *   parameter that the key can't read, answered like an unknown one, D-70); ApiKeyError `invalid` →
+ *   400 `invalid_request` with its field `issues` as `details`, `limit` → 409 `limit`, `not_found` →
+ *   404 (their messages only repeat the request, so they are safe to show);
  * - ZodError → 400 `invalid_request` with `details: [{ path, message }]` (field errors);
  * - a transient database error (lock timeout 55P03, connection loss, …) → 503 + Retry-After, and so
  *   is a Better Auth 5xx: its session lookup (requireApiUser) turns a database outage into a bare
@@ -207,6 +219,27 @@ export function errorResponse(err: unknown): Response {
   }
   if (err instanceof SharingError || err instanceof AdminError) {
     return apiErrorJson(TYPED_ERROR_STATUS[err.code], err.code, err.message);
+  }
+  if (err instanceof ServerApiError) {
+    return err.code === 'not_found'
+      ? apiErrorJson(404, 'not_found', err.message)
+      : apiErrorJson(400, 'invalid_request', err.message);
+  }
+  if (err instanceof ApiKeyError) {
+    switch (err.code) {
+      case 'invalid':
+        return apiErrorJson(
+          400,
+          'invalid_request',
+          err.message,
+          undefined,
+          err.issues.length > 0 ? err.issues : undefined,
+        );
+      case 'limit':
+        return apiErrorJson(409, 'limit', err.message);
+      case 'not_found':
+        return apiErrorJson(404, 'not_found', err.message);
+    }
   }
   if (err instanceof ZodError) {
     const details = err.issues.map((issue) => ({

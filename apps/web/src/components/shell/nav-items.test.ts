@@ -7,6 +7,7 @@ describe('navigation', () => {
       'Dashboard',
       'Guild',
       'Devices',
+      'API keys',
       'Settings',
     ]);
     expect(navItemsFor(true).map((i) => i.label)).toContain('Admin');
@@ -18,6 +19,7 @@ describe('navigation', () => {
     expect(isNavActive('/devices', '/devices')).toBe(true);
     expect(isNavActive('/admin/users', '/admin')).toBe(true);
     expect(isNavActive('/administrator', '/admin')).toBe(false);
+    expect(isNavActive('/api-keys', '/api-keys')).toBe(true);
     expect(isNavActive(null, '/')).toBe(false);
   });
 });

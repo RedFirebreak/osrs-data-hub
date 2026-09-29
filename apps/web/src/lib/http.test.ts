@@ -1,5 +1,11 @@
 import { parseConfig, setConfigForTests } from '@hub/core';
-import { AdminError, SharingError, silentLogger } from '@hub/server';
+import {
+  AdminError,
+  ApiKeyError,
+  ApiError as ServerApiError,
+  SharingError,
+  silentLogger,
+} from '@hub/server';
 import { APIError } from 'better-auth/api';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
@@ -256,6 +262,44 @@ describe('handleApi', () => {
       expect(res.status).toBe(status);
       expect((await body(res)).error.code).toBe(err.code);
     }
+  });
+
+  it("maps the public API's ServerApiError: invalid → 400 invalid_request, not_found → 404", async () => {
+    const invalid = await handleApi(() =>
+      Promise.reject(new ServerApiError('invalid', 'from must not be after to')),
+    );
+    expect(invalid.status).toBe(400);
+    expect(await body(invalid)).toEqual({
+      error: { code: 'invalid_request', message: 'from must not be after to' },
+    });
+    const missing = await handleApi(() =>
+      Promise.reject(new ServerApiError('not_found', 'account abc not found')),
+    );
+    expect(missing.status).toBe(404);
+    expect(await body(missing)).toEqual({
+      error: { code: 'not_found', message: 'account abc not found' },
+    });
+  });
+
+  it('maps ApiKeyError: invalid → 400 with details, limit → 409, not_found → 404', async () => {
+    const issues = [{ path: 'name', message: 'name must not be empty' }];
+    const invalid = await handleApi(() =>
+      Promise.reject(new ApiKeyError('invalid', 'name: name must not be empty', issues)),
+    );
+    expect(invalid.status).toBe(400);
+    expect(await body(invalid)).toEqual({
+      error: { code: 'invalid_request', message: 'name: name must not be empty', details: issues },
+    });
+    const bare = await handleApi(() => Promise.reject(new ApiKeyError('invalid', 'Not allowed.')));
+    expect(await body(bare)).toEqual({
+      error: { code: 'invalid_request', message: 'Not allowed.' },
+    });
+    const limit = await handleApi(() => Promise.reject(new ApiKeyError('limit', 'Too many.')));
+    expect(limit.status).toBe(409);
+    expect((await body(limit)).error.code).toBe('limit');
+    const gone = await handleApi(() => Promise.reject(new ApiKeyError('not_found', 'user')));
+    expect(gone.status).toBe(404);
+    expect((await body(gone)).error.code).toBe('not_found');
   });
 
   it("maps Better Auth's APIError: 5xx → 503 + Retry-After, 401 → 401, other 4xx as they are", async () => {

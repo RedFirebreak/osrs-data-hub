@@ -3,6 +3,7 @@
  * the admin pages also answer 404 to everyone else (requireAdmin).
  */
 import {
+  KeyRoundIcon,
   LayoutDashboardIcon,
   MonitorSmartphoneIcon,
   SettingsIcon,
@@ -23,6 +24,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboardIcon },
   { href: '/guild', label: 'Guild', icon: UsersIcon },
   { href: '/devices', label: 'Devices', icon: MonitorSmartphoneIcon },
+  { href: '/api-keys', label: 'API keys', icon: KeyRoundIcon },
   { href: '/settings', label: 'Settings', icon: SettingsIcon },
   { href: '/admin', label: 'Admin', icon: ShieldIcon, adminOnly: true },
 ];

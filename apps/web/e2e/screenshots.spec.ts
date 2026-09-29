@@ -350,6 +350,40 @@ test('screenshots of every page', { tag: '@screenshots' }, async ({ browser, req
     await shoot(carol.page, 'dashboard-member');
   });
 
+  await test.step('api keys', async () => {
+    const { page } = alice;
+    await visit(page, '/api-keys');
+    await shoot(page, 'api-keys-empty');
+    await page.getByRole('button', { name: 'Create key' }).first().click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    await shoot(page, 'api-keys-create-dialog', { fullPage: false });
+    await dialog.getByLabel('Name').fill('Home Assistant');
+    for (const i of [0, 1, 2]) await dialog.getByRole('checkbox').nth(i).check();
+    await dialog.getByRole('radio', { name: /Only the accounts I pick/ }).check();
+    await dialog.getByRole('group', { name: 'Accounts' }).getByRole('checkbox').first().check();
+    await shoot(page, 'api-keys-create-filled', { fullPage: false });
+    await dialog.getByRole('button', { name: 'Create key' }).click();
+    await expect(dialog.getByLabel('API key', { exact: true })).toBeVisible();
+    await shoot(page, 'api-keys-created', { fullPage: false });
+    await dialog.getByRole('button', { name: 'Done' }).click();
+    await expect(dialog).toBeHidden();
+    await visit(page, '/api-keys');
+    await shoot(page, 'api-keys');
+    // The header with every nav item (admins see six) around the lg breakpoint, where the menu
+    // button gives way to the full navigation.
+    const navShot = String(++shotNo).padStart(2, '0');
+    for (const width of [820, 1024]) {
+      await page.setViewportSize({ width, height: 600 });
+      await settle(page);
+      await page.screenshot({ path: path.join(OUT_DIR, `${navShot}-nav-${width}-light.png`) });
+    }
+    await page.setViewportSize({ width: VIEWPORTS[0].width, height: VIEWPORTS[0].height });
+    // Public, and loads Scalar from jsDelivr: without internet access it shows its fallback link.
+    await page.goto('/docs/api');
+    await shoot(page, 'docs-api', { waitMs: 1500, fullPage: false });
+  });
+
   await test.step('admin', async () => {
     for (const [url, name] of [
       ['/admin', 'admin-users'],

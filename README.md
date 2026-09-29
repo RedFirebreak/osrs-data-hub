@@ -9,8 +9,8 @@ the guild.
 - **Aggregates** per OSRS account: current state, 10+ years of XP history, events (loot, levels,
   deaths, collection log, diaries, combat tasks), play sessions, gear, wealth and a location trail.
 - **Shows** it: a personal dashboard, account pages, a guild page, and live event toasts.
-- **Shares** it: per-account, per-category permissions, and (Milestone 3) a pull-only REST API with
-  scoped keys for Home Assistant, a Discord bot or a live map.
+- **Shares** it: per-account, per-category permissions, and a pull-only REST API with scoped keys for
+  Home Assistant, a Discord bot or a live map ([docs/API.md](docs/API.md)).
 
 Login is Discord OAuth, gated on membership of the configured guild (and optionally a role).
 
@@ -43,6 +43,7 @@ packages/fixtures   wire-exact HA Exporter v1.5 payloads for tests
 | | |
 |---|---|
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | How it works, and the decision log |
+| [docs/API.md](docs/API.md) | The public API v1 for consumers: keys, conventions, every endpoint |
 | [docs/OPERATIONS.md](docs/OPERATIONS.md) | Self-hosting: configuration, reverse proxy, backups, retention |
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Local setup, tests, CI |
 | [docs/CHANGELOG.md](docs/CHANGELOG.md) | Changes per pull request |

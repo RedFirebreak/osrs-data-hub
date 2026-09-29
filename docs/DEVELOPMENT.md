@@ -83,7 +83,8 @@ tagged `@screenshots` and left out of the normal run). It pairs devices, sends t
 through `/api/osrs-data/events` (alice owns Zezima and Lynx Titan, whose plugin sends no inventory,
 equipment or location; carol owns Iron Mira) and saves every page — login, dashboard (empty and full),
 each wizard step, devices, account pages as owner, admin and plain member, guild, settings, privacy,
-every admin tab, menus, dialogs and a toast — at 1440×900 and 390×844 in light and dark to
+every admin tab, the API keys page (empty, the create dialog, the key shown once, the list), the
+header at 820 and 1024 px, `/docs/api`, menus, dialogs and a toast — at 1440×900 and 390×844 in light and dark to
 `apps/web/e2e/screenshots/` (gitignored), named `<nn>-<page>-<viewport>-<scheme>.png`. It takes about
 three minutes and asserts nothing about behaviour; look at the images after a UI change. The hub
 clamps event times to at most 15 minutes before receipt, so the seeded history spans minutes, not days.

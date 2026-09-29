@@ -19,7 +19,7 @@ import { isNavActive, navItemsFor } from './nav-items';
 export function MainNav({ isAdmin, className }: { isAdmin: boolean; className?: string }) {
   const pathname = usePathname();
   return (
-    <nav aria-label="Main" className={cn('hidden items-center gap-1 md:flex', className)}>
+    <nav aria-label="Main" className={cn('hidden items-center gap-1 lg:flex', className)}>
       {navItemsFor(isAdmin).map((item) => {
         const active = isNavActive(pathname, item.href);
         const Icon = item.icon;
@@ -29,7 +29,7 @@ export function MainNav({ isAdmin, className }: { isAdmin: boolean; className?: 
             href={item.href}
             aria-current={active ? 'page' : undefined}
             className={cn(
-              'inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none',
+              'inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-sm whitespace-nowrap font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none',
               active && 'bg-muted text-foreground',
             )}
           >
@@ -47,7 +47,7 @@ export function MobileNav({ isAdmin, className }: { isAdmin: boolean; className?
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" className={cn('md:hidden', className)}>
+        <Button variant="ghost" size="icon" className={cn('lg:hidden', className)}>
           <MenuIcon aria-hidden />
           <span className="sr-only">Open navigation</span>
         </Button>
