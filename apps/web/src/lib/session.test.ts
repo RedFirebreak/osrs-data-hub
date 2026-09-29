@@ -180,4 +180,53 @@ describe('/api/auth/[...all]', () => {
     }
     expect(seen).toEqual(['203.0.113.5', null]);
   });
+
+  it('copies the request Next wraps in a Proxy, body included (NEXT-13)', async () => {
+    // What Next 16 does to a route handler's request (proxyNextRequest): Node 24's Request can't
+    // copy a Proxy with `new Request(proxy, …)`.
+    const asNextPassesIt = (request: Request) =>
+      new Proxy(request, {
+        get(target, prop) {
+          const value: unknown = Reflect.get(target, prop, target);
+          return typeof value === 'function' ? (value as () => unknown).bind(target) : value;
+        },
+      });
+    const auth = getAuth();
+    const seen: { method: string; url: string; ip: string | null; body: string }[] = [];
+    const spy = vi.spyOn(auth, 'handler').mockImplementation(async (request: Request) => {
+      seen.push({
+        method: request.method,
+        url: request.url,
+        ip: request.headers.get(CLIENT_IP_HEADER),
+        body: await request.text(),
+      });
+      return new Response(null, { status: 204 });
+    });
+    try {
+      const post = ctx.request('/api/auth/sign-in/social', {
+        method: 'POST',
+        headers: { 'x-forwarded-for': '203.0.113.5' },
+        json: { provider: 'discord' },
+      });
+      expect((await authPOST(asNextPassesIt(post))).status).toBe(204);
+      const get = ctx.request('/api/auth/get-session?x=1');
+      expect((await authGET(asNextPassesIt(get))).status).toBe(204);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(seen).toEqual([
+      {
+        method: 'POST',
+        url: expect.stringMatching(/\/api\/auth\/sign-in\/social$/) as string,
+        ip: '203.0.113.5',
+        body: '{"provider":"discord"}',
+      },
+      {
+        method: 'GET',
+        url: expect.stringMatching(/\/api\/auth\/get-session\?x=1$/) as string,
+        ip: null,
+        body: '',
+      },
+    ]);
+  });
 });

@@ -14,13 +14,19 @@ switch). Status per milestone: [ARCHITECTURE.md §14](ARCHITECTURE.md#14-milesto
 - The guild page lists an account under its owner only, unless the viewer may read its contributor
   list (owner, contributors, admins), matching the sharing settings (D-68).
 - The Plugin Hub serves HA Exporter 1.5: side-load notes removed from the docs.
+- Fixed: on Node 24, which the Docker image runs, every `/api/auth/*` request answered 500, so nobody could
+  sign in. The auth route copied Next's Proxy-wrapped request with `new Request(request, …)`, which
+  Node 24 can't do (NEXT-13); it now copies the request from its parts. The CI E2E job caught this after
+  local runs on Node 22 had passed. A regression test hands the route a Proxy-wrapped request.
+- A `readBodyCapped` test no longer depends on how far Node's streams read ahead (Node 24 reads
+  one chunk more than Node 22).
 
 ### Process and docs
 
 - Archived the design handoff (draft 2) at `docs/design/HANDOFF-draft2.md` and recorded its settled
   decisions as D-1 … D-25; decisions taken while building are D-26 … D-67.
 - The gotcha registry (`docs/gotchas/`, `tools/check_gotchas.py`, the `gotcha` skill and the hook that
-  validates it after markdown edits): 77 traps across the plugin protocol, Next.js, Better Auth and
+  validates it after markdown edits): 78 traps across the plugin protocol, Next.js, Better Auth and
   Discord, Postgres/Drizzle/TimescaleDB, pg-boss, zod and the toolchain.
 - `docs/DEVELOPMENT.md` (first run, commands, tests and the database, e2e and screenshots, CI),
   `docs/OPERATIONS.md`, `docs/VERIFIED.md`, the project README and `packages/server/README.md`.

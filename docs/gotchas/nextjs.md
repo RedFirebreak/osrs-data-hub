@@ -16,6 +16,7 @@ Next.js 16 (route handlers, server actions, RSC, proxy.ts, instrumentation, base
 | [NEXT-10](#next-10) | `next build` fails with `Module not found: Can't resolve './hash.js'` for an import inside a TS-source workspace package, while tsc, tsx and vitest accept it. |
 | [NEXT-11](#next-11) | `next build` fails at "Collecting page data" with `Failed to collect configuration for /<route>`, caused by `TypeError: The "path" argument must be of type string. Received undefined` at a `path.join(import.meta.dirname, …)` in a workspace package. |
 | [NEXT-12](#next-12) | The browser downloads a ~440 KB chunk containing `crypto-browserify`, and `next build` passes without a warning, after a `'use client'` component imports one small helper from a workspace package whose index also re-exports a module that imports `node:crypto`. |
+| [NEXT-13](#next-13) | Every request to a route handler that copies its request with `new Request(request, …)` (Better Auth's `/api/auth/*`, for one) answers 500 on Node 24, logging `TypeError: Cannot read private member #state from an object whose class did not declare it`, while the same code passes on Node 22 and in unit tests. |
 
 ### NEXT-1
 **Changing `basePath` or an `APP_URL` path prefix at runtime has no effect: the app still answers on the prefix it was built with and 404s on the new one.**
@@ -143,3 +144,20 @@ type-only imports must be written `import type { … }`, because under `verbatim
 Turbopack behaviour specific to TS-source workspace packages.
 
 *Source: `OBSERVED` (scratch Next 16.3.6 Turbopack app, 2026-09-29: a client component importing a barrel that re-exports a `node:crypto` module produced a 439,080-byte chunk with crypto-browserify; the same package with `"sideEffects": false` produced none; apps/web, 2026-09-29: an 839,174-byte client chunk with crypto-browserify and zod gone after adding it to packages/core, static chunks 2.7 MB → 1.9 MB)*
+
+### NEXT-13
+**Every request to a route handler that copies its request with `new Request(request, …)` (Better Auth's `/api/auth/*`, for one) answers 500 on Node 24, logging `TypeError: Cannot read private member #state from an object whose class did not declare it`, while the same code passes on Node 22 and in unit tests.**
+Next 16 doesn't hand an App Router route handler the request itself: `proxyNextRequest()` (in
+`next/dist/server/route-modules/app-route/module.js`) wraps it in a `Proxy`. The undici bundled
+with Node 24 keeps a Request's state in real `#private` fields and reads them straight off the `input`
+of `new Request(input, init)`, and a Proxy has none of its target's private fields, so the copy throws.
+Node 22's undici kept that state under symbol keys, which pass through the proxy's `get` trap, so the
+copy works there. That covers local runs and any test that passes a plain `Request`. Reading the
+request's own properties (`headers`, `url`, `method`, `body`, `signal`, `text()`) works on both,
+because Next's trap resolves them on the target. Fix: copy it from its parts, as in
+`new Request(request.url, { method, headers, signal, body: request.body, duplex: 'half' })`, and leave
+out `body`/`duplex` for GET and HEAD. The body stream moves over unread. Run the tests on the Node
+version production uses: here only the Playwright job, which runs the real standalone server on Node 24,
+caught it.
+
+*Source: `SOURCE` (next 16.3.6 `app-route/module.js`: `request = proxyNextRequest(req, workStore)` → `new Proxy(request, nextRequestHandlers)`); `OBSERVED` (apps/web standalone server on Node 24.21, 2026-09-29: `POST /api/auth/sign-in/social` and `GET /api/auth/get-session` → 500 with the TypeError, fixed by copying from parts; a probe script: `new Request(new Proxy(req, …))` throws on Node 24.21 and works on 22.22)*
