@@ -127,3 +127,6 @@ switch). Status per milestone: [ARCHITECTURE.md §14](ARCHITECTURE.md#14-milesto
   `pingDatabase`, `authenticateDevice`, `recordSignIn`).
 - The worker says at startup when re-verification is off (no `DISCORD_BOT_TOKEN`/`DISCORD_GUILD_ID`),
   and its log lines carry `service: "worker"` once instead of twice.
+- Both Docker images were built and run as the compose stack runs them (migrate one-shot, web,
+  worker): the web image's `HEALTHCHECK` now probes `${PORT:-3000}` instead of a hard-coded 3000, which
+  reported a healthy server as unhealthy whenever `PORT` was overridden.

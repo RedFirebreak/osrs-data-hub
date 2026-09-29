@@ -42,7 +42,7 @@ COPY --from=build-web --chown=node:node /repo/apps/web/public ./apps/web/public
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD wget -qO- http://127.0.0.1:3000/api/health >/dev/null || exit 1
+  CMD wget -qO- "http://127.0.0.1:${PORT:-3000}/api/health" >/dev/null || exit 1
 CMD ["node", "apps/web/server.js"]
 
 # ---- worker runtime: bundled ESM files (main.js, migrate.js) + the SQL migrations, no node_modules
