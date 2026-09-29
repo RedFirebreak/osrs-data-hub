@@ -371,6 +371,20 @@ describe('derived writes across payloads (D-23, handoff §7.1.11)', () => {
     });
   });
 
+  it('keeps plugin 1.5.1 inventory slots in latest_state as sent (D-86)', async () => {
+    const device = await h.seedDevice();
+    const hash = newHash();
+    const body = snapshotAt(hash, 0);
+    const items = playerOf(body).inventory.items as Record<string, unknown>[];
+    items.forEach((item, i) => (item.inventorySlot = i * 2));
+    expect((await h.send(device, body)).status).toBe(200);
+
+    const { inventory } = await latest((await account(hash)).id);
+    expect((inventory as { inventorySlot?: number }[]).map((i) => i.inventorySlot)).toEqual(
+      items.map((_, i) => i * 2),
+    );
+  });
+
   it('one location sample per account per minute', async () => {
     const device = await h.seedDevice();
     const hash = newHash();

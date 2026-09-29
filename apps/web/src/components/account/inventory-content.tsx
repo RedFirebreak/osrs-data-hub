@@ -1,7 +1,8 @@
 /**
- * The inventory (the `inventory` category): a 28-slot grid (items in the order the plugin sent them;
- * it sends occupied slots only, PLUGIN-11), the same items merged into stacks by value, and the
- * carried value. Server component.
+ * The inventory (the `inventory` category): a 28-slot grid laid out as in game (by `inventorySlot`
+ * from plugin 1.5.1; older plugins send occupied slots only, without a slot, so their items fill the
+ * grid in the order sent, PLUGIN-11), the same items merged into stacks by value, and the carried
+ * value. Server component.
  */
 import { formatGp, formatNumber, type ItemData } from '@hub/core';
 import { ItemTile } from './item-tile';

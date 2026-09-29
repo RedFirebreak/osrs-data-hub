@@ -34,6 +34,7 @@ export function wireItem(item: ApiItem) {
     ge_price: item.gePrice,
     ha_price: item.haPrice,
     equipment_slot: item.equipmentSlot,
+    inventory_slot: item.inventorySlot,
   };
 }
 

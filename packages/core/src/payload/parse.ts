@@ -56,6 +56,7 @@ const itemsSection = z.looseObject({
       haPrice: z.number().int().optional(),
       name: z.string().optional(),
       equipmentSlot: z.string().optional(),
+      inventorySlot: nonNegInt32.optional(),
       rarity: z.number().optional(),
     }),
   ),
@@ -114,10 +115,11 @@ const eventEnvelope = z.looseObject({
  *   "Combat" (levelUp-only) or "__proto__", drops only that skill and records
  *   `player.stats.skills.<name>`; with no valid entry left `skills` is omitted),
  *   inventory.items / equipment.items (arrays of {id: int32, quantity: int32, gePrice: safe integer,
- *   haPrice?: safe integer, name?: string, equipmentSlot?: string, rarity?: number}; an invalid item
- *   drops the whole section; [] is kept). The integer ranges are the Java types the plugin sends and
- *   the Postgres columns they land in, so a bad value drops a section instead of failing the
- *   transaction (a deterministic 500 blocks the plugin's queue).
+ *   haPrice?: safe integer, name?: string, equipmentSlot?: string, inventorySlot?: integer
+ *   0..2^31−1 (plugin 1.5.1; the grid places only 0..27), rarity?: number}; an invalid item drops
+ *   the whole section; [] is kept). The integer ranges are the Java types the plugin sends and the
+ *   Postgres columns they land in, so a bad value drops a section instead of failing the transaction
+ *   (a deterministic 500 blocks the plugin's queue).
  * - events: each element must be an object with string `type` (1..64 chars), string `eventId`
  *   (1..128 chars) and a `data` key (any JSON value); `timestamp` finite number, else null (a present
  *   but invalid one records a reason, the event is kept). Invalid elements are skipped and counted.

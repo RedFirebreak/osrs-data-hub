@@ -3,9 +3,10 @@
  * server-safe (type-only imports), unit-tested.
  *
  * Item facts (PLUGIN-11): inventory items are one entry per occupied slot as sent (five sharks are
- * five entries of quantity 1; only stackables carry a quantity above 1) and carry no slot index, so
- * the grid shows them in the order sent. Equipment items are one per slot with `equipmentSlot`.
- * `gePrice` is per unit: an entry's value is gePrice × quantity.
+ * five entries of quantity 1; only stackables carry a quantity above 1). From plugin 1.5.1 each
+ * carries `inventorySlot` (0..27), so the grid puts it where it is in game; older plugins send no
+ * slot and the grid shows those items in the order sent. Equipment items are one per slot with
+ * `equipmentSlot`. `gePrice` is per unit: an entry's value is gePrice × quantity.
  */
 import type { ItemData } from '@hub/core';
 import type { SessionEndReason } from '@hub/db';
@@ -112,13 +113,38 @@ export function equipmentDiff(
   return out;
 }
 
-/** The inventory as a 28-slot grid: the entries in the order sent, then empty (null) slots. */
+/**
+ * The inventory as a 28-slot grid (null = empty), in the game's order: left to right, then top to
+ * bottom. An entry with an `inventorySlot` in range (plugin 1.5.1) goes to that slot; an entry
+ * without one (older plugins), with one out of range, or whose slot another entry already took
+ * fills the first free slots in the order sent. Entries that find no free slot are left out.
+ */
 export function inventorySlots(
   items: readonly ItemData[],
   size = INVENTORY_SLOTS,
 ): (ItemData | null)[] {
-  const slots: (ItemData | null)[] = items.slice(0, size);
-  while (slots.length < size) slots.push(null);
+  const slots: (ItemData | null)[] = Array.from({ length: size }, () => null);
+  const unplaced: ItemData[] = [];
+  for (const item of items) {
+    const slot = item.inventorySlot;
+    if (
+      typeof slot === 'number' &&
+      Number.isInteger(slot) &&
+      slot >= 0 &&
+      slot < size &&
+      !slots[slot]
+    ) {
+      slots[slot] = item;
+    } else {
+      unplaced.push(item);
+    }
+  }
+  let free = 0;
+  for (const item of unplaced) {
+    while (free < size && slots[free]) free++;
+    if (free === size) break;
+    slots[free] = item;
+  }
   return slots;
 }
 
