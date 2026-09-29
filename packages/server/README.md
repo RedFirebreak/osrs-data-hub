@@ -21,6 +21,7 @@ does the reads, the writes and the locking. The design is `docs/design/HANDOFF-d
 | `discord/` | The Discord API client (member lookups with the bot token or the user's OAuth token, the current user) and the membership verdict. |
 | `settings/` | User settings and the decommission switch. |
 | `admin/` | Admin read models (users, ingest health, raw payloads, the audit log) and admin actions. |
+| `api/` | The public API v1 (M3): API keys (create, list, revoke, authenticate; D-69), key access on the shared loaders (D-70), one read model per `/api/v1` endpoint, the `/events` cursor feed (settled prefix, D-73) and `/snapshot` (D-74), and the in-memory rate limits (D-72). The web layer maps these camelCase shapes to snake_case (D-77). |
 | top-level files | `logger.ts` (pino, redaction; `HUB_SERVICE` names the process), `metrics.ts` (prom-client), `notify.ts` (`pg_notify` inside the writing transaction, D-32), `audit.ts`, `feed.ts` (event redaction for viewers), `health.ts` (`pingDatabase` for `/api/health`). |
 
 `src/index.ts` re-exports every directory. Tests run against a real database, one per test file
@@ -60,3 +61,14 @@ Facts about this package only. Traps of the shared layer are in `docs/gotchas/` 
   grace for `left_guild`/`lost_role`. If that label or entry changes, the breaker stops counting.
 - **Database errors are logged by code** (`pgErrorCode`, `safeDbErrorMessage`), never by message.
   A drizzle error's message lists the bound parameters (DB-3).
+- **An API key is its creator minus powers** (D-70). The shared loaders (`accounts/load.ts`) take
+  an optional `AccessRestriction`: account scope and categories are intersected with
+  `resolveAccess`, the admin override is off and `canManage` is false. Every read model the API
+  reuses takes it as its last parameter; never load an account for the API without it.
+- **The `/snapshot` ETag hashes the response** (key id plus content), not the newest change time:
+  `online` and `stale` change with the clock alone, and a sharing change alters the response without
+  new data. `since` re-sends accounts changed up to 30 s before it (`updated_at` is the receive time
+  and may commit late, DB-4), and always returns accounts whose `activity` the key can't read.
+- **The `/events` feed uses the live replay's settle margin** (`LIVE_POLL_SETTLE_MS`, 10 s) against
+  `inserted_at` (database clock), and bounds its scan with `seqFloor`, which compares `received_at`
+  to the caller's `now`. Tests on a fake clock must settle their rows explicitly.

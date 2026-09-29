@@ -160,9 +160,9 @@ function replayWindow(opts: ReplayOptions): SQL | null {
  * seq even when the client's cursor is 0 or far behind: `received_at` has no index, and without this
  * bound every poll would scan the whole events table. Found by walking the seq index backwards from
  * the newest row, which reads only the rows of the last few minutes. Evaluated once per query
- * (an InitPlan).
+ * (an InitPlan). Also bounds the public API's cursor feed (api/events.ts).
  */
-function seqFloor(before: Date): SQL {
+export function seqFloor(before: Date): SQL {
   return sql`coalesce((select ${events.seq} from ${events} where ${events.receivedAt} <= ${before} order by ${events.seq} desc limit 1), 0)`;
 }
 
@@ -172,9 +172,11 @@ function seqFloor(before: Date): SQL {
  * young row on its own, keeps the result a gap-free prefix: inserted_at order can differ from seq
  * order (a backend descheduled between taking its seq and its timestamp, or the database clock
  * stepping back), and a settled row above a young one would move the cursor past it (DB-4). The
- * walk up the seq index starts at the window's floor, so it reads only the last few minutes.
+ * walk up the seq index starts at the window's floor, so it reads only the last few minutes. `floor`
+ * must be at or below every seq that can still be young (seqFloor of a time well before the margin).
+ * Also used by the public API's cursor feed (api/events.ts).
  */
-function settledCeiling(afterSeq: number, floor: SQL, settleMs: number): SQL {
+export function settledCeiling(afterSeq: number, floor: SQL, settleMs: number): SQL {
   return sql`coalesce((select min(${events.seq}) from ${events} where ${events.seq} > ${afterSeq} and ${events.seq} > ${floor} and ${events.insertedAt} > clock_timestamp() - make_interval(secs => ${settleMs / 1000})), ${Number.MAX_SAFE_INTEGER})`;
 }
 

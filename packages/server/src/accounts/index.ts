@@ -18,7 +18,9 @@ export {
 export {
   GUILD_FEED_EVENTS,
   LEADERBOARD_SIZE,
+  getGainsLeaderboards,
   getGuildOverview,
+  leaderboardStarts,
   type GuildMember,
   type GuildOverview,
   type Leaderboard,
@@ -42,7 +44,9 @@ export { FEED_DEFAULT_LIMIT, FEED_MAX_LIMIT, listFeed, type ListFeedOptions } fr
 export {
   loadVisibleAccount,
   loadVisibleAccounts,
+  restrictAccess,
   toPresence,
+  type AccessRestriction,
   type AccountRow,
   type AccountWithAccess,
   type Presence,

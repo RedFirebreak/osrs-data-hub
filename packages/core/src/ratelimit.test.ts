@@ -401,6 +401,43 @@ describe('WindowLimiter', () => {
     });
   });
 
+  describe('usage', () => {
+    it('reports the counted hits, what remains and when the oldest expires, without recording', () => {
+      const clock = new FakeClock();
+      const limiter = new WindowLimiter({ limit: 3, windowMs: 60 * SEC, clock });
+      expect(limiter.usage('k')).toEqual({ limit: 3, count: 0, remaining: 3, resetMs: 0 });
+      limiter.hit('k');
+      clock.advance(10 * SEC);
+      limiter.hit('k');
+      expect(limiter.usage('k')).toEqual({ limit: 3, count: 2, remaining: 1, resetMs: 50 * SEC });
+      expect(limiter.usage('k').count).toBe(2);
+      limiter.hit('k');
+      limiter.hit('k'); // rejected, not counted
+      expect(limiter.usage('k')).toEqual({ limit: 3, count: 3, remaining: 0, resetMs: 50 * SEC });
+      clock.advance(50 * SEC);
+      expect(limiter.usage('k')).toEqual({ limit: 3, count: 2, remaining: 1, resetMs: 10 * SEC });
+    });
+
+    it('agrees with peek about when a key at its limit may hit again', () => {
+      const clock = new FakeClock();
+      const limiter = new WindowLimiter({ limit: 2, windowMs: 10 * SEC, clock });
+      limiter.hit('k');
+      clock.advance(2_500);
+      limiter.hit('k');
+      const peek = limiter.peek('k');
+      expect(peek.ok).toBe(false);
+      expect(Math.ceil(limiter.usage('k').resetMs / SEC)).toBe(peek.retryAfterSeconds);
+    });
+
+    it("doesn't add a key (or evict one)", () => {
+      const clock = new FakeClock();
+      const limiter = new WindowLimiter({ limit: 1, windowMs: 10 * SEC, clock, maxKeys: 1 });
+      limiter.hit('a');
+      for (let i = 0; i < 5; i++) expect(limiter.usage(`other${i}`).count).toBe(0);
+      expect(limiter.hit('a').ok).toBe(false);
+    });
+  });
+
   it('evicts the least recently hit key beyond maxKeys', () => {
     const clock = new FakeClock();
     const limiter = new WindowLimiter({ limit: 1, windowMs: HOUR, clock, maxKeys: 2 });

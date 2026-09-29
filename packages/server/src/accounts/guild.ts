@@ -7,7 +7,13 @@ import { users, type DbOrTx } from '@hub/db';
 import { and, eq, inArray } from 'drizzle-orm';
 import type { FeedEvent } from '../feed';
 import { feedForAccounts } from './list-feed';
-import { loadPresence, loadVisibleAccounts, toPresence, type AccountWithAccess } from './load';
+import {
+  loadPresence,
+  loadVisibleAccounts,
+  toPresence,
+  type AccessRestriction,
+  type AccountWithAccess,
+} from './load';
 import { periodStarts } from './periods';
 import { computeGains, loadCurrentXp } from './xp';
 
@@ -123,18 +129,45 @@ async function loadLeaderboards(
     db,
     withStats.map((e) => e.account.id),
   );
-  const periods = periodStarts(opts.now, opts.timezone);
-  const starts: Record<LeaderboardPeriod, Date> = {
-    day: periods.today,
-    week: periods.week,
-    month: periods.month,
-  };
+  const starts = leaderboardStarts(opts.now, opts.timezone);
   const out: GuildOverview['leaderboards'] = { day: [], week: [], month: [] };
   for (const period of ['day', 'week', 'month'] as const) {
     const gains = await computeGains(db, starts[period], current);
     out[period] = rankGains(withStats, gains);
   }
   return out;
+}
+
+/**
+ * Where each leaderboard period starts: day = local midnight in `timezone` (default UTC), week and
+ * month = the last 7 and 30 days (periodStarts).
+ */
+export function leaderboardStarts(now: Date, timezone?: string): Record<LeaderboardPeriod, Date> {
+  const periods = periodStarts(now, timezone);
+  return { day: periods.today, week: periods.week, month: periods.month };
+}
+
+/**
+ * The gains leaderboards of one period, as on the guild page (Overall first, then every skill in grid
+ * order that anyone gained XP in, the top LEADERBOARD_SIZE each), over the accounts whose stats the
+ * viewer may see, narrowed by `restrict` when given (the public API, D-70; see loadVisibleAccount).
+ * Computes only the one period, where the guild page computes all three.
+ */
+export async function getGainsLeaderboards(
+  db: DbOrTx,
+  viewer: Viewer,
+  opts: { period: LeaderboardPeriod; now: Date; timezone?: string },
+  restrict?: AccessRestriction,
+): Promise<Leaderboard[]> {
+  const visible = await loadVisibleAccounts(db, viewer, restrict);
+  const withStats = visible.filter((e) => e.access.categories.has('stats'));
+  if (withStats.length === 0) return [];
+  const current = await loadCurrentXp(
+    db,
+    withStats.map((e) => e.account.id),
+  );
+  const from = leaderboardStarts(opts.now, opts.timezone)[opts.period];
+  return rankGains(withStats, await computeGains(db, from, current));
 }
 
 /** Leaderboards from gains by account: skills with any gain, Overall first, top N each. */

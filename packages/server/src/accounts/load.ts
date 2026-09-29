@@ -7,11 +7,12 @@ import {
   isOnline,
   resolveAccess,
   type AccountAccess,
+  type Category,
   type ResolvedAccess,
   type Viewer,
 } from '@hub/core';
 import { latestState, osrsAccounts, type AccountStatus, type DbOrTx } from '@hub/db';
-import { eq, inArray, sql, type SQL } from 'drizzle-orm';
+import { and, eq, inArray, sql, type SQL } from 'drizzle-orm';
 import { toFeedEvent, type EventRowLike, type FeedEvent } from '../feed';
 import { loadAccountAccess } from './access';
 
@@ -37,6 +38,37 @@ export interface AccountWithAccess {
   access: ResolvedAccess;
 }
 
+/**
+ * Narrows what a viewer may see further, on top of resolveAccess: the public API's key (D-70). A
+ * restricted viewer sees an account only when it is in `accountIds` (null = no account limit) AND
+ * resolveAccess grants at least one category that is also in `categories`; its categories are that
+ * intersection. A restricted load never applies the admin override (the viewer is treated as a
+ * non-admin) and never grants `canManage`: API keys read, they don't manage.
+ */
+export interface AccessRestriction {
+  categories: ReadonlySet<Category>;
+  /** Internal account ids; null = every account the viewer may see. */
+  accountIds: ReadonlySet<number> | null;
+}
+
+/**
+ * `access` narrowed by `restrict` (see AccessRestriction): categories intersected, visible only with
+ * at least one category left, never canManage. Pure; the loaders below apply it after resolveAccess.
+ */
+export function restrictAccess(
+  access: ResolvedAccess,
+  restrict: AccessRestriction,
+): ResolvedAccess {
+  const categories = new Set<Category>();
+  for (const c of access.categories) if (restrict.categories.has(c)) categories.add(c);
+  return {
+    visible: access.visible && categories.size > 0,
+    categories,
+    relation: access.relation,
+    canManage: false,
+  };
+}
+
 const accountColumns = {
   id: osrsAccounts.id,
   publicId: osrsAccounts.publicId,
@@ -52,37 +84,57 @@ const accountColumns = {
  * The account with this public id and the viewer's access to it; null when it doesn't exist or the
  * viewer may not know it exists (resolveAccess visible false: hidden accounts for non-admins, inactive
  * viewers, nothing shared with them). Callers answer null with a 404, so existence never leaks.
+ * With `restrict` (the public API, D-70), also null when the account is outside its scope or none of
+ * its categories is granted; `access` is then the narrowed one (see AccessRestriction).
  */
 export async function loadVisibleAccount(
   db: DbOrTx,
   viewer: Viewer,
   publicId: string,
+  restrict?: AccessRestriction,
 ): Promise<AccountWithAccess | null> {
   if (typeof publicId !== 'string' || publicId.length > MAX_PUBLIC_ID_LENGTH) return null;
-  const [found] = await loadAccountsWithAccess(db, viewer, eq(osrsAccounts.publicId, publicId));
+  const [found] = await loadAccountsWithAccess(
+    db,
+    viewer,
+    eq(osrsAccounts.publicId, publicId),
+    restrict,
+  );
   return found ?? null;
 }
 
 /**
  * Every account the viewer may know exists, with its access. An inactive viewer sees nothing, so no
  * query runs. Hidden accounts are filtered in SQL for non-admins (the resolver would drop them too).
+ * With `restrict`, only the accounts it allows, with the narrowed access (see AccessRestriction); an
+ * account list is applied in SQL.
  */
 export async function loadVisibleAccounts(
   db: DbOrTx,
   viewer: Viewer,
+  restrict?: AccessRestriction,
 ): Promise<AccountWithAccess[]> {
   if (viewer.status !== 'active') return [];
-  const scope = viewer.isAdmin === true ? undefined : eq(osrsAccounts.status, 'active');
-  return loadAccountsWithAccess(db, viewer, scope);
+  const admin = viewer.isAdmin === true && restrict === undefined;
+  const scope = admin ? undefined : eq(osrsAccounts.status, 'active');
+  return loadAccountsWithAccess(db, viewer, scope, restrict);
 }
 
 async function loadAccountsWithAccess(
   db: DbOrTx,
   viewer: Viewer,
   where: SQL | undefined,
+  restrict?: AccessRestriction,
 ): Promise<AccountWithAccess[]> {
   if (viewer.status !== 'active') return [];
-  const rows = await db.select(accountColumns).from(osrsAccounts).where(where);
+  // The admin override never applies through a restriction (D-70).
+  const effective: Viewer = restrict ? { ...viewer, isAdmin: false } : viewer;
+  let filter = where;
+  if (restrict?.accountIds) {
+    if (restrict.accountIds.size === 0) return [];
+    filter = and(where, inArray(osrsAccounts.id, [...restrict.accountIds]));
+  }
+  const rows = await db.select(accountColumns).from(osrsAccounts).where(filter);
   if (rows.length === 0) return [];
   const raws = await loadAccountAccess(
     db,
@@ -92,7 +144,8 @@ async function loadAccountsWithAccess(
   for (const account of rows) {
     const raw = raws.get(account.id);
     if (!raw) continue; // deleted between the two queries
-    const access = resolveAccess(viewer, raw);
+    const resolved = resolveAccess(effective, raw);
+    const access = restrict ? restrictAccess(resolved, restrict) : resolved;
     if (access.visible) out.push({ account, raw, access });
   }
   return out;

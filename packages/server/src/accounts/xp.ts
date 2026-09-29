@@ -19,7 +19,7 @@
 import { OVERALL, floorTo, overallXp, type Viewer } from '@hub/core';
 import { latestState, skills as skillsTable, type DbOrTx } from '@hub/db';
 import { and, inArray, isNotNull, sql } from 'drizzle-orm';
-import { loadVisibleAccount } from './load';
+import { loadVisibleAccount, type AccessRestriction } from './load';
 
 const MINUTE_MS = 60 * 1000;
 const HOUR_MS = 60 * MINUTE_MS;
@@ -322,17 +322,19 @@ export interface XpSeries {
  * Every tier is change-only (a bucket exists only where the XP changed), so the value in effect when
  * the range starts, xp_at(start), is prepended as a point at the range start, unless a bucket starts
  * exactly there: charts then begin at the right value instead of at the first change. Unknown skill
- * names are left out; at most MAX_SERIES_SKILLS skills are read.
+ * names are left out; at most MAX_SERIES_SKILLS skills are read. `restrict` narrows the viewer's
+ * access (the public API, D-70; see loadVisibleAccount).
  */
 export async function getXpSeries(
   db: DbOrTx,
   viewer: Viewer,
   publicId: string,
   opts: { skills: readonly string[]; from: Date; to: Date; resolution: Resolution | 'auto' },
+  restrict?: AccessRestriction,
 ): Promise<XpSeries | null> {
   assertValidDate(opts.from, 'from');
   assertValidDate(opts.to, 'to');
-  const found = await loadVisibleAccount(db, viewer, publicId);
+  const found = await loadVisibleAccount(db, viewer, publicId, restrict);
   if (!found || !found.access.categories.has('stats')) return null;
 
   let resolution = pickResolution(opts.from, opts.to, opts.resolution);

@@ -15,3 +15,4 @@ export * from './sharing';
 export * from './live';
 export * from './admin';
 export * from './health';
+export * from './api';

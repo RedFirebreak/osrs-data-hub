@@ -2,6 +2,8 @@
  * Milestone 2 histories of one account: play sessions (activity), the equipment change log
  * (equipment), carried wealth per day (inventory) and the location trail (location_history). Each
  * returns null when the account isn't visible or the viewer lacks the category, so routes answer 404.
+ * Each takes an optional `restrict` that narrows the viewer's access (the public API, D-70; see
+ * loadVisibleAccount).
  */
 import { utcDay, type Category, type ItemData, type Viewer } from '@hub/core';
 import {
@@ -13,7 +15,7 @@ import {
   type SessionEndReason,
 } from '@hub/db';
 import { and, asc, desc, eq, gte, isNull, lte, or } from 'drizzle-orm';
-import { loadVisibleAccount } from './load';
+import { loadVisibleAccount, type AccessRestriction } from './load';
 import { assertValidDate } from './xp';
 
 /** Most rows a history returns (the newest ones win). */
@@ -70,8 +72,9 @@ export async function getSessions(
   viewer: Viewer,
   publicId: string,
   range: HistoryRange,
+  restrict?: AccessRestriction,
 ): Promise<PlaySession[] | null> {
-  const accountId = await gate(db, viewer, publicId, 'activity', range);
+  const accountId = await gate(db, viewer, publicId, 'activity', range, restrict);
   if (accountId === null) return null;
   const rows = await db
     .select({
@@ -119,8 +122,9 @@ export async function getEquipmentHistory(
   viewer: Viewer,
   publicId: string,
   range: HistoryRange,
+  restrict?: AccessRestriction,
 ): Promise<EquipmentChange[] | null> {
-  const accountId = await gate(db, viewer, publicId, 'equipment', range);
+  const accountId = await gate(db, viewer, publicId, 'equipment', range, restrict);
   if (accountId === null) return null;
   const rows = await db
     .select({ changedAt: equipmentChanges.changedAt, equipment: equipmentChanges.equipment })
@@ -149,8 +153,9 @@ export async function getWealthHistory(
   viewer: Viewer,
   publicId: string,
   range: HistoryRange,
+  restrict?: AccessRestriction,
 ): Promise<WealthDay[] | null> {
-  const accountId = await gate(db, viewer, publicId, 'inventory', range);
+  const accountId = await gate(db, viewer, publicId, 'inventory', range, restrict);
   if (accountId === null) return null;
   return db
     .select({
@@ -180,8 +185,9 @@ export async function getLocationHistory(
   viewer: Viewer,
   publicId: string,
   range: HistoryRange,
+  restrict?: AccessRestriction,
 ): Promise<LocationPoint[] | null> {
-  const accountId = await gate(db, viewer, publicId, 'location_history', range);
+  const accountId = await gate(db, viewer, publicId, 'location_history', range, restrict);
   if (accountId === null) return null;
   const rows = await db
     .select({
@@ -212,9 +218,10 @@ async function gate(
   publicId: string,
   category: Category,
   range: HistoryRange,
+  restrict: AccessRestriction | undefined,
 ): Promise<number | null> {
   assertValidDate(range.from, 'from');
   assertValidDate(range.to, 'to');
-  const entry = await loadVisibleAccount(db, viewer, publicId);
+  const entry = await loadVisibleAccount(db, viewer, publicId, restrict);
   return entry && entry.access.categories.has(category) ? entry.account.id : null;
 }

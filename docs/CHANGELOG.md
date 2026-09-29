@@ -21,6 +21,18 @@ switch). Status per milestone: [ARCHITECTURE.md §14](ARCHITECTURE.md#14-milesto
 - A `readBodyCapped` test no longer depends on how far Node's streams read ahead (Node 24 reads
   one chunk more than Node 22).
 
+### M3 — public API (in progress)
+
+- Decisions D-69 … D-77: key format and storage, access per request (creator ∩ categories ∩
+  scope, 404 outside it, no admin override), `/api/v1` conventions and CORS, rate limits, the cursor
+  feed, the snapshot, OpenAPI from zod, the API keys page, snake_case JSON keys.
+- Server half (`packages/server/src/api/`): API keys (created shown once as `ohub_<prefix>_<secret>`,
+  only `sha256(secret)` stored, constant-time check, at most 10 active, `last_used_at` at most once a
+  minute, audited); key access on the shared loaders (`AccessRestriction`); a read model for every
+  endpoint of handoff §13; the `/events` cursor feed over the settled prefix (10 s, D-73) with
+  location redaction; `/snapshot` with a content ETag and `since`; per-key, snapshot and failed-auth
+  rate limits (`WindowLimiter.usage` added to core). 136 tests.
+
 ### Process and docs
 
 - Archived the design handoff (draft 2) at `docs/design/HANDOFF-draft2.md` and recorded its settled

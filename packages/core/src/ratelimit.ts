@@ -199,6 +199,26 @@ export class WindowLimiter {
     return this.#check(hits, now);
   }
 
+  /**
+   * How much of the window `key` has used, without recording anything or changing the key's recency
+   * (like peek): `count` hits are counted right now, `remaining` = limit − count (never below 0), and
+   * `resetMs` is how long until the oldest counted hit expires, i.e. when `remaining` next goes up
+   * (0 when nothing is counted). When the key is at its limit, `resetMs` rounded up to whole seconds
+   * is peek's retryAfterSeconds. For X-RateLimit-* headers.
+   */
+  usage(key: string): { limit: number; count: number; remaining: number; resetMs: number } {
+    const now = this.#clock.now();
+    const cutoff = now - this.#windowMs;
+    const hits = (this.#hits.peek(key) ?? []).filter((t) => t > cutoff);
+    const oldest = hits[0];
+    return {
+      limit: this.#limit,
+      count: hits.length,
+      remaining: Math.max(0, this.#limit - hits.length),
+      resetMs: oldest === undefined ? 0 : Math.max(0, oldest + this.#windowMs - now),
+    };
+  }
+
   /** `hits` must already be pruned to the window. */
   #check(hits: readonly number[], now: number): LimitResult {
     if (hits.length < this.#limit) return allowed();

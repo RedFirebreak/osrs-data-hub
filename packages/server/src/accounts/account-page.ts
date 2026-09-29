@@ -195,7 +195,24 @@ async function loadHeader(
   };
 }
 
-function vitalsOf(state: LatestRow): Vitals {
+/** The latest_state columns vitalsOf reads. */
+export type VitalsColumns = Pick<
+  LatestRow,
+  | 'healthUpdatedAt'
+  | 'hpCurrent'
+  | 'hpMax'
+  | 'prayerUpdatedAt'
+  | 'prayerCurrent'
+  | 'prayerMax'
+  | 'spellbookUpdatedAt'
+  | 'spellbook'
+>;
+
+/**
+ * HP, prayer and spellbook from latest_state: each null until the plugin first sent it (its
+ * *_updated_at is null) or when a meter lacks a value. Shared with the public API (api/state.ts).
+ */
+export function vitalsOf(state: VitalsColumns): Vitals {
   const meter = (at: Date | null, current: number | null, max: number | null) =>
     at !== null && current !== null && max !== null ? { current, max } : null;
   return {
@@ -219,7 +236,11 @@ function locationSection(
   }));
 }
 
-function parseLocation(value: unknown): Omit<LiveLocation, 'stale'> | null {
+/**
+ * A stored latest_state.location ({x, y, plane, isOnBoat}), or null when it isn't one (then it is
+ * treated as never sent). Shared with the public API (api/state.ts).
+ */
+export function parseLocation(value: unknown): Omit<LiveLocation, 'stale'> | null {
   if (typeof value !== 'object' || value === null) return null;
   const { x, y, plane, isOnBoat } = value as Record<string, unknown>;
   if (typeof x !== 'number' || typeof y !== 'number' || typeof plane !== 'number') return null;
