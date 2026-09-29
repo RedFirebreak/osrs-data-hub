@@ -93,9 +93,13 @@ describe('readBodyCapped', () => {
   it('refuses a declared Content-Length over the cap without reading', async () => {
     const { request, state } = tracked(10, 50);
     const withLength = new Request(request, { headers: { 'content-length': '500' } });
+    // The stream pulls a few chunks ahead by itself; how many depends on the Node version (3 on
+    // Node 22, 4 on Node 24). Let that settle and count only what reading would add on top.
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    const buffered = state.pulled;
+    expect(buffered).toBeLessThan(10);
     expect(await readBodyCapped(withLength, 499)).toBeNull();
-    // Only what the stream buffers by itself was pulled, and the body was cancelled.
-    expect(state.pulled).toBeLessThanOrEqual(3);
+    expect(state.pulled).toBe(buffered);
     expect(state.cancelled).toBe(true);
   });
 
