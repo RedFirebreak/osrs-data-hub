@@ -10,6 +10,7 @@ import {
 } from '@hub/db';
 import { and, asc, eq, inArray, lte, sql } from 'drizzle-orm';
 import { audit } from '../audit';
+import { getMetrics, type HubMetrics } from '../metrics';
 import { auditTransfer, findSuccessor, lockAccounts, setOwner, type AuditActor } from './accounts';
 
 const LOCK_TIMEOUT = '10s';
@@ -24,13 +25,16 @@ export interface MaterializationTable {
 /**
  * Hard-deletes users whose grace period expired: the user (cascades links, grants, settings,
  * sessions, devices, keys) and every account left with no active contributor, including its
- * continuous-aggregate rows (TSDB-2). Audit entries are anonymized by the FK (set null).
+ * continuous-aggregate rows (TSDB-2). Audit entries are anonymized by the FK (set null). Each
+ * committed user counts in hub_grace_expired_users_total and their deleted accounts in
+ * hub_accounts_deleted_total{cause="grace_expiry"}, also when another user fails.
  */
 export async function expireGracePeriods(
   db: Db,
-  opts: { now?: Date },
+  opts: { now?: Date; metrics?: HubMetrics },
 ): Promise<{ deletedUsers: number; deletedAccounts: number }> {
   const now = opts.now ?? new Date();
+  const metrics = opts.metrics ?? getMetrics();
   const due = await db
     .select({ id: users.id })
     .from(users)
@@ -49,6 +53,8 @@ export async function expireGracePeriods(
       if (deleted !== null) {
         deletedUsers++;
         deletedAccounts += deleted;
+        metrics.graceExpiredUsers.inc();
+        metrics.accountsDeleted.inc({ cause: 'grace_expiry' }, deleted);
       }
     } catch (err) {
       failedCodes.push(pgErrorCode(err) ?? 'unknown');

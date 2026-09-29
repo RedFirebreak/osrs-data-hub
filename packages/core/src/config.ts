@@ -92,6 +92,7 @@ const EnvSchema = z.object({
   INGEST_MAX_BODY_KB: int(256, 16),
   TRUST_PROXY_HOPS: int(1, 0),
   METRICS_TOKEN: optionalString,
+  WORKER_METRICS_PORT: int(9464, 0),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
 });
 
@@ -122,6 +123,8 @@ export interface HubConfig {
   ingestMaxBodyBytes: number;
   trustProxyHops: number;
   metricsToken: string | undefined;
+  /** The worker's /metrics port (D-84); 0 = no endpoint. */
+  workerMetricsPort: number;
   logLevel: 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace' | 'silent';
 }
 
@@ -178,6 +181,7 @@ export function parseConfig(env: Record<string, string | undefined> = process.en
     ingestMaxBodyBytes: e.INGEST_MAX_BODY_KB * 1024,
     trustProxyHops: e.TRUST_PROXY_HOPS,
     metricsToken: e.METRICS_TOKEN,
+    workerMetricsPort: e.WORKER_METRICS_PORT,
     logLevel: e.LOG_LEVEL,
   };
 }

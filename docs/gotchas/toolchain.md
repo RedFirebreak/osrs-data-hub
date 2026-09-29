@@ -1,11 +1,12 @@
 # Toolchain and libraries
 
-Build, lint, test and package tooling (TypeScript, ESLint, Prettier, pnpm, tsup, shadcn, Playwright, Docker base images, Git line endings) and the pg-boss and zod libraries.
+Build, lint, test and package tooling (TypeScript, ESLint, Prettier, pnpm, tsup, shadcn, Playwright, Docker base images, Git line endings) and the pg-boss, prom-client and zod libraries.
 
 | ID | Symptom |
 |---|---|
 | [PGBOSS-1](#pgboss-1) | pg-boss throws `Queue <name> does not exist` (or `not found`) on send or schedule, a worker never runs while `error` events repeat every poll, or a handler finds `job.data` undefined. |
 | [PGBOSS-2](#pgboss-2) | After changing a queue's `policy` in code, `getQueue()` still reports the old one, and `updateQueue(name, { policy })` throws `queue policy cannot be changed after creation`. |
+| [PROM-1](#prom-1) | A counter-based alert or `increase()` panel misses the first event after a restart (the first job failure, the first breaker trip), while `/metrics` does show the series at 1. |
 | [TOOL-1](#tool-1) | After `pnpm add -D typescript`, typescript-eslint or Next's type check breaks; or `tsc` fails with `TS2591 Cannot find name 'node:crypto'`, `TS5101` (baseUrl) or `TS5107` (moduleResolution node). |
 | [TOOL-2](#tool-2) | `shadcn init` in a script exits 0 having created nothing, or `next build` fails offline with `next/font: error … fonts.googleapis.com`. |
 | [TOOL-3](#tool-3) | ESLint crashes with `TypeError: Error while loading rule 'react/display-name': contextOrFilename.getFilename is not a function`. |
@@ -39,6 +40,19 @@ queue's waiting jobs and, by cascade, its schedule) and create it again, then wr
 (apps/worker/src/queues.ts `ensureScheduledQueues`).
 
 *Source: `SOURCE` (pg-boss 12.35.0 dist/manager.js, plans.js `create_queue`); `OBSERVED` (apps/worker/src/queues.test.ts on timescale/timescaledb:2.30.1-pg18, 2026-09-29)*
+
+### PROM-1
+**A counter-based alert or `increase()` panel misses the first event after a restart (the first job failure, the first breaker trip), while `/metrics` does show the series at 1.**
+prom-client creates a labelled series only on its first `inc()`/`observe()`, so it first appears in a
+scrape already at 1. Prometheus' `increase()` and `rate()` measure change between samples of a series, and a
+series with no earlier sample has no change to measure: `increase(x[1h])` is 0 however recently it
+appeared. The first failure after every process restart (or ever) therefore never fires an
+`increase(...) > 0` alert. Fix: create every series of a fixed label set at 0 when the registry is built:
+`counter.inc(labels, 0)` and `histogram.zero(labels)` for each known combination (`initSeries` in
+packages/server/src/metrics.ts). Label values that are only known at run time (an HTTP status) can't be
+pre-created; don't alert on their first appearance.
+
+*Source: `DOCS` (Prometheus querying functions: `increase`; prom-client 15.1.3 README, "Labels"); `OBSERVED` (hub worker `/metrics`, 2026-09-29: `hub_job_runs_total{…,result="failure"}` absent until the first failure)*
 
 ### TOOL-1
 **After `pnpm add -D typescript`, typescript-eslint or Next's type check breaks; or `tsc` fails with `TS2591 Cannot find name 'node:crypto'`, `TS5101` (baseUrl) or `TS5107` (moduleResolution node).**

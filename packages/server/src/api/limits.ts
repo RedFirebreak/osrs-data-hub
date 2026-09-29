@@ -60,6 +60,8 @@ export interface ApiRateResult {
   headers: ApiRateHeaders;
   /** Whole seconds ≥ 1 for Retry-After when !ok (PLUGIN-5: integers only); 0 when ok. */
   retryAfterSeconds: number;
+  /** When !ok, the limit that refused it: the per-key minute or the /snapshot second. */
+  limit?: 'key' | 'snapshot';
 }
 
 /**
@@ -74,20 +76,26 @@ export function checkApiRate(
   opts: { snapshot: boolean },
 ): ApiRateResult {
   const minute = limits.perKey.peek(keyId);
-  if (!minute.ok) return refused(limits, keyId, minute);
+  if (!minute.ok) return refused(limits, keyId, minute, 'key');
   if (opts.snapshot) {
     const second = limits.snapshot.hit(keyId);
-    if (!second.ok) return refused(limits, keyId, second);
+    if (!second.ok) return refused(limits, keyId, second, 'snapshot');
   }
   limits.perKey.hit(keyId);
   return { ok: true, headers: rateHeaders(limits, keyId), retryAfterSeconds: 0 };
 }
 
-function refused(limits: ApiLimits, keyId: string, result: LimitResult): ApiRateResult {
+function refused(
+  limits: ApiLimits,
+  keyId: string,
+  result: LimitResult,
+  limit: 'key' | 'snapshot',
+): ApiRateResult {
   return {
     ok: false,
     headers: rateHeaders(limits, keyId),
     retryAfterSeconds: Math.max(1, result.retryAfterSeconds),
+    limit,
   };
 }
 

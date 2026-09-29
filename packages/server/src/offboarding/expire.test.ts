@@ -17,6 +17,8 @@ import { createTestDatabase, type TestDatabase } from '@hub/db/testing';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { createTestMetrics } from '../metrics';
+import { countsBy, valueOf } from '../metrics-test-support';
 import { accountMaterializationTables, deleteAccounts, expireGracePeriods } from './expire';
 import {
   refreshXpAggregates,
@@ -246,9 +248,12 @@ describe('expireGracePeriods', () => {
   });
 
   it('deletes expired users and the accounts left without anyone to keep them', async () => {
-    const result = await expireGracePeriods(t.db, { now: NOW });
+    const metrics = createTestMetrics();
+    const result = await expireGracePeriods(t.db, { now: NOW, metrics });
 
     expect(result).toEqual({ deletedUsers: 2, deletedAccounts: 3 });
+    expect(await valueOf(metrics.graceExpiredUsers)).toBe(2);
+    expect(await countsBy(metrics.accountsDeleted, 'cause')).toEqual({ grace_expiry: 3 });
     const remaining = await t.db
       .select({ id: users.id })
       .from(users)

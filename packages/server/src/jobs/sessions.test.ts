@@ -4,6 +4,8 @@ import { createTestDatabase, type TestDatabase } from '@hub/db/testing';
 import { eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createHarness, newHash, wire, type Harness } from '../ingest/test-support';
+import { createTestMetrics } from '../metrics';
+import { valueOf } from '../metrics-test-support';
 import { seedAccount } from '../offboarding/test-support';
 import { closeStaleSessions, presenceTimeoutSql } from './sessions';
 
@@ -117,9 +119,13 @@ describe('closeStaleSessions', () => {
       .set({ endedAt, endReason: 'logout' })
       .where(eq(playSessions.id, ended));
 
-    const result = await closeStaleSessions(t.db, { now: NOW });
+    const metrics = createTestMetrics();
+    const result = await closeStaleSessions(t.db, { now: NOW, metrics });
 
-    expect(result).toEqual({ closed: 4 });
+    // open: the six fresh sessions (players online).
+    expect(result).toEqual({ closed: 4, open: 6 });
+    expect(await valueOf(metrics.playSessionsTimedOut)).toBe(4);
+    expect(await valueOf(metrics.playSessionsOpen)).toBe(6);
     for (const [id, agoS] of [
       [unknownStale, 26 * 60],
       [slowStale, 1117],
@@ -143,7 +149,11 @@ describe('closeStaleSessions', () => {
     }
     expect(await sessionRow(ended)).toMatchObject({ endedAt, endReason: 'logout' });
 
-    await expect(closeStaleSessions(t.db, { now: NOW })).resolves.toEqual({ closed: 0 });
+    await expect(closeStaleSessions(t.db, { now: NOW, metrics })).resolves.toEqual({
+      closed: 0,
+      open: 6,
+    });
+    expect(await valueOf(metrics.playSessionsTimedOut)).toBe(4);
   });
 });
 

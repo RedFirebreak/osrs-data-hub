@@ -14,7 +14,8 @@
  * refetches instead of taking the live events that follow for "caught up".
  *
  * At most LIVE_MAX_STREAMS_PER_USER streams per user in this process (D-80): the next one answers
- * 429 `rate_limited` with an integer Retry-After (PLUGIN-5 style) and is never subscribed. The
+ * 429 `rate_limited` with an integer Retry-After (PLUGIN-5 style), counted in
+ * hub_live_streams_refused_total, and is never subscribed. The
  * browser's EventSource gives up on any non-200 answer; LiveConnection then polls and reopens with its
  * backoff. A slot frees whenever a stream ends (cleanup below unsubscribes it; the hub drops streams
  * whose sends fail or whose user is no longer active).
@@ -31,6 +32,7 @@ import {
   formatSse,
   getLiveHub,
   getLogger,
+  getMetrics,
   getUserSettings,
   replayEvents,
   sseHello,
@@ -72,6 +74,7 @@ export async function GET(request: Request): Promise<Response> {
     const open = hub.streamsOf(user.id);
     if (open >= LIVE_MAX_STREAMS_PER_USER) {
       log.info({ userId: user.id, open }, 'live: stream refused, too many open for this user');
+      getMetrics().liveStreamsRefused.inc();
       throw new ApiError(
         429,
         'rate_limited',

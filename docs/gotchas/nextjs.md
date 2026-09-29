@@ -19,6 +19,7 @@ Next.js 16 (route handlers, server actions, RSC, proxy.ts, instrumentation, base
 | [NEXT-13](#next-13) | Every request to a route handler that copies its request with `new Request(request, …)` (Better Auth's `/api/auth/*`, for one) answers 500 on Node 24, logging `TypeError: Cannot read private member #state from an object whose class did not declare it`, while the same code passes on Node 22 and in unit tests. |
 | [NEXT-14](#next-14) | An unknown id's page shows the not-found UI but answers HTTP 200, with `<meta name="robots" content="noindex">` in its HTML, while a `notFound()` from a layout answers 404. |
 | [NEXT-15](#next-15) | `pnpm dev` or a tsx script in a workspace package ignores the repo-root `.env` (`DATABASE_URL is not set`), and starting Next as `node --env-file=… next dev` exits at once with code 9: `--env-file-if-exists= is not allowed in NODE_OPTIONS`. |
+| [NEXT-16](#next-16) | A streamed download logs an error such as `export: failed while streaming` with `TypeError: Invalid state: Controller is already closed` whenever the client cancels it halfway (a closed tab, an aborted `fetch`). |
 
 ### NEXT-1
 **Changing `basePath` or an `APP_URL` path prefix at runtime has no effect: the app still answers on the prefix it was built with and 404s on the new one.**
@@ -195,3 +196,16 @@ the override file first, and the shell beats both. Next collapses a repeated fla
 re-parses, so pass one `--import`. This repo: `tools/dev-env.mjs`.
 
 *Source: `SOURCE` (next 16.3.6 `dist/cli/next-dev.js`, `dist/server/lib/utils.js`); `OBSERVED` (apps/web `pnpm dev`, Next 16.3.6 on Node 22.14, 2026-09-29: exit 9 with the message above; `pnpm db:migrate` stopped with `DATABASE_URL is not set` while the root `.env` set it)*
+
+### NEXT-16
+**A streamed download logs an error such as `export: failed while streaming` with `TypeError: Invalid state: Controller is already closed` whenever the client cancels it halfway (a closed tab, an aborted `fetch`).**
+A route handler that returns `new Response(new ReadableStream({ async pull(c) { … } }))` gets its
+`cancel()` called while a `pull` may still be awaiting its source (a database query, a generator's next
+piece). When that await resolves, the pull calls `controller.enqueue`, which throws because the stream is
+already closed, and a `catch` around the pull body takes that for a failure of the source: it logs an
+error, counts a failure, or calls `controller.error`. Nothing was lost; the client simply stopped reading.
+Fix: set a flag in `cancel()` and have the pull's `catch` return quietly when it is set, before any logging
+(apps/web `api/app/export/route.ts`). A pull that is idle when the client cancels doesn't throw, so a quick
+manual test that cancels between reads doesn't show it.
+
+*Source: `OBSERVED` (apps/web `api/app/export/route.test.ts` "stops the export when the download is cancelled", Next 16.3.6 on Node 22.14, 2026-09-29: the enqueue after cancel threw the TypeError above every run)*

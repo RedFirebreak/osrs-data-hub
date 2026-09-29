@@ -1,3 +1,4 @@
+import { createTestMetrics, type HubMetrics } from '@hub/server';
 import { DrizzleQueryError } from 'drizzle-orm';
 import pino from 'pino';
 import { describe, expect, it } from 'vitest';
@@ -30,13 +31,35 @@ function queryError(): DrizzleQueryError {
   );
 }
 
+/** hub_job_runs_total by "job_name/result". */
+async function runs(metrics: HubMetrics): Promise<Record<string, number>> {
+  const out: Record<string, number> = {};
+  for (const v of (await metrics.jobRuns.get()).values) {
+    if (v.value === 0) continue;
+    out[`${String(v.labels.job_name)}/${String(v.labels.result)}`] = v.value;
+  }
+  return out;
+}
+
+/** The hub_job_duration_seconds observation count of one job. */
+async function observations(metrics: HubMetrics, job: string): Promise<number> {
+  const count = (await metrics.jobDuration.get()).values.find(
+    (v) => v.metricName === 'hub_job_duration_seconds_count' && v.labels.job_name === job,
+  );
+  return count?.value ?? 0;
+}
+
+async function lastSuccess(metrics: HubMetrics, job: string): Promise<number | undefined> {
+  return (await metrics.jobLastSuccess.get()).values.find((v) => v.labels.job_name === job)?.value;
+}
+
 describe('timed', () => {
   it('logs the job, its duration and result, and returns the result', async () => {
     const { logger, lines } = captureLogger();
 
-    await expect(timed(logger, 'prune-audit-log', async () => ({ deleted: 3 }))).resolves.toEqual({
-      deleted: 3,
-    });
+    await expect(
+      timed(logger, createTestMetrics(), 'prune-audit-log', async () => ({ deleted: 3 })),
+    ).resolves.toEqual({ deleted: 3 });
 
     expect(lines).toEqual([
       expect.objectContaining({
@@ -52,9 +75,9 @@ describe('timed', () => {
   it('logs only the code and the Postgres message of a database error (DB-3)', async () => {
     const { logger, lines } = captureLogger();
 
-    const failure = await timed(logger, 'expire-grace', () => Promise.reject(queryError())).catch(
-      (err: unknown) => err,
-    );
+    const failure = await timed(logger, createTestMetrics(), 'expire-grace', () =>
+      Promise.reject(queryError()),
+    ).catch((err: unknown) => err);
 
     expect(lines).toHaveLength(1);
     const [line] = lines;
@@ -80,7 +103,7 @@ describe('timed', () => {
     const { logger, lines } = captureLogger();
 
     await expect(
-      timed(logger, 'expire-grace', () =>
+      timed(logger, createTestMetrics(), 'expire-grace', () =>
         Promise.reject(new Error('expireGracePeriods: 1 of 2 users failed (55P03)\nsecond line')),
       ),
     ).rejects.toThrow('expire-grace failed: expireGracePeriods: 1 of 2 users failed (55P03)');
@@ -90,5 +113,33 @@ describe('timed', () => {
       error: 'expireGracePeriods: 1 of 2 users failed (55P03)',
     });
     expect(lines[0]?.pgCode).toBeUndefined();
+  });
+
+  it('records a success: duration, run and last-success time (D-84)', async () => {
+    const { logger } = captureLogger();
+    const metrics = createTestMetrics();
+    const before = Date.now() / 1000;
+
+    await timed(logger, metrics, 'close-stale-sessions', async () => ({ closed: 0, open: 0 }));
+    await timed(logger, metrics, 'close-stale-sessions', async () => ({ closed: 1, open: 0 }));
+
+    expect(await runs(metrics)).toEqual({ 'close-stale-sessions/success': 2 });
+    expect(await observations(metrics, 'close-stale-sessions')).toBe(2);
+    const at = await lastSuccess(metrics, 'close-stale-sessions');
+    expect(at).toBeGreaterThanOrEqual(before);
+    expect(at).toBeLessThanOrEqual(Date.now() / 1000);
+  });
+
+  it('records a failure without touching the last-success time', async () => {
+    const { logger } = captureLogger();
+    const metrics = createTestMetrics();
+
+    await timed(logger, metrics, 'reverify-members', () => Promise.reject(new Error('boom'))).catch(
+      () => undefined,
+    );
+
+    expect(await runs(metrics)).toEqual({ 'reverify-members/failure': 1 });
+    expect(await observations(metrics, 'reverify-members')).toBe(1);
+    expect(await lastSuccess(metrics, 'reverify-members')).toBeUndefined();
   });
 });

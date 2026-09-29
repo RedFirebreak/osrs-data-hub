@@ -1,6 +1,7 @@
 import { DEFAULT_PRESENCE_TIMEOUT_S, MIN_PRESENCE_TIMEOUT_S } from '@hub/core';
 import type { Db } from '@hub/db';
 import { sql, type SQL } from 'drizzle-orm';
+import { getMetrics, type HubMetrics } from '../metrics';
 
 /**
  * presenceTimeoutSeconds (@hub/core, D-28) as a SQL expression over an integer tick-delay
@@ -16,11 +17,15 @@ export function presenceTimeoutSql(tickDelay: SQL): SQL {
  * Ends open play sessions whose account has been silent longer than the presence timeout
  * (presenceTimeoutSeconds(latest_state.tick_delay)): ended_at = the session's last_seen_at,
  * end_reason = 'timeout'. Special worlds send nothing, so a hop to one ends the session here.
+ *
+ * Metrics: the closed sessions count as hub_play_sessions_timed_out_total, and hub_play_sessions_open
+ * is set to the sessions still open afterwards (players online; the job runs every minute).
  */
 export async function closeStaleSessions(
   db: Db,
-  opts: { now?: Date } = {},
-): Promise<{ closed: number }> {
+  opts: { now?: Date; metrics?: HubMetrics } = {},
+): Promise<{ closed: number; open: number }> {
+  const metrics = opts.metrics ?? getMetrics();
   const now = (opts.now ?? new Date()).toISOString();
   const timeout = presenceTimeoutSql(sql`ls.tick_delay`);
   // Silence is measured from the later of the account's presence and the session's own last
@@ -43,5 +48,16 @@ export async function closeStaleSessions(
     WHERE p.id = stale.id
       AND p.ended_at IS NULL
       AND p.last_seen_at + stale.timeout_s * interval '1 second' < ${now}::timestamptz`);
-  return { closed: res.rowCount ?? 0 };
+  const closed = res.rowCount ?? 0;
+  metrics.playSessionsTimedOut.inc(closed);
+  const open = await countOpenSessions(db);
+  metrics.playSessionsOpen.set(open);
+  return { closed, open };
+}
+
+async function countOpenSessions(db: Db): Promise<number> {
+  const { rows } = await db.execute<{ open: number }>(
+    sql`SELECT count(*)::int AS open FROM play_sessions WHERE ended_at IS NULL`,
+  );
+  return rows[0]?.open ?? 0;
 }

@@ -1,0 +1,16 @@
+# Local monitoring stack (compose.monitoring.yaml): the bundled Prometheus. The dashboards pick the
+# datasource through their own "datasource" variable, so this uid is not referenced by them.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: hub-prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      # Matches scrape_interval in ops/prometheus/prometheus.yml ($__rate_interval builds on it).
+      timeInterval: 15s
+      httpMethod: POST

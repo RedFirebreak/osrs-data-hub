@@ -1,0 +1,27 @@
+# Prometheus for the local monitoring stack (compose.monitoring.yaml). The web app and the worker
+# run on the host during development, reached through host.docker.internal. /metrics needs
+# "Authorization: Bearer <METRICS_TOKEN>"; the container's entrypoint writes the token to
+# /tmp/metrics-token. For a Prometheus elsewhere, see scrape-example.yml.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - alerts.yml
+
+scrape_configs:
+  # Next.js (pnpm dev): ingest, API, live, pairing.
+  - job_name: hub-web
+    metrics_path: /metrics
+    authorization:
+      credentials_file: /tmp/metrics-token
+    static_configs:
+      - targets: ['host.docker.internal:3000']
+
+  # Worker (pnpm dev:worker): jobs, Discord re-verification, retention.
+  - job_name: hub-worker
+    metrics_path: /metrics
+    authorization:
+      credentials_file: /tmp/metrics-token
+    static_configs:
+      - targets: ['host.docker.internal:9464']

@@ -16,7 +16,8 @@
  *    go on every authenticated response, errors included.
  * 5. The handler, inside handleApi's error mapping (ZodError/ServerApiError → 400/404, database outage
  *    → 503 + Retry-After, anything else → 500 that leaks nothing).
- * Every response gets the CORS headers (cors.ts).
+ * Every response gets the CORS headers (cors.ts), and every request counts in the hub_api_* metrics
+ * (metrics.ts): its route group and status, its duration, and a 429's limit or a 401's reason.
  *
  * Only the request's own properties are read (headers, url); it is never copied with
  * `new Request(request, …)`, which fails on Node 24 behind Next's request proxy (NEXT-13).
@@ -31,6 +32,7 @@ import {
   checkApiRate,
   checkAuthFailures,
   createApiLimits,
+  getMetrics,
   recordAuthFailure,
   type ApiLimits,
   type ApiPrincipal,
@@ -39,6 +41,7 @@ import {
 import { connection } from 'next/server';
 import { clientIp, handleApi } from '@/lib/http';
 import { withCors } from './cors';
+import { apiRouteGroup, measureApiRequest } from './metrics';
 import { v1Error } from './respond';
 
 const g = globalThis as unknown as { __hubApiLimits?: ApiLimits };
@@ -69,30 +72,33 @@ export async function withApiKey(
   handler: (ctx: ApiKeyContext) => Promise<Response>,
   opts: { snapshot?: boolean } = {},
 ): Promise<Response> {
+  const done = measureApiRequest(apiRouteGroup(request.url));
   const rate: { headers?: ApiRateHeaders } = {};
   const res = await handleApi(async () => {
     await connection();
     const limits = getApiLimits();
     const ip = clientIp(request) ?? 'unknown';
     const gate = checkAuthFailures(limits, ip);
-    if (!gate.ok) return rateLimited(gate.retryAfterSeconds);
+    if (!gate.ok) return rateLimited('auth_ip', gate.retryAfterSeconds);
 
     const { db } = getDb();
     const auth = await authenticateApiKey(db, request.headers.get('authorization'));
     if (!auth.ok) {
+      getMetrics().apiAuthFailures.inc({ reason: auth.reason });
       if (auth.reason !== 'missing') recordAuthFailure(limits, ip);
       return v1Error(401, 'unauthorized', UNAUTHORIZED_MESSAGE, { 'WWW-Authenticate': 'Bearer' });
     }
 
     const limit = checkApiRate(limits, auth.principal.keyId, { snapshot: opts.snapshot === true });
     rate.headers = limit.headers;
-    if (!limit.ok) return rateLimited(limit.retryAfterSeconds);
+    if (!limit.ok) return rateLimited(limit.limit ?? 'key', limit.retryAfterSeconds);
     return handler({ db, principal: auth.principal });
   });
-  return withCors(res, rate.headers ? { ...rate.headers } : {});
+  return done(withCors(res, rate.headers ? { ...rate.headers } : {}));
 }
 
-function rateLimited(retryAfterSeconds: number): Response {
+function rateLimited(limit: 'key' | 'snapshot' | 'auth_ip', retryAfterSeconds: number): Response {
+  getMetrics().apiRateLimited.inc({ limit });
   const seconds = Math.max(1, Math.ceil(retryAfterSeconds));
   return v1Error(429, 'rate_limited', `Too many requests: retry in ${seconds} s.`, {
     'Retry-After': String(seconds),

@@ -13,6 +13,7 @@ import {
 } from '@hub/db';
 import { and, asc, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import { audit } from '../audit';
+import { getMetrics, type HubMetrics } from '../metrics';
 import {
   auditTransfer,
   findSuccessor,
@@ -40,7 +41,8 @@ export interface OffboardResult {
  * revoke all their devices (reason 'offboarding') and API keys; delete their sessions (a rejected
  * login doesn't end existing sessions); for each account they own, transfer ownership to the active,
  * non-blocked contributor linked longest (audit entry), else hide it. Idempotent for a user already
- * in grace (keeps the earliest grace_until). All in one transaction.
+ * in grace (keeps the earliest grace_until). All in one transaction. Once it commits, a user who was
+ * active counts in hub_offboarded_users_total{reason}.
  */
 export async function offboardUser(
   db: Db,
@@ -51,6 +53,7 @@ export async function offboardUser(
     now?: Date;
     actorUserId?: string | null;
     actorLabel?: string;
+    metrics?: HubMetrics;
   },
 ): Promise<OffboardResult> {
   if (!Number.isFinite(opts.graceDays) || opts.graceDays < 0) {
@@ -58,7 +61,7 @@ export async function offboardUser(
   }
   const now = opts.now ?? new Date();
   const actor = auditActor(opts);
-  return db.transaction(async (tx) => {
+  const { result, wasActive } = await db.transaction(async (tx) => {
     await tx.execute(sql`SELECT set_config('lock_timeout', ${LOCK_TIMEOUT}, true)`);
     // FOR NO KEY UPDATE: ingest's account_links inserts take FOR KEY SHARE on this row (the FK
     // check), which a plain FOR UPDATE would block.
@@ -71,7 +74,15 @@ export async function offboardUser(
       .from(users)
       .where(eq(users.id, opts.userId))
       .for('no key update');
-    if (!user) return { transferred: [], hidden: [], revokedDevices: 0, deletedSessions: 0 };
+    if (!user) {
+      const result: OffboardResult = {
+        transferred: [],
+        hidden: [],
+        revokedDevices: 0,
+        deletedSessions: 0,
+      };
+      return { result, wasActive: false };
+    }
 
     const next = nextGraceState(
       user,
@@ -110,8 +121,13 @@ export async function offboardUser(
         },
       });
     }
-    return { transferred, hidden, revokedDevices, deletedSessions };
+    return {
+      result: { transferred, hidden, revokedDevices, deletedSessions },
+      wasActive: user.status === 'active',
+    };
   });
+  if (wasActive) (opts.metrics ?? getMetrics()).offboardedUsers.inc({ reason: opts.reason });
+  return result;
 }
 
 /**

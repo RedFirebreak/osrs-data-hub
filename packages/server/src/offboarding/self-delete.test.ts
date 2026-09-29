@@ -7,6 +7,8 @@ import { apiKeys, auditLog, devices, osrsAccounts, session, users } from '@hub/d
 import { createTestDatabase, type TestDatabase } from '@hub/db/testing';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { createTestMetrics } from '../metrics';
+import { countsBy } from '../metrics-test-support';
 import { expireGracePeriods } from './expire';
 import {
   SELF_DELETE_UNDO_DAYS,
@@ -119,7 +121,8 @@ describe('deleteMyData', () => {
     await seedSession(t.db, userId);
     await seedSession(t.db, userId);
 
-    const result = await deleteMyData(t.db, { userId, confirm: ' Delete ', now: NOW });
+    const metrics = createTestMetrics();
+    const result = await deleteMyData(t.db, { userId, confirm: ' Delete ', now: NOW, metrics });
 
     expect(result).toEqual({
       graceUntil: UNTIL,
@@ -138,6 +141,8 @@ describe('deleteMyData', () => {
     const [key] = await t.db.select().from(apiKeys).where(eq(apiKeys.id, keyId));
     expect(key?.revokedAt).toEqual(NOW);
     expect(await t.db.select().from(session).where(eq(session.userId, userId))).toHaveLength(0);
+    // The "Delete my data" count.
+    expect(await countsBy(metrics.offboardedUsers, 'reason')).toEqual({ self_delete: 1 });
   });
 
   it('audits the user as the one who did it', async () => {

@@ -1,9 +1,10 @@
 /**
  * GET /api/app/export (D-79): same origin only, session auth, one export per user per 10 minutes,
  * the attachment headers, the streamed document, the audit entry, and what happens when the
- * download is cancelled or the export fails half-way.
+ * download is cancelled or the export fails half-way, and hub_data_exports_total for each outcome.
  */
 import { auditLog, events, osrsAccounts, users } from '@hub/db';
+import { getMetrics } from '@hub/server';
 import type * as Server from '@hub/server';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -102,13 +103,34 @@ async function seedOwnedAccount(userId: string): Promise<string> {
   return publicId;
 }
 
+/** What `run` added to hub_data_exports_total, by result (the process's registry). */
+async function exportsCounted(run: () => Promise<unknown>): Promise<Record<string, number>> {
+  const read = async () =>
+    Object.fromEntries(
+      (await getMetrics().dataExports.get()).values.map((v) => [String(v.labels.result), v.value]),
+    );
+  const before = await read();
+  await run();
+  const out: Record<string, number> = {};
+  for (const [result, value] of Object.entries(await read())) {
+    if (value !== (before[result] ?? 0)) out[result] = value - (before[result] ?? 0);
+  }
+  return out;
+}
+
 describe('GET /api/app/export', () => {
   it('streams the JSON document as a dated attachment and audits it', async () => {
     const { userId, cookie } = await signedIn();
     const publicId = await seedOwnedAccount(userId);
 
-    const res = await get(cookie);
+    let res!: Response;
+    let text = '';
+    const counted = await exportsCounted(async () => {
+      res = await get(cookie);
+      text = await res.text();
+    });
 
+    expect(counted).toEqual({ completed: 1 });
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toBe('application/json; charset=utf-8');
     expect(res.headers.get('cache-control')).toBe('no-store');
@@ -123,7 +145,7 @@ describe('GET /api/app/export', () => {
     expect(audited).toEqual([
       expect.objectContaining({ targetType: 'user', targetId: userId, meta: { accounts: 1 } }),
     ]);
-    const doc = JSON.parse(await res.text()) as Record<string, unknown>;
+    const doc = JSON.parse(text) as Record<string, unknown>;
     expect(doc).toMatchObject({
       format: 'osrs-data-hub-export',
       version: 1,
@@ -165,7 +187,10 @@ describe('GET /api/app/export', () => {
     expect(first.status).toBe(200);
     await first.text();
 
-    const second = await get(cookie);
+    let second!: Response;
+    expect(await exportsCounted(async () => (second = await get(cookie)))).toEqual({
+      rate_limited: 1,
+    });
     expect(second.status).toBe(429);
     expect(second.headers.get('retry-after')).toMatch(/^(600|599)$/);
     expect(((await second.json()) as { error: { code: string } }).error.code).toBe('rate_limited');
@@ -180,12 +205,15 @@ describe('GET /api/app/export', () => {
     const { userId, cookie } = await signedIn();
     await seedOwnedAccount(userId);
     const finished = control.finished;
-    const res = await get(cookie);
-    const reader = res.body!.getReader();
-    const { done } = await reader.read();
-    expect(done).toBe(false);
-    await reader.cancel();
+    const counted = await exportsCounted(async () => {
+      const res = await get(cookie);
+      const reader = res.body!.getReader();
+      const { done } = await reader.read();
+      expect(done).toBe(false);
+      await reader.cancel();
+    });
     expect(control.finished).toBe(finished + 1);
+    expect(counted).toEqual({ cancelled: 1 });
   });
 
   it('breaks the download, instead of ending the JSON, when the export fails half-way', async () => {
@@ -197,9 +225,12 @@ describe('GET /api/app/export', () => {
     g.__hubLogger = { error: record, warn: record, info: record, debug: record };
     try {
       control.failAfter = 3;
-      const res = await get(cookie);
-      expect(res.status).toBe(200);
-      await expect(res.text()).rejects.toThrow();
+      const counted = await exportsCounted(async () => {
+        const res = await get(cookie);
+        expect(res.status).toBe(200);
+        await expect(res.text()).rejects.toThrow();
+      });
+      expect(counted).toEqual({ failed: 1 });
     } finally {
       g.__hubLogger = previous;
     }
@@ -211,7 +242,8 @@ describe('GET /api/app/export', () => {
   it('answers an early failure with an error response, not a broken 200', async () => {
     const { userId, cookie } = await signedIn();
     control.failAfter = 0;
-    const res = await get(cookie);
+    let res!: Response;
+    expect(await exportsCounted(async () => (res = await get(cookie)))).toEqual({ failed: 1 });
     expect(res.status).toBe(503);
     expect(res.headers.get('retry-after')).toBe('5');
     // Nothing about the user changed.

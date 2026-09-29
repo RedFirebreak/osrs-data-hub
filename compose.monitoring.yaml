@@ -1,0 +1,78 @@
+# Optional local monitoring (Prometheus + Grafana): docker compose -f compose.monitoring.yaml up -d
+# Scrapes the web app (pnpm dev, :3000) and the worker (pnpm dev:worker, :9464) running on the host,
+# with METRICS_TOKEN from .env / .env.dev. Grafana: http://127.0.0.1:3001 (anonymous Viewer; admin
+# password GRAFANA_ADMIN_PASSWORD, default admin). Prometheus: http://127.0.0.1:9090.
+# For a production Prometheus elsewhere, see ops/prometheus/scrape-example.yml instead.
+name: osrs-data-hub-monitoring
+
+services:
+  prometheus:
+    image: prom/prometheus:v3.15.0
+    # Same files as the app reads; a later file wins. Only METRICS_TOKEN is used.
+    env_file:
+      - path: .env
+        required: false
+      - path: .env.dev
+        required: false
+    # The scrape config reads the bearer token from a file (credentials_file), so write it to a
+    # per-container file first. No restart policy: a missing token exits 1 with the message below
+    # (docker compose -f compose.monitoring.yaml logs prometheus) instead of restart-looping.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        if [ -z "$${METRICS_TOKEN}" ]; then
+          echo 'METRICS_TOKEN is empty: set it in .env or .env.dev (the hub serves /metrics only with a token)' >&2
+          exit 1
+        fi
+        umask 077
+        printf '%s' "$${METRICS_TOKEN}" | tr -d '\r\n' > /tmp/metrics-token
+        exec /bin/prometheus \
+          --config.file=/etc/prometheus/prometheus.yml \
+          --storage.tsdb.path=/prometheus \
+          --web.enable-lifecycle
+    ports:
+      - '127.0.0.1:9090:9090'
+    extra_hosts:
+      # Docker Desktop resolves this itself; Linux Docker Engine needs the mapping.
+      - 'host.docker.internal:host-gateway'
+    volumes:
+      # The directory, not single files: editors that replace a file on save leave a single-file bind
+      # mount pointing at the old copy. Reload after editing: curl -X POST http://127.0.0.1:9090/-/reload
+      - ./ops/prometheus:/etc/prometheus:ro
+      - prometheus-data:/prometheus
+
+  grafana:
+    image: grafana/grafana:12.4.12
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      # Local convenience: dashboards are viewable without logging in.
+      GF_AUTH_ANONYMOUS_ENABLED: 'true'
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/dashboards/hub-overview.json
+      # Privacy: nothing phones home (usage stats, update checks, news, avatars, public snapshots).
+      GF_ANALYTICS_REPORTING_ENABLED: 'false'
+      GF_ANALYTICS_CHECK_FOR_UPDATES: 'false'
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: 'false'
+      GF_ANALYTICS_FEEDBACK_LINKS_ENABLED: 'false'
+      GF_NEWS_NEWS_FEED_ENABLED: 'false'
+      GF_SECURITY_DISABLE_GRAVATAR: 'true'
+      GF_SNAPSHOTS_EXTERNAL_ENABLED: 'false'
+      GF_PLUGINS_PUBLIC_KEY_RETRIEVAL_DISABLED: 'true'
+    ports:
+      # 3000 is the web app.
+      - '127.0.0.1:3001:3000'
+    volumes:
+      - grafana-data:/var/lib/grafana
+      # Per subdirectory: mounting all of /etc/grafana/provisioning hides the image's empty
+      # plugins/ and alerting/ dirs and Grafana logs an error for each at startup.
+      - ./ops/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./ops/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./ops/grafana/dashboards:/etc/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+
+volumes:
+  prometheus-data:
+  grafana-data:

@@ -1,0 +1,36 @@
+# EXAMPLE, not used by any compose file: scraping the hub from an existing Prometheus elsewhere in
+# your network. Merge the parts below into that server's prometheus.yml and adjust the addresses.
+#
+# - hub-web goes through the reverse proxy (TLS). The proxy must allow /metrics only from the
+#   Prometheus server's IP (answer 403/404 to everyone else), on top of the bearer token.
+# - hub-worker has no proxy: compose publishes the worker's port 9464 on 127.0.0.1. Set
+#   WORKER_METRICS_BIND=<the hub VM's PRIVATE address> in the hub's .env (e.g. 10.0.0.20) and
+#   firewall the port to the Prometheus server. The token then travels in plain HTTP inside that
+#   network.
+# - The token file holds exactly the hub's METRICS_TOKEN (no quotes; a trailing newline is fine),
+#   readable by the Prometheus user only.
+# - Keep the job names hub-web and hub-worker: the Grafana dashboard's "job" variable lists
+#   whatever jobs export hub_process_start_time_seconds, but the names are how you tell them apart.
+#   The alert rules do not depend on them.
+
+# Alert rules: copy ops/prometheus/alerts.yml next to your prometheus.yml (paths are relative to
+# it). Routing the alerts needs your Alertmanager; without one they show under /alerts only.
+rule_files:
+  - osrs-data-hub-alerts.yml
+
+scrape_configs:
+  - job_name: hub-web
+    scheme: https
+    metrics_path: /metrics
+    authorization:
+      credentials_file: /etc/prometheus/secrets/hub-metrics-token
+    static_configs:
+      - targets: ['hub.example.com']
+
+  - job_name: hub-worker
+    scheme: http
+    metrics_path: /metrics
+    authorization:
+      credentials_file: /etc/prometheus/secrets/hub-metrics-token
+    static_configs:
+      - targets: ['<hub-vm-private-ip>:9464']

@@ -4,6 +4,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { FetchFn, GuildPolicy } from '../discord';
 import { createTestMetrics, type HubMetrics } from '../metrics';
+import { countsBy } from '../metrics-test-support';
 import { offboardUser, restoreUser } from '../offboarding';
 import { captureLogger, seedDevice, seedUser, type LogLine } from '../offboarding/test-support';
 import {
@@ -123,8 +124,7 @@ function setup(replies: Record<string, Reply | Reply[]>, over: Partial<ReverifyD
 }
 
 async function failureCounts(metrics: HubMetrics): Promise<Record<string, number>> {
-  const { values } = await metrics.discordVerifyFailures.get();
-  return Object.fromEntries(values.map((v) => [String(v.labels.kind), v.value]));
+  return countsBy(metrics.discordVerifyFailures, 'kind');
 }
 
 const errors = (lines: LogLine[]) => lines.filter((l) => l.level === 50);
@@ -187,12 +187,19 @@ describe('reverifyDueMembers', () => {
       lastVerifiedAt: new Date(NOW.getTime() - 7 * HOUR),
     });
     expect(await failureCounts(metrics)).toEqual({ unavailable: 1 });
+    expect(await countsBy(metrics.discordVerifyChecks, 'verdict')).toEqual({
+      member: 8,
+      not_member: 1,
+      error: 1,
+    });
+    expect(await countsBy(metrics.offboardedUsers, 'reason')).toEqual({ left_guild: 1 });
+    expect(await countsBy(metrics.discordVerifyBreakerTrips, 'rule')).toEqual({});
   });
 
   it("offboards a member missing every required role as 'lost_role'", async () => {
     const keeps = await dueUser();
     const lost = await dueUser();
-    const { deps } = setup(
+    const { deps, metrics } = setup(
       {
         [keeps.discordId]: member(keeps.discordId, { roles: ['role-b', 'role-x'] }),
         [lost.discordId]: member(lost.discordId, { roles: ['role-x'] }),
@@ -211,6 +218,11 @@ describe('reverifyDueMembers', () => {
       roles: ['role-b', 'role-x'],
     });
     expect(await userRow(lost.id)).toMatchObject({ status: 'grace', offboardReason: 'lost_role' });
+    expect(await countsBy(metrics.discordVerifyChecks, 'verdict')).toEqual({
+      member: 1,
+      missing_role: 1,
+    });
+    expect(await countsBy(metrics.offboardedUsers, 'reason')).toEqual({ lost_role: 1 });
   });
 
   it('computes isAdmin from admin roles and admin user ids', async () => {
@@ -239,7 +251,7 @@ describe('reverifyDueMembers', () => {
     const replies: Record<string, Reply> = { [a!.discordId]: NOT_MEMBER };
     replies[b!.discordId] = member(b!.discordId, { roles: [] });
     for (const u of rest) replies[u.discordId] = member(u.discordId);
-    const { deps, lines } = setup(replies, {
+    const { deps, lines, metrics } = setup(replies, {
       policy: { ...POLICY, requiredRoleIds: ['role-member'] },
     });
 
@@ -252,6 +264,8 @@ describe('reverifyDueMembers', () => {
     expect((await userRow(rest[0]!.id))?.lastVerifiedAt).toEqual(NOW);
     expect(errors(lines)).toHaveLength(1);
     expect(errors(lines)[0]).toMatchObject({ checked: 5, departures: 2 });
+    expect(await countsBy(metrics.discordVerifyBreakerTrips, 'rule')).toEqual({ batch: 1 });
+    expect(await countsBy(metrics.offboardedUsers, 'reason')).toEqual({});
   });
 
   it('judges the breaker on the users Discord answered for: errors do not dilute it', async () => {
@@ -701,11 +715,15 @@ describe('the rolling circuit breaker (D-34)', () => {
   it('logs one error naming both rules when both trip', async () => {
     const due = await Promise.all(Array.from({ length: 5 }, () => dueUser()));
     const replies = Object.fromEntries(due.map((u) => [u.discordId, NOT_MEMBER]));
-    const { deps, lines } = setup(replies, { now: new Date() });
+    const { deps, lines, metrics } = setup(replies, { now: new Date() });
 
     expect(await reverifyDueMembers(deps)).toMatchObject({ offboarded: 0, aborted: true });
     expect(errors(lines)).toEqual([
       expect.objectContaining({ rules: ['batch', 'window'], answered: 5, departures: 5 }),
     ]);
+    expect(await countsBy(metrics.discordVerifyBreakerTrips, 'rule')).toEqual({
+      batch: 1,
+      window: 1,
+    });
   });
 });

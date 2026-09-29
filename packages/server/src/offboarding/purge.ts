@@ -1,6 +1,7 @@
 import { osrsAccounts, pgErrorCode, type Db, type Tx } from '@hub/db';
 import { sql } from 'drizzle-orm';
 import { audit } from '../audit';
+import { getMetrics, type HubMetrics } from '../metrics';
 import { lockAccounts } from './accounts';
 import { accountMaterializationTables, deleteAccounts, type MaterializationTable } from './expire';
 
@@ -33,11 +34,12 @@ const orphaned = (cutoff: Date) => sql`
  *
  * Each account is re-checked under ingest's per-account lock before it is deleted, so a payload that
  * links a user in the meantime keeps it. One transaction per account; failures are collected and
- * reported by SQLSTATE only (DB-3).
+ * reported by SQLSTATE only (DB-3). Each purged account counts in
+ * hub_accounts_deleted_total{cause="orphan_purge"}.
  */
 export async function purgeOrphanedAccounts(
   db: Db,
-  opts: { graceDays: number; now?: Date; batchSize?: number },
+  opts: { graceDays: number; now?: Date; batchSize?: number; metrics?: HubMetrics },
 ): Promise<{ purged: number }> {
   if (!Number.isInteger(opts.graceDays) || opts.graceDays < 0) {
     throw new Error('purgeOrphanedAccounts: graceDays must be a whole number >= 0');
@@ -52,6 +54,7 @@ export async function purgeOrphanedAccounts(
     .limit(opts.batchSize ?? DEFAULT_BATCH);
   if (candidates.length === 0) return { purged: 0 };
 
+  const metrics = opts.metrics ?? getMetrics();
   const caggTables = await accountMaterializationTables(db);
   let purged = 0;
   const failedCodes: string[] = [];
@@ -63,6 +66,7 @@ export async function purgeOrphanedAccounts(
         )
       ) {
         purged++;
+        metrics.accountsDeleted.inc({ cause: 'orphan_purge' });
       }
     } catch (err) {
       failedCodes.push(pgErrorCode(err) ?? 'unknown');

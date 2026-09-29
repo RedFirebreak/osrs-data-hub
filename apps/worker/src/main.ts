@@ -9,6 +9,7 @@
  * | prune-audit-log            | daily                            |
  * | Timescale policies         | reconciled at startup            |
  *
+ * Every run is timed and counted (timed.ts); the metrics are served on WORKER_METRICS_PORT (D-84).
  * Raw payload clean-up is the raw_payloads retention policy; there is no job for it. Every queue
  * uses pg-boss's 'stately' policy (./queues): a run never overlaps the previous one, and ticks that
  * arrive meanwhile don't pile up.
@@ -24,7 +25,9 @@ import {
   purgeOrphanedAccounts,
   reverifyDueMembers,
 } from '@hub/server';
+import type { Server } from 'node:http';
 import { PgBoss, type Job } from 'pg-boss';
+import { createMetricsServer } from './metrics-server';
 import { JOBS, SCHEDULED_QUEUE_POLICY, ensureScheduledQueues } from './queues';
 import { timed } from './timed';
 
@@ -32,6 +35,7 @@ const config = getConfig();
 // The logger's base `service` field (a child binding would repeat the key in every JSON line).
 process.env.HUB_SERVICE ??= 'worker';
 const log = getLogger();
+const metrics = getMetrics();
 if (!config.databaseUrl) {
   log.fatal('DATABASE_URL is not set');
   process.exit(1);
@@ -50,7 +54,28 @@ boss.on('error', (err) =>
   log.error({ pgCode: pgErrorCode(err), error: safeDbErrorMessage(err) }, 'pg-boss error'),
 );
 
+let metricsServer: Server | null = null;
+
+/**
+ * Serves /metrics unless WORKER_METRICS_PORT is 0. A port in use is logged, not fatal: the jobs
+ * matter more than their metrics.
+ */
+function startMetricsServer() {
+  if (config.workerMetricsPort === 0) return;
+  metricsServer = createMetricsServer({ registry: metrics.registry, token: config.metricsToken });
+  metricsServer.on('error', (err: NodeJS.ErrnoException) =>
+    log.error({ code: err.code, port: config.workerMetricsPort }, 'metrics endpoint failed'),
+  );
+  metricsServer.listen(config.workerMetricsPort, () =>
+    log.info(
+      { port: config.workerMetricsPort, enabled: Boolean(config.metricsToken) },
+      'metrics endpoint listening',
+    ),
+  );
+}
+
 async function main() {
+  startMetricsServer();
   const changed = await applyTimescalePolicies(db, {
     xpRawRetentionDays: config.xpRawRetentionDays,
     locationRetentionDays: config.locationRetentionDays,
@@ -67,7 +92,7 @@ async function main() {
 
   // Handlers always receive an array of jobs (PGBOSS-1).
   await boss.work(JOBS.closeStaleSessions.name, async (_jobs: Job[]) => {
-    await timed(log, 'close-stale-sessions', () => closeStaleSessions(db));
+    await timed(log, metrics, 'close-stale-sessions', () => closeStaleSessions(db, { metrics }));
   });
   await boss.work(JOBS.reverifyMembers.name, async (_jobs: Job[]) => {
     const botToken = config.discord.botToken;
@@ -76,7 +101,7 @@ async function main() {
       log.warn('DISCORD_BOT_TOKEN or DISCORD_GUILD_ID not set: membership re-verification skipped');
       return;
     }
-    await timed(log, 'reverify-members', () =>
+    await timed(log, metrics, 'reverify-members', () =>
       reverifyDueMembers({
         db,
         botToken,
@@ -88,29 +113,32 @@ async function main() {
         },
         graceDays: config.offboardGraceDays,
         logger: log,
-        metrics: getMetrics(),
+        metrics,
       }),
     );
   });
   await boss.work(JOBS.expireGrace.name, async (_jobs: Job[]) => {
-    await timed(log, 'expire-grace', async () => {
+    await timed(log, metrics, 'expire-grace', async () => {
       // Grace expiry first (it transfers or deletes the accounts of users who leave), then the
       // time-gated purge of accounts nobody can reclaim (D-61). The purge runs even when some users
       // failed to expire; the first failure is reported afterwards.
       let expired: Awaited<ReturnType<typeof expireGracePeriods>> | null = null;
       let failure: unknown = null;
       try {
-        expired = await expireGracePeriods(db, {});
+        expired = await expireGracePeriods(db, { metrics });
       } catch (err) {
         failure = err;
       }
-      const purged = await purgeOrphanedAccounts(db, { graceDays: config.offboardGraceDays });
+      const purged = await purgeOrphanedAccounts(db, {
+        graceDays: config.offboardGraceDays,
+        metrics,
+      });
       if (failure) throw failure;
       return { ...expired, ...purged };
     });
   });
   await boss.work(JOBS.pruneAuditLog.name, async (_jobs: Job[]) => {
-    await timed(log, 'prune-audit-log', () =>
+    await timed(log, metrics, 'prune-audit-log', () =>
       pruneAuditLog(db, { retentionDays: config.auditLogRetentionDays }),
     );
   });
@@ -127,6 +155,7 @@ async function shutdown(signal: string) {
   stopping = true;
   log.info({ signal }, 'stopping');
   try {
+    metricsServer?.close();
     await boss.stop({ graceful: true, timeout: 20_000 });
   } finally {
     await pool.end().catch(() => {});
