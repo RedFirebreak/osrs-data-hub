@@ -129,6 +129,37 @@ Without `DISCORD_BOT_TOKEN` the worker says at startup that re-verification is o
 `METRICS_TOKEN`, `/metrics` answers 404. Both stop cleanly on SIGTERM (the web server exits with 143 by
 design).
 
+## Monitoring stack
+
+An opt-in Prometheus and Grafana for looking at the hub's metrics while developing (D-84). They run in
+Docker and scrape `pnpm dev` (port 3000) and `pnpm dev:worker` (its metrics on port 9464) on the host
+through `host.docker.internal`.
+
+1. Set a token in `.env` or `.env.dev`, e.g. `METRICS_TOKEN=dev-metrics-token`. The dev scripts and the
+   Prometheus container read the same files (a value in `.env.dev` wins). Restart `pnpm dev` and
+   `pnpm dev:worker` after changing it.
+2. Start the stack (it doesn't need the database or the app to be up first):
+
+   ```bash
+   docker compose -f compose.monitoring.yaml up -d
+   ```
+
+3. Open Grafana at <http://127.0.0.1:3001>; the Hub overview dashboard is the home page (anonymous
+   viewer; sign in as `admin`, password `GRAFANA_ADMIN_PASSWORD` or `admin`, to edit). Prometheus is at
+   <http://127.0.0.1:9090>; **Status → Targets** should show `hub-web` and `hub-worker` up, and
+   **Alerts** the rules from `ops/prometheus/alerts.yml`.
+
+- Prometheus exits at start with "METRICS_TOKEN is empty" when neither file sets it:
+  `docker compose -f compose.monitoring.yaml logs prometheus`.
+- Prometheus reloads its config and rules after `curl -X POST http://127.0.0.1:9090/-/reload`. Grafana
+  re-reads `ops/grafana/dashboards/*.json` within 30 s; its UI can't save over a provisioned dashboard,
+  so edit, export as JSON and write the file (OPERATIONS §7).
+- Stop it with `docker compose -f compose.monitoring.yaml down` (add `-v` to drop the stored series).
+- Without `METRICS_TOKEN` both endpoints answer 404, and `WORKER_METRICS_PORT=0` turns the worker's off
+  (for a second worker on the same machine). A worker whose port is taken logs `metrics endpoint failed`
+  and keeps running its jobs.
+- Check an endpoint by hand: `curl -H "Authorization: Bearer dev-metrics-token" http://localhost:9464/metrics`.
+
 ## Changing the schema
 
 1. Edit `packages/db/src/schema/*`.

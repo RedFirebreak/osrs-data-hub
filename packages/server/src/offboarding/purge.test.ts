@@ -2,6 +2,8 @@ import { auditLog, events, osrsAccounts, users } from '@hub/db';
 import { createTestDatabase, type TestDatabase } from '@hub/db/testing';
 import { eq, inArray, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { createTestMetrics } from '../metrics';
+import { countsBy } from '../metrics-test-support';
 import { accountMaterializationTables } from './expire';
 import { purgeAccount, purgeOrphanedAccounts } from './purge';
 import {
@@ -90,9 +92,11 @@ describe('purgeOrphanedAccounts (D-61)', () => {
     const ownerInGrace = await seedAccount(t.db, { owner: inGrace });
     await setTimes(ownerInGrace, { lastSeen: OLD, hiddenAt: OLD });
 
-    const result = await purgeOrphanedAccounts(t.db, { graceDays: GRACE_DAYS, now: NOW });
+    const metrics = createTestMetrics();
+    const result = await purgeOrphanedAccounts(t.db, { graceDays: GRACE_DAYS, now: NOW, metrics });
 
     expect(result).toEqual({ purged: 2 });
+    expect(await countsBy(metrics.accountsDeleted, 'cause')).toEqual({ orphan_purge: 2 });
     expect(await exists(bareOld)).toBe(false);
     expect(await exists(onlyBlocked)).toBe(false);
     for (const kept of [bareRecent, hiddenRecently, withContributor, activeOwner, ownerInGrace]) {

@@ -22,3 +22,13 @@ describe('HUB_NAME', () => {
     expect(parseConfig(ENV).hubName).toBe('osrs-data-hub');
   });
 });
+
+describe('WORKER_METRICS_PORT (D-83)', () => {
+  it('defaults to 9464, accepts 0 (no endpoint) and rejects anything but a whole number', () => {
+    expect(parseConfig(ENV).workerMetricsPort).toBe(9464);
+    expect(parseConfig({ ...ENV, WORKER_METRICS_PORT: '' }).workerMetricsPort).toBe(9464);
+    expect(parseConfig({ ...ENV, WORKER_METRICS_PORT: '9500' }).workerMetricsPort).toBe(9500);
+    expect(parseConfig({ ...ENV, WORKER_METRICS_PORT: '0' }).workerMetricsPort).toBe(0);
+    expect(() => parseConfig({ ...ENV, WORKER_METRICS_PORT: 'x' })).toThrow('WORKER_METRICS_PORT');
+  });
+});

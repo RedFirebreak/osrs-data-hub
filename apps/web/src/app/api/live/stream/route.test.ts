@@ -10,6 +10,7 @@ import {
   SSE_HEARTBEAT_MS,
   ensureLiveListener,
   getLiveHub,
+  getMetrics,
   type LiveEventMessage,
 } from '@hub/server';
 import { desc, eq, sql } from 'drizzle-orm';
@@ -251,8 +252,10 @@ describe('GET /api/live/stream', () => {
       }
       expect(getLiveHub().streamsOf(heavy)).toBe(LIVE_MAX_STREAMS_PER_USER);
 
+      const refusedBefore = await refusedCount();
       const refused = await GET(ctx.request('/api/live/stream', { cookie: heavyCookie }));
       expect(refused.status).toBe(429);
+      expect(await refusedCount()).toBe(refusedBefore + 1);
       expect(refused.headers.get('retry-after')).toBe(String(LIVE_STREAMS_RETRY_AFTER_SECONDS));
       expect(refused.headers.get('content-type')).toBe('application/json; charset=utf-8');
       expect(((await refused.json()) as { error: { code: string } }).error.code).toBe(
@@ -333,3 +336,8 @@ describe('GET /api/live/stream', () => {
     expect(getLiveHub().streamsOf(otherId)).toBe(0);
   });
 });
+
+/** hub_live_streams_refused_total in the process's registry. */
+async function refusedCount(): Promise<number> {
+  return (await getMetrics().liveStreamsRefused.get()).values[0]?.value ?? 0;
+}

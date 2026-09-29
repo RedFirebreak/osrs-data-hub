@@ -2,10 +2,10 @@
  * The /api/v1 plumbing every endpoint shares (withApiKey, cors.ts, the catch-all): CORS on every
  * response and the preflight, bearer-only authentication with one 401 for every failure, the
  * failed-authentication limit per IP (answered before any database access), the per-key limits with
- * their headers, and the 1/s /snapshot limit.
+ * their headers, the 1/s /snapshot limit, and the hub_api_* metrics they record.
  */
 import { users, type DbHandle } from '@hub/db';
-import { API_RATE_LIMIT, FAILED_AUTH_LIMIT, revokeApiKey } from '@hub/server';
+import { API_RATE_LIMIT, FAILED_AUTH_LIMIT, getMetrics, revokeApiKey } from '@hub/server';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getApiLimits, setApiLimitsForTests } from '@/lib/api-v1/with-api-key';
@@ -279,5 +279,106 @@ describe('per-key limits', () => {
     expect((await me({ key: key.key })).status).toBe(200);
     clock.advance(1_000);
     expect((await snapshot()).status).toBe(200);
+  });
+});
+
+/** A metric's values keyed by the given labels' values ("a|b"). The registry is the process's. */
+async function valuesBy(
+  metric: { get(): Promise<{ values: { labels: Record<string, unknown>; value: number }[] }> },
+  labels: string[],
+  metricName?: string,
+): Promise<Record<string, number>> {
+  const out: Record<string, number> = {};
+  for (const v of (await metric.get()).values) {
+    if (metricName !== undefined && (v as { metricName?: string }).metricName !== metricName) {
+      continue;
+    }
+    out[labels.map((l) => String(v.labels[l])).join('|')] = v.value;
+  }
+  return out;
+}
+
+/** What `run` added to a metric, by label values (unchanged entries left out). */
+async function added(
+  read: () => Promise<Record<string, number>>,
+  run: () => Promise<unknown>,
+): Promise<Record<string, number>> {
+  const before = await read();
+  await run();
+  const after = await read();
+  const out: Record<string, number> = {};
+  for (const [k, v] of Object.entries(after)) {
+    if (v !== (before[k] ?? 0)) out[k] = v - (before[k] ?? 0);
+  }
+  return out;
+}
+
+describe('metrics (D-83)', () => {
+  const requests = () => valuesBy(getMetrics().apiRequests, ['group', 'status']);
+
+  it('counts every request by route group and status, and times it', async () => {
+    const timed = () =>
+      valuesBy(getMetrics().apiLatency, ['group'], 'hub_api_request_duration_seconds_count');
+    const run = async () => {
+      expect((await me({ key: key.key })).status).toBe(200);
+      const account = accountRoute.GET(
+        v1Request(ctx, `/accounts/${RANDOM_ID}`, { key: key.key }),
+        idParams(RANDOM_ID),
+      );
+      expect((await account).status).toBe(404);
+      expect((await snapshotRoute.GET(v1Request(ctx, '/snapshot', { key: key.key }))).status).toBe(
+        200,
+      );
+      expect((await xpRoute.GET(v1Request(ctx, '/xp?accounts=x'))).status).toBe(401);
+      expect((await openapiRoute.GET()).status).toBe(200);
+      expect((await catchAll.GET()).status).toBe(404);
+    };
+    let latency: Record<string, number> = {};
+    const counted = await added(requests, async () => {
+      latency = await added(timed, run);
+    });
+
+    expect(counted).toEqual({
+      'me|200': 1,
+      'accounts|404': 1,
+      'snapshot|200': 1,
+      'xp|401': 1,
+      'openapi|200': 1,
+      'unknown|404': 1,
+    });
+    expect(latency).toEqual({ me: 1, accounts: 1, snapshot: 1, xp: 1, openapi: 1, unknown: 1 });
+  });
+
+  it('counts refused keys by reason, never with the key', async () => {
+    const failures = () => valuesBy(getMetrics().apiAuthFailures, ['reason']);
+    const wrongSecret = `ohub_${key.info.prefix}_${'x'.repeat(43)}`;
+    const counted = await added(failures, async () => {
+      await me({ ip: '192.0.2.31' });
+      await me({ headers: { authorization: 'Bearer not-a-key' }, ip: '192.0.2.31' });
+      await me({ headers: { authorization: `Bearer ${wrongSecret}` }, ip: '192.0.2.31' });
+    });
+    expect(counted).toEqual({ missing: 1, malformed: 1, unknown: 1 });
+    const text = await getMetrics().registry.metrics();
+    expect(text).not.toContain(key.info.prefix);
+  });
+
+  it('counts 429s by the limit that refused them', async () => {
+    const limited = () => valuesBy(getMetrics().apiRateLimited, ['limit']);
+    const bad = { authorization: `Bearer ohub_${'Q'.repeat(10)}_${'q'.repeat(43)}` };
+    const counted = await added(limited, async () => {
+      // /snapshot twice in a second.
+      await snapshotRoute.GET(v1Request(ctx, '/snapshot', { key: key.key }));
+      expect((await snapshotRoute.GET(v1Request(ctx, '/snapshot', { key: key.key }))).status).toBe(
+        429,
+      );
+      // The per-key minute.
+      for (let i = 0; i < API_RATE_LIMIT; i++) getApiLimits().perKey.hit(key.info.id);
+      expect((await me({ key: key.key })).status).toBe(429);
+      // The failed-authentication limit of one IP.
+      const ip = '198.51.100.30';
+      for (let i = 0; i < FAILED_AUTH_LIMIT; i++) await me({ headers: bad, ip });
+      expect((await me({ headers: bad, ip })).status).toBe(429);
+    });
+    expect(counted).toEqual({ snapshot: 1, key: 1, auth_ip: 1 });
   });
 });

@@ -11,10 +11,13 @@
  * response. A failure after that can't change the status any more: it is logged (code and
  * parameter-free message only, DB-3) and the stream is errored, so the download visibly breaks
  * instead of ending in a truncated or patched-up document.
+ *
+ * Every request past the session check counts once in hub_data_exports_total{result}: rate_limited,
+ * failed (before or while streaming), cancelled (the client stopped reading) or completed.
  */
 import { getConfig } from '@hub/core';
 import { getDb, pgErrorCode, safeDbErrorMessage } from '@hub/db';
-import { exportUserData, getLogger } from '@hub/server';
+import { exportUserData, getLogger, getMetrics } from '@hub/server';
 import { connection } from 'next/server';
 import { ApiError, assertSameOrigin, handleApi } from '@/lib/http';
 import { requireApiUser } from '@/lib/session';
@@ -27,6 +30,7 @@ export async function GET(request: Request): Promise<Response> {
     const { user } = await requireApiUser(request);
     const limit = getExportLimiter().hit(user.id);
     if (!limit.ok) {
+      countExport('rate_limited');
       throw new ApiError(
         429,
         'rate_limited',
@@ -40,7 +44,13 @@ export async function GET(request: Request): Promise<Response> {
       now,
       hub: { name: config.hubName, url: config.appOrigin },
     });
-    const first = await pieces.next();
+    let first: IteratorResult<string, void>;
+    try {
+      first = await pieces.next();
+    } catch (err) {
+      countExport('failed');
+      throw err;
+    }
     const filename = `osrs-data-hub-export-${now.toISOString().slice(0, 10)}.json`;
     return new Response(streamOf(pieces, first, user.id), {
       status: 200,
@@ -62,24 +72,39 @@ function streamOf(
 ): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
   let pending: IteratorResult<string, void> | null = first;
+  // A pull still running when the client cancels throws at enqueue once the stream is closed: that
+  // is the cancellation, not a failed export (NEXT-16).
+  let cancelled = false;
   return new ReadableStream<Uint8Array>({
     async pull(controller) {
       try {
         const next = pending ?? (await pieces.next());
         pending = null;
-        if (next.done) controller.close();
-        else controller.enqueue(encoder.encode(next.value));
+        if (next.done) {
+          countExport('completed');
+          controller.close();
+        } else {
+          controller.enqueue(encoder.encode(next.value));
+        }
       } catch (err) {
+        if (cancelled) return;
         // The 200 is out; see the file comment. DB-3: code and parameter-free message only.
         getLogger().error(
           { userId, pgCode: pgErrorCode(err), error: safeDbErrorMessage(err) },
           'export: failed while streaming',
         );
+        countExport('failed');
         controller.error(new Error('The export failed.'));
       }
     },
     async cancel() {
+      cancelled = true;
+      countExport('cancelled');
       await pieces.return(undefined);
     },
   });
+}
+
+function countExport(result: 'completed' | 'failed' | 'cancelled' | 'rate_limited'): void {
+  getMetrics().dataExports.inc({ result });
 }

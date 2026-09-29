@@ -3,6 +3,8 @@ import { createTestDatabase, type TestDatabase } from '@hub/db/testing';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ACCOUNT_LOCK_CLASS } from '../ingest/store';
+import { createTestMetrics } from '../metrics';
+import { countsBy } from '../metrics-test-support';
 import { takeOverFromOwnerInGrace } from './accounts';
 import { nextGraceState, offboardUser, restoreUser } from './offboard';
 import {
@@ -245,7 +247,8 @@ describe('offboardUser', () => {
     const userId = await seedUser(t.db);
     await seedDevice(t.db, userId);
     const account = await seedAccount(t.db, { owner: userId });
-    await offboardUser(t.db, { userId, reason: 'left_guild', graceDays: 30, now: NOW });
+    const metrics = createTestMetrics();
+    await offboardUser(t.db, { userId, reason: 'left_guild', graceDays: 30, now: NOW, metrics });
 
     const later = new Date(NOW.getTime() + 2 * DAY);
     const again = await offboardUser(t.db, {
@@ -253,6 +256,7 @@ describe('offboardUser', () => {
       reason: 'lost_role',
       graceDays: 30,
       now: later,
+      metrics,
     });
 
     expect(again).toEqual({ transferred: [], hidden: [], revokedDevices: 0, deletedSessions: 0 });
@@ -265,9 +269,11 @@ describe('offboardUser', () => {
     expect(await audits('user.offboarded', userId)).toHaveLength(1);
 
     // A shorter grace period (e.g. a 7-day self-delete) moves the date earlier.
-    await offboardUser(t.db, { userId, reason: 'self_delete', graceDays: 7, now: later });
+    await offboardUser(t.db, { userId, reason: 'self_delete', graceDays: 7, now: later, metrics });
     expect((await userRow(userId))?.graceUntil).toEqual(new Date(later.getTime() + 7 * DAY));
     expect(await audits('user.offboarded', userId)).toHaveLength(2);
+    // Counted once: only the offboarding that moved an active user into grace.
+    expect(await countsBy(metrics.offboardedUsers, 'reason')).toEqual({ left_guild: 1 });
   });
 
   it('transfers an account hidden earlier once an active contributor exists', async () => {
@@ -298,10 +304,12 @@ describe('offboardUser', () => {
 
   it('does nothing for an unknown user', async () => {
     const before = await t.db.select().from(auditLog);
+    const metrics = createTestMetrics();
     await expect(
-      offboardUser(t.db, { userId: 'nobody', reason: 'admin', graceDays: 30, now: NOW }),
+      offboardUser(t.db, { userId: 'nobody', reason: 'admin', graceDays: 30, now: NOW, metrics }),
     ).resolves.toEqual({ transferred: [], hidden: [], revokedDevices: 0, deletedSessions: 0 });
     expect(await t.db.select().from(auditLog)).toHaveLength(before.length);
+    expect(await countsBy(metrics.offboardedUsers, 'reason')).toEqual({});
   });
 
   it('refuses a negative or non-finite grace period', async () => {

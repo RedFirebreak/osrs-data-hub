@@ -1,0 +1,17 @@
+# Dashboards from ops/grafana/dashboards (mounted read-only at /etc/grafana/dashboards).
+# allowUiUpdates: false — the JSON in the repo is the source of truth. To change a dashboard, edit it
+# in the UI, "Export > Export as JSON" (keep "Export for sharing externally" off), save it over the
+# file and wait for the next scan (updateIntervalSeconds) or restart Grafana.
+apiVersion: 1
+
+providers:
+  - name: osrs-data-hub
+    orgId: 1
+    folder: osrs-data-hub
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    updateIntervalSeconds: 30
+    options:
+      path: /etc/grafana/dashboards
+      foldersFromFilesStructure: false

@@ -50,6 +50,7 @@ describe('checkApiRate', () => {
         'X-RateLimit-Reset': '40',
       },
       retryAfterSeconds: 40,
+      limit: 'key',
     });
     // Other keys are independent.
     expect(checkApiRate(limits, 'key-b', { snapshot: false }).ok).toBe(true);
@@ -67,6 +68,7 @@ describe('checkApiRate', () => {
     expect(checkApiRate(limits, 'k', { snapshot: true }).ok).toBe(true);
     const second = checkApiRate(limits, 'k', { snapshot: true });
     expect(second.ok).toBe(false);
+    expect(second.limit).toBe('snapshot');
     expect(second.retryAfterSeconds).toBe(1);
     // Refused requests don't count towards the minute; other endpoints stay open.
     expect(second.headers['X-RateLimit-Remaining']).toBe('119');
@@ -83,6 +85,7 @@ describe('checkApiRate', () => {
     for (let i = 0; i < API_RATE_LIMIT; i++) checkApiRate(limits, 'k', { snapshot: false });
     const refused = checkApiRate(limits, 'k', { snapshot: true });
     expect(refused.ok).toBe(false);
+    expect(refused.limit).toBe('key');
     expect(refused.retryAfterSeconds).toBe(60);
     clock.t += 60 * SEC;
     expect(checkApiRate(limits, 'k', { snapshot: true }).ok).toBe(true);

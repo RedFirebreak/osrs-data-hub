@@ -5,16 +5,18 @@
  */
 import { connection } from 'next/server';
 import { preflight, withCors } from '@/lib/api-v1/cors';
+import { measureApiRequest } from '@/lib/api-v1/metrics';
 import { buildOpenApiDocument } from '@/lib/api-v1/openapi';
 import { handleApi, json } from '@/lib/http';
 
 export async function GET(): Promise<Response> {
+  const done = measureApiRequest('openapi');
   const res = await handleApi(async () => {
     // Built per request: `servers` comes from APP_URL at run time, not at build time (NEXT-2).
     await connection();
     return json(200, buildOpenApiDocument(), { 'Cache-Control': 'public, max-age=300' });
   });
-  return withCors(res);
+  return done(withCors(res));
 }
 
 export const OPTIONS = preflight;

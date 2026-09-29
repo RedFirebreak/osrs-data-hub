@@ -6,6 +6,7 @@
  */
 import { users, type Db } from '@hub/db';
 import { eq } from 'drizzle-orm';
+import type { HubMetrics } from '../metrics';
 import { offboardUser } from './offboard';
 
 /** Days between "Delete my data" and the hard delete; signing in before then cancels it (D-78). */
@@ -62,7 +63,7 @@ export function isSelfDeleteConfirmation(confirm: unknown): boolean {
  */
 export async function deleteMyData(
   db: Db,
-  opts: { userId: string; confirm: string; now?: Date },
+  opts: { userId: string; confirm: string; now?: Date; metrics?: HubMetrics },
 ): Promise<SelfDeleteResult> {
   if (!isSelfDeleteConfirmation(opts.confirm)) {
     throw new SelfDeleteError('invalid', `Type "${SELF_DELETE_CONFIRMATION}" to confirm.`);
@@ -78,6 +79,7 @@ export async function deleteMyData(
     graceDays: SELF_DELETE_UNDO_DAYS,
     now,
     actorUserId: opts.userId,
+    metrics: opts.metrics,
   });
   const after = await userState(db, opts.userId);
   if (after?.status !== 'grace' || after.graceUntil === null) {

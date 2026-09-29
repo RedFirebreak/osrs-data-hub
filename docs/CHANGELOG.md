@@ -4,6 +4,40 @@ Changes are consolidated per pull request, newest first. Each entry names the PR
 open), what changed, and any decision (`D-n`, see [ARCHITECTURE.md](ARCHITECTURE.md#decision-log)) or
 gotcha (`AREA-n`, see [gotchas](gotchas/README.md)) it introduced.
 
+## M4 metrics dashboards (branch `red/m4-metrics-dashboards-db30d3`)
+
+Handoff §16's metrics, complete, with a Grafana dashboard and alert rules as code (D-83, D-84).
+
+- **Gap analysis.** Of §16, job durations were missing (only logged), and the Discord verification
+  failures were counted in the worker, which nothing scraped, so `/metrics` always showed 0. Added since
+  the handoff and now counted: the public API, Download and Delete my data, live streams refused by the
+  per-user limit (D-80), the grace expiry and the orphan purge, and the verification circuit breaker.
+- **New metrics** (`packages/server/src/metrics.ts`, table in ARCHITECTURE §13): `hub_job_*`
+  (duration, runs by result, last success, per `job_name`), `hub_discord_verify_checks_total{verdict}`,
+  `hub_discord_verify_breaker_trips_total{rule}`, `hub_offboarded_users_total{reason}`,
+  `hub_grace_expired_users_total`, `hub_accounts_deleted_total{cause}`, `hub_data_exports_total{result}`,
+  `hub_live_streams_refused_total`, `hub_play_sessions_open`, `hub_play_sessions_timed_out_total`, and
+  `hub_api_requests_total{group,status}`, `hub_api_request_duration_seconds{group}`,
+  `hub_api_rate_limited_total{limit}`, `hub_api_auth_failures_total{reason}`. Every label is a fixed set
+  (D-53); known label combinations start at 0, so the first event after a restart shows in `increase()`
+  (PROM-1).
+- **Worker `/metrics`** (D-83): `WORKER_METRICS_PORT` (default 9464, 0 = off), the web route's rules
+  (404 without `METRICS_TOKEN`, 401 without the bearer token) through a shared `metricsAccess`. Compose
+  publishes it on `WORKER_METRICS_BIND` (default `127.0.0.1`).
+- **Dashboards and alerts** (D-84): `ops/grafana/dashboards/hub-overview.json` (datasource and job
+  variables, no hardcoded uid, named colours for both themes), `ops/prometheus/alerts.yml` (ingest 5xx
+  ratio, no payloads while players are online, breaker tripped, job failing or stale), and
+  `ops/prometheus/scrape-example.yml` for an existing Prometheus.
+- **Local stack:** `compose.monitoring.yaml` runs Prometheus and Grafana (provisioned from `ops/`) that
+  scrape `pnpm dev` and `pnpm dev:worker` on the host; `.claude/launch.json` can start the worker too.
+- **Docs:** OPERATIONS §3 (keep `/metrics` to the Prometheus server in Caddy and nginx) and §7 (pointing
+  Prometheus at the hub, importing the dashboard), DEVELOPMENT "Monitoring stack", ARCHITECTURE §2, §11,
+  §13, §14.
+- **Fixed:** cancelling Download my data halfway logged `export: failed while streaming`: the pull still
+  running when the client cancelled threw at `enqueue` (NEXT-16). It is now counted as cancelled, not
+  logged as an error.
+- `checkApiRate` now says which limit refused a request (`limit: 'key' | 'snapshot'`).
+
 ## Unreleased — V1 (branch `red/eloquent-johnson-yufg78`)
 
 Milestones M0 and M1 and the M2 scope of the handoff, plus two M4 items (leaderboards, the decommission

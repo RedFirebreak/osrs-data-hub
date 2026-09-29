@@ -31,7 +31,7 @@ docker compose logs -f web worker
 ```
 
 `migrate` runs first and exits; `web` and `worker` start when it succeeded. The web container listens on
-`127.0.0.1:3000` (override with `WEB_PORT`).
+`127.0.0.1:3000` (override with `WEB_PORT`), the worker's metrics endpoint on `127.0.0.1:9464` (§7).
 
 The `db` service is tuned by the image at first start: `DB_MEMORY` (default `2GB`) sets the memory it
 tunes for, and `TS_TUNE_MAX_CONNS=100` keeps enough connections for the web, worker and job pools
@@ -39,7 +39,7 @@ tunes for, and `TS_TUNE_MAX_CONNS=100` keeps enough connections for the web, wor
 
 ## 3. Reverse proxy
 
-Terminate TLS in the proxy you already run and forward to `127.0.0.1:3000`. Five requirements:
+Terminate TLS in the proxy you already run and forward to `127.0.0.1:3000`. Six requirements:
 
 1. **Don't buffer `text/event-stream`.** The live stream (`/api/live/stream`) sends
    `X-Accel-Buffering: no`, which nginx honours; Caddy and Traefik stream by default.
@@ -57,16 +57,30 @@ Terminate TLS in the proxy you already run and forward to `127.0.0.1:3000`. Five
 5. **Never redirect `/api/osrs-data/*`.** The plugin turns a 301/302 into a body-less GET and doesn't
    follow 307/308, so data is lost silently (PLUGIN-2). Redirect http → https for the UI only, or tell
    players to use the `https://` URL exactly as the wizard shows it.
+6. **Keep `/metrics` off the internet.** It is token-protected, but nothing outside your monitoring needs
+   it: answer 404 to everyone except your Prometheus server (examples below and in §7). The worker's
+   metrics port is never behind the proxy.
 
 Examples:
 
 ```caddyfile
 hub.example.com {
+  # /metrics only for the Prometheus server (drop the matcher's allow-list to block it entirely).
+  @metrics_blocked {
+    path /metrics /metrics/*
+    not remote_ip 10.0.0.5
+  }
+  respond @metrics_blocked 404
   reverse_proxy 127.0.0.1:3000
 }
 ```
 
 ```nginx
+location = /metrics {
+  allow 10.0.0.5;               # your Prometheus server; remove to block /metrics entirely
+  deny all;
+  proxy_pass http://127.0.0.1:3000;
+}
 location / {
   proxy_pass http://127.0.0.1:3000;
   proxy_http_version 1.1;
@@ -132,11 +146,57 @@ a range whose raw data retention already dropped erases the aggregated history (
 ## 7. Monitoring
 
 - `GET /api/health`: 200 when the web service can reach the database.
-- `GET /metrics`: Prometheus metrics, enabled when `METRICS_TOKEN` is set; send
-  `Authorization: Bearer <METRICS_TOKEN>`. Ingest by status, events by type, duplicates, skipped
-  sections/events, latency, plugin versions, pairing attempts, SSE connections and Discord verification
-  failures.
+- **Metrics**, off until `METRICS_TOKEN` is set (`openssl rand -hex 32`); both endpoints then want
+  `Authorization: Bearer <METRICS_TOKEN>` (401 otherwise):
+  - the web service's `GET /metrics`: ingest (by status, events by type, duplicates, skipped, latency,
+    plugin versions), live connections and refused streams, pairing, the public API (requests by route
+    group and status, latency, 429s by limit, failed key authentications) and data exports;
+  - the worker's `GET /metrics` on port `WORKER_METRICS_PORT` (9464): job durations, runs and last
+    success, Discord re-verification (checks, failures, circuit-breaker trips), open play sessions,
+    grace expiries and deleted accounts (D-83).
+
+  The full list is in [ARCHITECTURE.md §13](ARCHITECTURE.md#13-configuration-and-operations). Labels
+  are fixed sets: no user, account or device ids, names, IP addresses or coordinates.
 - Logs are JSON on stdout (pino). They never contain tokens, request bodies or coordinates.
+
+### Pointing your Prometheus at the hub
+
+[`ops/prometheus/scrape-example.yml`](../ops/prometheus/scrape-example.yml) has both scrape jobs; keep
+their names `hub-web` and `hub-worker`. Put the token in a file readable by Prometheus only and use
+`authorization.credentials_file`.
+
+- **Prometheus on the hub VM:** scrape `127.0.0.1:3000` and `127.0.0.1:9464` directly.
+- **Prometheus elsewhere (a monitoring server in your network):**
+  - web: through the reverse proxy, `https://<your hub>/metrics`, with the proxy allowing `/metrics`
+    from the Prometheus server only (§3, requirement 6);
+  - worker: set `WORKER_METRICS_BIND` in `.env` to the VM's **private** address (it defaults to
+    `127.0.0.1`), `docker compose up -d worker`, and firewall port 9464 to the Prometheus server. Never
+    bind it to a public address: the token then crosses the network in plain HTTP.
+- **Alerts:** copy [`ops/prometheus/alerts.yml`](../ops/prometheus/alerts.yml) next to your
+  `prometheus.yml` and add it to `rule_files`. It alerts on an ingest 5xx ratio above 5%, no accepted
+  payloads for 10 minutes while play sessions are open, a tripped verification breaker, a job failing
+  3 times in an hour, and a job that hasn't succeeded for a few of its periods. Routing them needs your
+  Alertmanager.
+
+Check a scrape by hand: `curl -H "Authorization: Bearer $METRICS_TOKEN" http://127.0.0.1:9464/metrics`.
+
+### Importing the dashboard
+
+In Grafana: **Dashboards → New → Import**, upload
+[`ops/grafana/dashboards/hub-overview.json`](../ops/grafana/dashboards/hub-overview.json) and pick your
+Prometheus in the **Data source** variable at the top (the JSON names no datasource). The **Job**
+variable lists the scrape jobs that export hub metrics; All sums web and worker, which is what every
+panel expects. To change the dashboard, edit it in Grafana, export it as JSON (with "Export for sharing
+externally" off) and commit it over the file, so the repo stays the source (D-84).
+
+Some panels need a little history: re-verification, grace expiry and the audit-log prune run every
+15 minutes, hourly and daily, so their panels use one-hour windows. The "last success" panel and the
+`HubJobStale` alert only know about runs since the worker last started.
+
+### Local stack
+
+For development there is an opt-in Prometheus + Grafana that scrapes `pnpm dev` and `pnpm dev:worker` on
+the host: see [DEVELOPMENT.md](DEVELOPMENT.md#monitoring-stack). It is not meant for production.
 - A user who ran **Delete my data** shows in Admin → Users as in grace with reason `self_delete` for
   7 days; an admin restore undoes it, as signing in does (D-78). The export limit (one per user per
   10 minutes) and the live-stream limit are kept in the web process's memory and reset on restart.

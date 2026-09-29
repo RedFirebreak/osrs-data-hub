@@ -1,0 +1,85 @@
+# Alerting rules for osrs-data-hub. Loaded by the local stack (prometheus.yml) and meant to be copied
+# into an existing Prometheus (scrape-example.yml). Web and worker export the same metric set and a
+# series only moves in the process doing the work, so every rule sums across both.
+groups:
+  - name: osrs-data-hub
+    rules:
+      - alert: HubIngest5xxRate
+        expr: |
+          sum(rate(hub_ingest_payloads_total{status=~"5.."}[5m]))
+            / sum(rate(hub_ingest_payloads_total[5m]))
+          > 0.05
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: 'More than 5% of ingest requests fail with 5xx'
+          description: >-
+            {{ $value | humanizePercentage }} of plugin payloads got a 5xx over the last 5 minutes,
+            for 10 minutes. The plugin retries, but data is delayed; 503 usually means the database
+            is unreachable or overloaded. Check the web logs and the database.
+
+      - alert: HubNoPayloadsWhilePlayersOnline
+        expr: |
+          sum(increase(hub_ingest_payloads_total{status="200"}[10m])) < 1
+          and on ()
+          (
+            sum(hub_play_sessions_open) > 0
+            or on ()
+            sum(increase(hub_play_sessions_timed_out_total[15m])) > 0
+          )
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'No payloads accepted for 10 minutes while play sessions are open'
+          description: >-
+            No ingest request returned 200 in the last 10 minutes, yet play sessions are open (or
+            were timed out in the last 15 minutes). Ingest may be unreachable (proxy, DNS, TLS) or
+            rejecting every payload; see hub_ingest_payloads_total by status. A single client that
+            crashed without a clean logout can also trigger this: its session stays open until the
+            presence timeout closes it.
+
+      - alert: HubVerificationBreakerTripped
+        expr: sum(increase(hub_discord_verify_breaker_trips_total[30m])) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Discord re-verification stopped by a circuit breaker'
+          description: >-
+            A re-verification run was stopped by a circuit breaker and offboarded nobody. Usually a
+            wrong guild id, the bot kicked from the guild, or the required role renamed or removed.
+            See the worker logs (the rule label of hub_discord_verify_breaker_trips_total says which
+            breaker).
+
+      - alert: HubJobFailing
+        # The job's name is the job_name label; job is the scrape job (hub-worker).
+        expr: sum by (job_name) (increase(hub_job_runs_total{result="failure"}[1h])) >= 3
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Worker job {{ $labels.job_name }} failed repeatedly'
+          description: >-
+            {{ $labels.job_name }} failed {{ $value | printf "%.0f" }} times in the last hour. See the
+            worker logs.
+
+      - alert: HubJobStale
+        # Per-job limits: a few missed runs. hub_job_last_success_timestamp_seconds only exists once
+        # the job succeeded since the worker started, so this cannot fire for a job that has not
+        # succeeded since a restart (HubJobFailing covers one that runs and fails), nor while the
+        # worker is down (its series are gone).
+        expr: |
+          (time() - max by (job_name) (hub_job_last_success_timestamp_seconds{job_name="close-stale-sessions"})) > 600
+          or
+          (time() - max by (job_name) (hub_job_last_success_timestamp_seconds{job_name="reverify-members"})) > 3600
+          or
+          (time() - max by (job_name) (hub_job_last_success_timestamp_seconds{job_name="expire-grace"})) > 10800
+          or
+          (time() - max by (job_name) (hub_job_last_success_timestamp_seconds{job_name="prune-audit-log"})) > 93600
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Worker job {{ $labels.job_name }} has not succeeded recently'
+          description: >-
+            {{ $labels.job_name }} last succeeded {{ $value | humanizeDuration }} ago. Check that the
+            worker is running and the job's schedule, and the worker logs.

@@ -114,6 +114,9 @@ export async function reverifyDueMembers(deps: ReverifyDeps): Promise<ReverifyRe
   const departures: Departure[] = [];
   for (const check of checks) {
     const { user, verdict, lookup } = check;
+    deps.metrics.discordVerifyChecks.inc({
+      verdict: verdict.kind === 'ok' ? 'member' : verdict.kind,
+    });
     if (verdict.kind === 'ok') {
       await recordSafely(deps, user, () => recordMember(deps, user, verdict.member, now));
     } else if (verdict.kind === 'error') {
@@ -187,6 +190,7 @@ async function breakerTripped(
     ...(windowBreakerTrips(recent, departures, active) ? ['window'] : []),
   ];
   if (rules.length === 0) return false;
+  for (const rule of rules) deps.metrics.discordVerifyBreakerTrips.inc({ rule });
   deps.logger.error(
     {
       rules,
@@ -396,6 +400,7 @@ async function offboardDepartures(
         graceDays: deps.graceDays,
         now,
         actorLabel: REVERIFY_ACTOR,
+        metrics: deps.metrics,
       });
       offboarded++;
       deps.logger.info(

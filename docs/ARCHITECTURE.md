@@ -67,6 +67,8 @@ packages/db         Drizzle schema, migrations (incl. custom Timescale SQL), cli
 packages/server     DB-backed services shared by web and worker: ingest, pairing, devices, accounts,
                     sharing, Discord membership, live fan-out, offboarding
 packages/fixtures   v1.5 plugin payloads (anonymized) used by tests
+ops/                backup.sh; Prometheus config, scrape example and alert rules (ops/prometheus);
+                    Grafana provisioning and dashboards as JSON (ops/grafana), D-84
 ```
 
 `packages/server` is an addition to the handoff layout (D-20): the handoff puts the ingest pipeline in
@@ -256,7 +258,10 @@ sticky header. The stream is also the route that renews the session cookie for a
 | Clean up raw payloads | the retention policy does the work; no job |
 
 Every queue uses pg-boss's `stately` policy, so runs never overlap or pile up (D-63), and a failed job is
-logged and stored with its SQLSTATE and Postgres message only (DB-3). The worker stops cleanly on
+logged and stored with its SQLSTATE and Postgres message only (DB-3). Every run is also timed and counted
+(`hub_job_duration_seconds`, `hub_job_runs_total{job_name,result}`,
+`hub_job_last_success_timestamp_seconds`), and the worker serves its metrics on `WORKER_METRICS_PORT`
+(D-83). A re-verification run skipped for missing Discord config is not a run and isn't counted. The worker stops cleanly on
 SIGTERM (pg-boss graceful stop, then the pool).
 
 ## 12. Web UI
@@ -328,6 +333,25 @@ defaults, and [`OPERATIONS.md`](OPERATIONS.md) for deploys, backups and the reve
 Options an admin changes at run time live in `hub_settings` (key → jsonb) and are audited: the
 decommission switch (D-56) and the guild feed filter (D-81), both on the admin pages.
 
+**Monitoring.** Two Prometheus endpoints, both behind `METRICS_TOKEN` (404 without it, 401 without the
+bearer token): the web service's `GET /metrics` and the worker's (D-83). Both processes build the same
+metric set (`packages/server/src/metrics.ts`); a series only moves in the process that does the work, so
+queries sum over both. Labels come from fixed sets in the code, never ids, names, addresses or
+coordinates (D-53). The Grafana dashboard and the alert rules are files in `ops/` for the operator's own
+Prometheus and Grafana (D-84); the hub never links to them. The in-app view for admins stays the Ingest
+health page, which reads the web process's registry and the database directly.
+
+| Area | Metrics (`hub_…`) | Process |
+|---|---|---|
+| Ingest | `ingest_payloads_total{status}`, `ingest_events_total{type}`, `ingest_duplicate_events_total`, `ingest_skipped_sections_total`, `ingest_skipped_events_total`, `ingest_ignored_total{reason}`, `ingest_duration_seconds`, `plugin_requests_by_version_total{version}` | web |
+| Live and pairing | `sse_connections`, `live_streams_refused_total`, `pair_attempts_total{result}` | web |
+| Public API | `api_requests_total{group,status}`, `api_request_duration_seconds{group}`, `api_rate_limited_total{limit}`, `api_auth_failures_total{reason}` | web |
+| Data rights | `data_exports_total{result}`, `offboarded_users_total{reason}` (`self_delete` = Delete my data) | web (and worker for re-verification) |
+| Discord | `discord_verify_checks_total{verdict}`, `discord_verify_failures_total{kind}`, `discord_verify_breaker_trips_total{rule}` | worker |
+| Players and retention | `play_sessions_open`, `play_sessions_timed_out_total`, `grace_expired_users_total`, `accounts_deleted_total{cause}` | worker |
+| Jobs | `job_duration_seconds{job_name}`, `job_runs_total{job_name,result}`, `job_last_success_timestamp_seconds{job_name}` | worker |
+| Process | prom-client's defaults with the `hub_` prefix | both |
+
 ## 14. Milestones and status
 
 | Milestone | Scope | Status |
@@ -336,7 +360,7 @@ decommission switch (D-56) and the guild feed filter (D-81), both on the admin p
 | M1 Ingest + onboarding | login + guild gate, pairing, ingest, wizard, devices, dashboard, toasts, default sharing | done, with the wizard e2e test |
 | M2 History & sharing | charts, aggregates/retention, sessions, equipment, wealth, locations, sharing UI, guild page, re-verification/offboarding, admin basics | done; the 30-day location trail is stored and served (`/api/app/accounts/[id]/locations`) but not drawn |
 | M3 Public API | API keys, `/api/v1/*`, OpenAPI, cursor feed, `/snapshot` | done: keys, key access and a read model per endpoint (`packages/server/src/api/`); every `/api/v1` endpoint of handoff §13 behind one bearer-key wrapper, snake_case JSON through typed mappers (D-77), CORS, OpenAPI 3.1 at `/api/v1/openapi.json`, the Scalar reference at `/docs/api`, the API keys page; consumer guide in [API.md](API.md) |
-| M4 Hardening | metrics dashboards, verified restores, export/delete, leaderboards, decommission switch | partly: gains leaderboards (guild page), the decommission switch (D-56), `/metrics`, download my data (D-79) and delete my data (D-78) are built; dashboards and a verified restore are not |
+| M4 Hardening | metrics dashboards, verified restores, export/delete, leaderboards, decommission switch | partly: gains leaderboards (guild page), the decommission switch (D-56), download my data (D-79), delete my data (D-78) and metrics dashboards are built: `/metrics` on web and worker (D-83), the Hub overview dashboard, alert rules and a local Prometheus + Grafana stack (D-84). A verified restore is not |
 
 ## Decision log
 
@@ -427,3 +451,5 @@ Decisions are permanent IDs; a reversed decision is marked superseded, never del
 | D-80 | Small limits found in review: at most **5 live streams per user** (a sixth answers 429 + `Retry-After`, and the client falls back to polling); the member list for the grant picker (`/api/app/members`) only for users who can manage the sharing of at least one account (owner or admin), 403 otherwise; the raw-payload viewer's audited GET requires the same origin. | Bounds one user's hold on the web process (D-5), keeps the member directory to those who need it, and stops a cross-site request from writing audit entries. | Build (M4) |
 | D-81 | **Guild feed filter**, an admin setting (Admin → Settings, `hub_settings` key `guild_feed`, audited `hub.guild_feed_changed`): the guild page's activity feed leaves out loot and PK loot below `minLootValue` gp (default 0; a missing value counts as 0) and, unless `showVirtualLevels` (default **off**), level-ups past 99 in a skill; the `Combat` level-up (real maximum 126) is never virtual. One rule in `@hub/core` (`inGuildFeed`), applied in SQL to the feed's pages (the guild page, and `GET /api/app/feed` without `account`) and in the browser to the page's live events. Account timelines, the dashboard, toasts and the public API are not filtered, and nothing is deleted. | A player can set the plugin's loot threshold to 1 gp and flood the shared feed; virtual levels (PLUGIN-9) are noise for most guilds. Each viewer's own toast filter already covers toasts. | Build (requested by the owner, 2026-09-29) |
 | D-82 | Supersedes D-22 for `location_live`: its default audience is **guild**; `location_history` stays private. Migration `0004` writes an explicit `private` row for every account that existed before, so only accounts first seen afterwards get the new default. | Live location is what the guild's live map is for; the 30-day trail says much more and stays private. A missing sharing row means the default, so changing it without pinning would have shared every existing account's position without its owner doing anything. | Build (requested by the owner, 2026-09-29) |
+| D-83 | **Worker metrics**: the worker serves `GET /metrics` itself (`node:http`, `WORKER_METRICS_PORT`, default 9464; 0 = none) with the web route's rules, shared in `metricsAccess`: 404 without `METRICS_TOKEN`, 401 without `Authorization: Bearer <token>` (constant-time), any other path 404. `compose.yaml` publishes it on `WORKER_METRICS_BIND` (default `127.0.0.1`); the reverse proxy never sees it. Both processes build the same metric set; each series moves only where the work happens, so queries `sum()` over both. Series of a fixed label set (job × result, breaker rule, verdict, …) are created at 0 at startup (PROM-1). New label sets are fixed enums (extends D-53): the API's route `group` is the first path segment when it names a route group, else `unknown`. The job label is `job_name`, since `job` is Prometheus's own target label. | The worker is a separate process with its own registry: until now its job durations were only logged, and the Discord failure counter it incremented was never scraped. A push gateway or a shared registry through the database would add a moving part; one small listener doesn't. A series that first appears at 1 has `increase()` 0, so the first breaker trip or job failure after a restart would never alert. | Build (M4) |
+| D-84 | **Dashboards and alerts as code** in `ops/`: `ops/grafana/dashboards/hub-overview.json` picks its datasource through a `datasource` variable (never a uid) and its scrape jobs through a `job` variable, and uses named colours only, so the same JSON imports into any Grafana, in either theme. `ops/prometheus/alerts.yml`: ingest 5xx ratio, no payloads while play sessions are open, the verification breaker, a job failing or not succeeding. `compose.monitoring.yaml` is an opt-in local Prometheus + Grafana (provisioned from those files) that scrapes the dev processes on the host; `ops/prometheus/scrape-example.yml` shows an existing Prometheus how to scrape a deployed hub. The hub never links to Grafana. | The operator already runs Prometheus and Grafana (D-14); files in the repo are reviewed and versioned with the metrics they query. Users see the admin Ingest health page, not Grafana. | Build (M4) |
