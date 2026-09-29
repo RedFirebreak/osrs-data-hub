@@ -90,14 +90,14 @@ describe('GET /api/app/accounts/[publicId]/sharing', () => {
     expect((await get(account.publicId)).status).toBe(401);
   });
 
-  it('the owner reads every category with its defaults, and the contributors', async () => {
+  it('the owner reads every category with its defaults (D-22, D-82), and the contributors', async () => {
     const sharing = await sharingOf(await get(account.publicId, owner.cookie));
     expect(sharing.canManage).toBe(true);
     expect(sharing.categories.map((c) => [c.category, c.audience, c.isDefault])).toEqual([
       ['stats', 'guild', true],
       ['events', 'guild', true],
       ['activity', 'guild', true],
-      ['location_live', 'private', true],
+      ['location_live', 'guild', true],
       ['location_history', 'private', true],
       ['equipment', 'private', true],
       ['inventory', 'private', true],
@@ -292,7 +292,7 @@ describe('PATCH /api/app/accounts/[publicId]/sharing', () => {
     expect((await patch(account.publicId, member.cookie, change)).status).toBe(403);
 
     const secret = await seed.account({ owner: owner.userId });
-    for (const category of ['stats', 'events', 'activity'] as const) {
+    for (const category of ['stats', 'events', 'activity', 'location_live'] as const) {
       await seed.sharing(secret.id, category, 'private');
     }
     const res = await patch(secret.publicId, member.cookie, change);

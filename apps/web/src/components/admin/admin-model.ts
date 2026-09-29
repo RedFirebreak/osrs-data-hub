@@ -351,6 +351,7 @@ const AUDIT_ACTION_LABELS: Readonly<Record<string, string>> = {
   'sharing.audience_changed': 'Sharing audience changed',
   'raw_payload.viewed': 'Raw payload viewed',
   'hub.decommissioned': 'Decommission switch',
+  'hub.guild_feed_changed': 'Guild feed settings changed',
 };
 
 /** A readable label for an audit action; the action itself when this version doesn't know it. */
@@ -403,6 +404,8 @@ export function auditLogApiPath(before: number, limit = AUDIT_PAGE_SIZE): string
 }
 
 export const DECOMMISSION_API_PATH = '/api/app/admin/decommission';
+
+export const GUILD_FEED_API_PATH = '/api/app/admin/guild-feed';
 
 /**
  * Whether the text typed into the decommission confirmation is the hub name. Both sides are

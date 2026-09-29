@@ -213,7 +213,7 @@ describe('DoneStep', () => {
     expect(html).toContain('href="/"');
     expect(html).toContain('href="/accounts/AbCdEf123456#sharing"');
     expect(text(html)).toContain(
-      'By default, stats, events and activity are visible to the guild; location, equipment and inventory stay private.',
+      'By default, stats, events, activity and live location are visible to the guild; location history, equipment and inventory stay private.',
     );
     expect(text(html)).toContain('plugin settings decide what is sent');
   });

@@ -95,7 +95,7 @@ describe('guild page', () => {
     ]);
     await seed.event(main.id, { type: 'loot', valueGp: 38_200_000 });
     const secret = await seed.account({ owner: bob, name: 'Hermit' });
-    for (const category of ['stats', 'events', 'activity'] as const) {
+    for (const category of ['stats', 'events', 'activity', 'location_live'] as const) {
       await seed.sharing(secret.id, category, 'private');
     }
     await seed.event(secret.id, { type: 'death' });

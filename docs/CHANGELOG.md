@@ -34,6 +34,18 @@ switch). Status per milestone: [ARCHITECTURE.md §14](ARCHITECTURE.md#14-milesto
   them on `"\r\n\r\n"`. The index was already LF, so the renormalize changed no file. An existing Windows
   checkout keeps its CRLF files until they are checked out again (TOOL-9 has the command).
 
+### Guild feed filter and the live location default
+
+- **Guild feed filter** (D-81): Admin → Settings (a new tab) sets a minimum loot value for the guild
+  page's activity feed and whether it shows virtual levels (level-ups past 99; off by default, combat
+  level always shown). Stored in `hub_settings` under `guild_feed` and audited. Applied to the feed's
+  pages in SQL and to its live events in the browser, through one rule (`inGuildFeed` in `@hub/core`).
+  Account timelines, the dashboard, toasts and the API are unchanged.
+- **Live location is shared with the guild by default** (D-82, supersedes D-22 for `location_live`);
+  location history stays private. Migration `0004_location_live_keep_private` pins every existing
+  account to `private`, so nothing that was private becomes visible. Death and superior coordinates
+  follow live location, so guild members now see them by default for new accounts.
+
 ### M4 (part) — data rights, and fixes from review
 
 - **Delete my data** (Settings, D-78): the offboarding pipeline with reason `self_delete` and a fixed

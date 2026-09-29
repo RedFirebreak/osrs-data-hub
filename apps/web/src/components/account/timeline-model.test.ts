@@ -10,6 +10,20 @@ describe('matchesFilter', () => {
     expect(matchesFilter(loot, { accountPublicId: 'Other0000000', types: [] })).toBe(false);
     expect(matchesFilter(loot, { types: ['death'] })).toBe(false);
   });
+
+  it("drops live events the guild feed's admin filter leaves out (D-81)", () => {
+    const guildFilter = { minLootValue: 10_000, showVirtualLevels: false };
+    const cheap = feedEvent({ type: 'loot', valueGp: 9_999 });
+    const rich = feedEvent({ type: 'loot', valueGp: 10_000 });
+    const virtual = feedEvent({ type: 'level_up', skill: 'Magic', level: 110 });
+    const combat = feedEvent({ type: 'level_up', skill: 'Combat', level: 110 });
+    expect(matchesFilter(cheap, { types: [], guildFilter })).toBe(false);
+    expect(matchesFilter(rich, { types: [], guildFilter })).toBe(true);
+    expect(matchesFilter(virtual, { types: [], guildFilter })).toBe(false);
+    expect(matchesFilter(combat, { types: [], guildFilter })).toBe(true);
+    expect(matchesFilter(cheap, { types: [] })).toBe(true);
+    expect(matchesFilter(virtual, { types: [] })).toBe(true);
+  });
 });
 
 describe('mergeEvents', () => {

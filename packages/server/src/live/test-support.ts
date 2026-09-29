@@ -47,6 +47,8 @@ export async function seedAccount(
     ownerUserId?: string | null;
     accountType?: number | null;
     status?: 'active' | 'hidden';
+    /** A fixture's hash, for an account ingest then fills in; random by default. */
+    accountHash?: string;
   },
 ): Promise<SeededAccount> {
   const publicId = randomUUID().replace(/-/g, '').slice(0, 12);
@@ -54,7 +56,7 @@ export async function seedAccount(
     .insert(osrsAccounts)
     .values({
       publicId,
-      accountHash: randomUUID(),
+      accountHash: opts.accountHash ?? randomUUID(),
       currentName: opts.name,
       nameNormalized: opts.name.toLowerCase(),
       accountType: opts.accountType ?? null,

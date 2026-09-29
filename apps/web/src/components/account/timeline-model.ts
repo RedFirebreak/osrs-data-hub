@@ -1,7 +1,9 @@
 /**
  * Pure helpers behind EventTimeline: which live events belong in a timeline, merging pages and live
- * events without duplicates, and the "load more" request. Client-safe (type-only imports), tested.
+ * events without duplicates, and the "load more" request. Client-safe (type-only imports from
+ * @hub/server; @hub/core is side-effect free, D-67), tested.
  */
+import { inGuildFeed, type GuildFeedFilter } from '@hub/core';
 import type { FeedEvent } from '@hub/server';
 
 export interface TimelineFilter {
@@ -9,6 +11,8 @@ export interface TimelineFilter {
   accountPublicId?: string;
   /** Only these stored types; empty = all types. */
   types: readonly string[];
+  /** The guild feed's admin filter (D-81), which the server applied to the pages too. */
+  guildFilter?: GuildFeedFilter;
 }
 
 /** Whether a live event belongs in a timeline with this filter. */
@@ -16,6 +20,7 @@ export function matchesFilter(event: FeedEvent, filter: TimelineFilter): boolean
   if (filter.accountPublicId !== undefined && event.account.publicId !== filter.accountPublicId) {
     return false;
   }
+  if (filter.guildFilter !== undefined && !inGuildFeed(event, filter.guildFilter)) return false;
   return filter.types.length === 0 || filter.types.includes(event.type);
 }
 

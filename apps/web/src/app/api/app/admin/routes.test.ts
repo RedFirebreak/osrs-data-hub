@@ -3,15 +3,16 @@
  * foreign Origin on mutations), and each route's happy path against seeded data.
  */
 import { randomUUID } from 'node:crypto';
-import { setConfigForTests } from '@hub/core';
+import { DEFAULT_GUILD_FEED_FILTER, setConfigForTests } from '@hub/core';
 import { auditLog, devices, rawPayloads, session, users } from '@hub/db';
-import { isDecommissioned } from '@hub/server';
+import { getGuildFeedFilter, isDecommissioned } from '@hub/server';
 import { and, desc, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { withTestDb, type WebTestContext } from '@/lib/test-utils';
 import { GET as getAuditLog } from './audit-log/route';
 import { PUT as putDecommission } from './decommission/route';
 import { DELETE as revokeDevice } from './devices/[id]/route';
+import { PUT as putGuildFeed } from './guild-feed/route';
 import { GET as getRawPayload } from './raw-payloads/[id]/route';
 import { POST as offboard } from './users/[id]/offboard/route';
 import { POST as restore } from './users/[id]/restore/route';
@@ -134,6 +135,18 @@ async function expectGuarded(call: Caller, opts: { mutation: boolean }): Promise
     expect(await errorCode(foreign)).toBe('bad_origin');
     expect((await call(adminCookie, { origin: null })).status).toBe(403);
   }
+}
+
+function guildFeedCall(body: unknown): Caller {
+  return (cookie, opts = {}) =>
+    putGuildFeed(
+      ctx.request('/api/app/admin/guild-feed', {
+        method: 'PUT',
+        cookie,
+        json: body,
+        ...originOpts(opts.origin),
+      }),
+    );
 }
 
 async function userRow(id: string) {
@@ -486,5 +499,48 @@ describe('PUT /api/app/admin/decommission', () => {
       mutation: true,
     });
     expect(await isDecommissioned(ctx.t.db)).toBe(false);
+  });
+});
+
+describe('PUT /api/app/admin/guild-feed', () => {
+  it('stores the guild feed filter and audits it (D-81)', async () => {
+    const filter = { minLootValue: 250_000, showVirtualLevels: true };
+    const res = await guildFeedCall(filter)(adminCookie);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual(filter);
+    expect(await getGuildFeedFilter(ctx.t.db)).toEqual(filter);
+    const [entry] = await ctx.t.db
+      .select({ meta: auditLog.meta, actor: auditLog.actorUserId })
+      .from(auditLog)
+      .where(eq(auditLog.action, 'hub.guild_feed_changed'))
+      .orderBy(desc(auditLog.id))
+      .limit(1);
+    expect(entry).toEqual({ meta: filter, actor: adminId });
+
+    const back = await guildFeedCall(DEFAULT_GUILD_FEED_FILTER)(adminCookie);
+    expect(back.status).toBe(200);
+    expect(await getGuildFeedFilter(ctx.t.db)).toEqual(DEFAULT_GUILD_FEED_FILTER);
+  });
+
+  it('refuses a malformed body with 400 and changes nothing', async () => {
+    for (const body of [
+      {},
+      { minLootValue: 1_000 },
+      { minLootValue: -1, showVirtualLevels: false },
+      { minLootValue: 1.5, showVirtualLevels: false },
+      { minLootValue: 2 ** 31 + 1, showVirtualLevels: false },
+      { minLootValue: '1000', showVirtualLevels: false },
+      { minLootValue: 1_000, showVirtualLevels: false, extra: true },
+    ]) {
+      expect((await guildFeedCall(body)(adminCookie)).status).toBe(400);
+    }
+    expect(await getGuildFeedFilter(ctx.t.db)).toEqual(DEFAULT_GUILD_FEED_FILTER);
+  });
+
+  it('is guarded, and a refused request changes nothing', async () => {
+    await expectGuarded(guildFeedCall({ minLootValue: 5, showVirtualLevels: true }), {
+      mutation: true,
+    });
+    expect(await getGuildFeedFilter(ctx.t.db)).toEqual(DEFAULT_GUILD_FEED_FILTER);
   });
 });

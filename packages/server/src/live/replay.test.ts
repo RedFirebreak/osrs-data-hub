@@ -111,6 +111,8 @@ function replay(
 
 describe('replayEvents', () => {
   it('returns the events after the cursor within the window, ascending, for the viewer', async () => {
+    // No location category for the member: live location isn't shared (it is by default, D-82).
+    await share(t.db, guildAcc.id, 'location_live', 'private');
     const base = await baseline();
     const tooOld = await seedEvent(t.db, guildAcc.id, { occurredAt: ago(10 * MIN) });
     const loot = await seedEvent(t.db, guildAcc.id, {

@@ -51,8 +51,8 @@ export function DoneStep({ firstData, onRestart, headingRef }: DoneStepProps) {
           </p>
         ) : (
           <p className="text-pretty">
-            By default, stats, events and activity are visible to the guild; location, equipment and
-            inventory stay private.{' '}
+            By default, stats, events, activity and live location are visible to the guild; location
+            history, equipment and inventory stay private.{' '}
             {account ? (
               <Link
                 href={`${accountHref(account.publicId)}#sharing` as Route}

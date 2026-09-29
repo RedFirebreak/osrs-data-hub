@@ -15,8 +15,8 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { CATEGORIES, type Category } from '@hub/core';
-import { events, osrsAccounts } from '@hub/db';
+import { CATEGORIES, type Audience, type Category } from '@hub/core';
+import { accountSharing, events, osrsAccounts } from '@hub/db';
 import { createApiKey, createApiLimits, handleIngest, type ApiKeyInfo } from '@hub/server';
 import { eq } from 'drizzle-orm';
 import { expect } from 'vitest';
@@ -200,10 +200,31 @@ async function publicIdOf(ctx: WebTestContext, hash: string): Promise<string> {
   return row.publicId;
 }
 
+/** Sets one category's audience of the account with `hash`, as the sharing settings would. */
+export async function setAudience(
+  ctx: WebTestContext,
+  hash: string,
+  category: Category,
+  audience: Audience,
+): Promise<void> {
+  const [row] = await ctx.t.db
+    .select({ id: osrsAccounts.id })
+    .from(osrsAccounts)
+    .where(eq(osrsAccounts.accountHash, hash));
+  if (!row) throw new Error('account missing');
+  await ctx.t.db
+    .insert(accountSharing)
+    .values({ accountId: row.id, category, audience })
+    .onConflictDoUpdate({
+      target: [accountSharing.accountId, accountSharing.category],
+      set: { audience },
+    });
+}
+
 /**
  * Two accounts owned (first reporter) by `ownerId` through one device, with the default sharing
- * (stats, events, activity → guild; location, equipment, inventory → private), and a plain guild
- * member `memberId`.
+ * (stats, events, activity, live location → guild (D-82); location history, equipment, inventory →
+ * private), and a plain guild member `memberId`.
  */
 export async function seedWorld(ctx: WebTestContext): Promise<World> {
   const ownerId = await ctx.seedUser({ name: 'Owner' });

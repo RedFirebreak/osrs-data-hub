@@ -186,10 +186,14 @@ hub is the second layer:
 | `stats` | skills, XP history, gains, levels | guild |
 | `events` | loot, level-ups, deaths, collection log, diaries, combat tasks, superiors | guild |
 | `activity` | online status, world, sessions and playtime, HP, prayer, spellbook | guild |
-| `location_live` | current coordinates | private |
+| `location_live` | current coordinates | guild (D-82) |
 | `location_history` | the 30-day trail | private |
 | `equipment` | current gear and its change log | private |
 | `inventory` | current inventory and wealth history | private |
+
+Live location defaults to the guild since D-82; accounts the hub knew before are pinned to `private`
+by migration `0004`, so the change exposes nothing that was private. Death and superior coordinates
+follow `location_live`, so a guild member sees them by default too.
 
 Viewing rule: owner or (non-blocked) contributor, OR audience `guild` and the viewer is active, OR
 audience `selected` and a grant exists. Accounts whose owner is in `grace` without a transfer are hidden
@@ -270,12 +274,12 @@ menu (`next-themes`). Every page works at phone width.
 | `/onboarding` | The pairing wizard (handoff §6.3): Install → Pair (a 5-digit code and the base URL from `APP_URL`) → First data → Done. Progress arrives as live `pairing` and `device` messages, with a poll of every code the plugin may still use (every 3 s while the stream is down, every 15 s as a safety net). An outdated plugin is named with its version, since older plugins don't show the hub's error text. A reload resumes the code kept in `?code=<id>`: the same code while it is active, step 3 for a consumed one, a new code only when it expired. |
 | `/devices` | Paired devices: label (renamable), plugin version, outdated warning, last seen, accounts; revoke. |
 | `/accounts/[publicId]` | Header (type, live presence, owner, previous names), skills table (real level with the virtual one beside it, D-44; gains today/7/30/365 days), XP chart, sessions and playtime per local day, events timeline (type filters, "load more", live), vitals, live location as text, gear by slot with its change log, the inventory, wealth per day, and the sharing panel (audiences, grants, block/unblock/remove, transfer, claim; D-52). |
-| `/guild` | Members with their visible accounts and live online dots, the activity feed, gains leaderboards per period and skill. |
+| `/guild` | Members with their visible accounts and live online dots, the activity feed, gains leaderboards per period and skill. The activity feed leaves out what the admin's guild feed filter excludes (loot below a minimum value, level-ups past 99; D-81), in its pages and its live events alike. |
 | `/settings` | Toast filter (types, minimum loot value), time zone, **Download my data** (a link to `GET /api/app/export`, D-79) and **Delete my data** (type `delete` to confirm; `POST /api/app/me/delete`, D-78). |
 | `/api-keys` | The user's API keys (name, `ohub_<prefix>_…`, categories, scope, created, last used, expiry, status) with Revoke, and "Create key" (categories, every visible account or picked ones, expiry; the key shown once with Copy). D-69, D-76. |
 | `/docs/api` | Public: the interactive API reference (Scalar from jsDelivr at a pinned version with SRI) over `/api/v1/openapi.json` (D-75). |
 | `/privacy` | Public: what is stored and for how long (from the configuration), the sharing defaults, what admins can see, what returning to the guild restores. What the export holds and leaves out, and the 7-day undo of Delete my data. |
-| `/admin/*` | Users (offboard, restore), devices (revoke), ingest health (rates, rejections since start), raw payloads (filters and an audited viewer), audit log, configuration (secrets redacted), decommission switch. |
+| `/admin/*` | Users (offboard, restore), devices (revoke), ingest health (rates, rejections since start), raw payloads (filters and an audited viewer), audit log, settings (the guild feed filter, D-81), configuration (secrets redacted), decommission switch. |
 
 Rules every page and route follows:
 
@@ -319,8 +323,10 @@ page for visual review (`E2E_SCREENSHOTS=1`); see [DEVELOPMENT.md](DEVELOPMENT.m
 
 ## 13. Configuration and operations
 
-All configuration is environment variables; see [`.env.example`](../.env.example) for the full list with
+All deployment configuration is environment variables; see [`.env.example`](../.env.example) for the full list with
 defaults, and [`OPERATIONS.md`](OPERATIONS.md) for deploys, backups and the reverse proxy.
+Options an admin changes at run time live in `hub_settings` (key → jsonb) and are audited: the
+decommission switch (D-56) and the guild feed filter (D-81), both on the admin pages.
 
 ## 14. Milestones and status
 
@@ -360,7 +366,7 @@ Decisions are permanent IDs; a reversed decision is marked superseded, never del
 | D-19 | Status codes: 401 only for auth, 410 only for decommissioning, 429/503 + `Retry-After` for backpressure, 400 for bad input, 5xx only for transient faults. | Matches the plugin's `ConnectionBackoff` semantics; events queue for 10 min on 429/503. | Handoff §3.2, §7.7 |
 | D-20 | Add `packages/server` for DB-backed services; `packages/core` stays free of I/O. | The handoff lists the ingest pipeline under `core`, but it needs the database; separating rules from I/O keeps every rule unit-testable. | Build |
 | D-21 | Accounts don't belong to users: owner + contributors via `account_links`; first reporter becomes owner. | Shared accounts are expected. | Handoff §6.1 |
-| D-22 | Seven sharing categories with defaults (stats/events/activity → guild; location, equipment, inventory → private); one resolver used by UI, SSE and API. | | Handoff §10 |
+| D-22 | *(`location_live` default superseded by D-82)* Seven sharing categories with defaults (stats/events/activity → guild; location, equipment, inventory → private); one resolver used by UI, SSE and API. | | Handoff §10 |
 | D-23 | XP rollups use the last value per bucket; `xp_samples` is change-only at 5-minute buckets keyed on receive time, `xp = GREATEST(existing, new)`. | XP is monotonic; receive time avoids cross-PC clock skew. | Handoff §7.1, §9 |
 | D-24 | An XP drop on a normal world skips the payload's XP writes. | Catches world types the hub doesn't know about. | Handoff §7.1 |
 | D-25 | Offboarding: `active` → `grace` (30 days) → hard delete; devices, API keys and sessions revoked immediately; ownership transferred to the longest-linked active contributor, else the account is hidden. Discord errors never offboard. | | Handoff §5, §14 |
@@ -419,3 +425,5 @@ Decisions are permanent IDs; a reversed decision is marked superseded, never del
 | D-78 | **Delete my data** (Settings) runs the offboarding pipeline (`offboardUser`, reason `self_delete`) with a fixed **7-day** grace instead of `OFFBOARD_GRACE_DAYS`. Devices, API keys and sessions are revoked at once; each owned account passes to its longest-linked active contributor or is hidden; when the 7 days pass, the usual grace expiry hard-deletes the user and every account left without an active contributor. **Signing in again within the 7 days is the undo** (`restoreUser`, as for membership reasons, D-35); devices and keys stay revoked. The request needs the word `delete` typed as confirmation, and is refused for a user who isn't active. | Handoff §14: "the same pipeline with a 7-day undo window". Sign-in as the undo needs no extra page for a signed-out user, and the admin restore still works. | Build (M4) |
 | D-79 | **Download my data** is `GET /api/app/export`: one JSON document (`format: "osrs-data-hub-export"`, `version: 1`, snake_case keys like the API, D-77), streamed in batches as an attachment. It holds the user's profile, settings, devices and API keys (never token hashes), the sharing settings they made, audit entries about them, and every account they own or contribute to (not blocked), limited to the categories they can see today (`resolveAccess`): current state, XP samples within raw retention plus daily aggregates before that, events, play sessions, equipment changes, wealth per day and the location trail. It leaves out the 72-hour raw-payload buffer (admin-only debugging) and other people's data beyond the names the UI already shows them. One export per user per 10 minutes; same-origin only; audited `user.exported`. | GDPR access and portability (handoff §14, §16) without ever showing more than the UI does. | Build (M4) |
 | D-80 | Small limits found in review: at most **5 live streams per user** (a sixth answers 429 + `Retry-After`, and the client falls back to polling); the member list for the grant picker (`/api/app/members`) only for users who can manage the sharing of at least one account (owner or admin), 403 otherwise; the raw-payload viewer's audited GET requires the same origin. | Bounds one user's hold on the web process (D-5), keeps the member directory to those who need it, and stops a cross-site request from writing audit entries. | Build (M4) |
+| D-81 | **Guild feed filter**, an admin setting (Admin → Settings, `hub_settings` key `guild_feed`, audited `hub.guild_feed_changed`): the guild page's activity feed leaves out loot and PK loot below `minLootValue` gp (default 0; a missing value counts as 0) and, unless `showVirtualLevels` (default **off**), level-ups past 99 in a skill; the `Combat` level-up (real maximum 126) is never virtual. One rule in `@hub/core` (`inGuildFeed`), applied in SQL to the feed's pages (the guild page, and `GET /api/app/feed` without `account`) and in the browser to the page's live events. Account timelines, the dashboard, toasts and the public API are not filtered, and nothing is deleted. | A player can set the plugin's loot threshold to 1 gp and flood the shared feed; virtual levels (PLUGIN-9) are noise for most guilds. Each viewer's own toast filter already covers toasts. | Build (requested by the owner, 2026-09-29) |
+| D-82 | Supersedes D-22 for `location_live`: its default audience is **guild**; `location_history` stays private. Migration `0004` writes an explicit `private` row for every account that existed before, so only accounts first seen afterwards get the new default. | Live location is what the guild's live map is for; the 30-day trail says much more and stays private. A missing sharing row means the default, so changing it without pinning would have shared every existing account's position without its owner doing anything. | Build (requested by the owner, 2026-09-29) |

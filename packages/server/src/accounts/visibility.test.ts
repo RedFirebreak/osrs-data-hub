@@ -1,6 +1,7 @@
 /**
  * Handoff §10 end to end: every sharing rule, asserted through the read models the UI uses.
  */
+import { DEFAULT_GUILD_FEED_FILTER } from '@hub/core';
 import { createTestDatabase, type TestDatabase } from '@hub/db/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { getAccountPage } from './account-page';
@@ -112,7 +113,7 @@ afterAll(async () => {
   await t.drop();
 });
 
-describe('default audiences (stats, events, activity → guild; the rest private)', () => {
+describe('default audiences (stats, events, activity, live location → guild; the rest private; D-82)', () => {
   it('shows a guild member the guild categories and hides the private ones', async () => {
     const page = await getAccountPage(t.db, member.viewer, open.publicId, opts);
     expect(page?.account.relation).toBe('member');
@@ -121,7 +122,7 @@ describe('default audiences (stats, events, activity → guild; the rest private
     expect(page?.vitals.visible).toBe(true);
     expect(page?.skills.visible).toBe(true);
     expect(page?.recentEvents.visible).toBe(true);
-    expect(page?.location).toEqual({ visible: false });
+    expect(page?.location).toMatchObject({ visible: true, shared: true });
     expect(page?.equipment).toEqual({ visible: false });
     expect(page?.inventory).toEqual({ visible: false });
   });
@@ -215,6 +216,7 @@ describe('inactive viewers', () => {
     expect(await getGuildOverview(t.db, inGrace.viewer, opts)).toEqual({
       members: [],
       feed: [],
+      feedFilter: DEFAULT_GUILD_FEED_FILTER,
       leaderboards: { day: [], week: [], month: [] },
     });
   });
@@ -228,6 +230,11 @@ describe('inactive viewers', () => {
 describe('redaction of event locations', () => {
   const locationOf = (e: { data: unknown }) =>
     ((e.data as { data?: Record<string, unknown> }).data ?? {}).location;
+
+  // A plain member has no location category on `open` once live location isn't shared (D-82).
+  beforeAll(async () => {
+    await seedSharing(t.db, open.id, 'location_live', 'private');
+  });
 
   it('strips death and superior locations without a location category', async () => {
     const feed = await listFeed(t.db, member.viewer, { accountPublicId: open.publicId });
@@ -289,7 +296,7 @@ describe('"not shared" versus not visible', () => {
 
   it('hides an account from a member when nothing of it is shared with them', async () => {
     const secret = await seedAccount(t.db, { owner: owner.id });
-    for (const category of ['stats', 'events', 'activity'] as const) {
+    for (const category of ['stats', 'events', 'activity', 'location_live'] as const) {
       await seedSharing(t.db, secret.id, category, 'private');
     }
     expect(await getAccountPage(t.db, member.viewer, secret.publicId, opts)).toBeNull();

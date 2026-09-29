@@ -29,6 +29,13 @@
       "when": 1790663979217,
       "tag": "0003_device_fk_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790706497655,
+      "tag": "0004_location_live_keep_private",
+      "breakpoints": true
     }
   ]
 }

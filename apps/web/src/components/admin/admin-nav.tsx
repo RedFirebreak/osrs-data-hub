@@ -9,6 +9,7 @@ import {
   MonitorSmartphoneIcon,
   PowerIcon,
   ScrollTextIcon,
+  Settings2Icon,
   SlidersHorizontalIcon,
   UsersIcon,
   type LucideIcon,
@@ -25,6 +26,7 @@ export const ADMIN_TABS: readonly { href: Route; label: string; icon: LucideIcon
   { href: '/admin/ingest', label: 'Ingest health', icon: ActivityIcon },
   { href: '/admin/payloads', label: 'Raw payloads', icon: FileJsonIcon },
   { href: '/admin/audit', label: 'Audit log', icon: ScrollTextIcon },
+  { href: '/admin/settings', label: 'Settings', icon: Settings2Icon },
   { href: '/admin/config', label: 'Configuration', icon: SlidersHorizontalIcon },
   { href: '/admin/decommission', label: 'Decommission', icon: PowerIcon },
 ];

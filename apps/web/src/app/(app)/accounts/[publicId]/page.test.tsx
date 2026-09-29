@@ -150,7 +150,7 @@ describe('account page', () => {
     await signIn();
     expect(await render('NoSuchAcct00')).toBe('not-found');
     const secret = await seed.account({ owner: ownerId });
-    for (const category of ['stats', 'events', 'activity'] as const) {
+    for (const category of ['stats', 'events', 'activity', 'location_live'] as const) {
       await seed.sharing(secret.id, category, 'private');
     }
     expect(await render(secret.publicId)).toBe('not-found');
@@ -242,8 +242,11 @@ describe('account page', () => {
       'Sessions &amp; playtime',
       'Events',
       'Vitals',
+      'Location',
     ]);
-    for (const hidden of ['3222', 'Abyssal whip', 'Shark', 'Sharing']) {
+    // Live location is shared with the guild by default (D-82); the rest stays private.
+    expect(html).toContain('3222, 3218');
+    for (const hidden of ['Abyssal whip', 'Shark', 'Sharing']) {
       expect(html).not.toContain(hidden);
     }
     expect(html).not.toContain('Your account');

@@ -127,7 +127,7 @@ describe('GET /api/app/accounts/[publicId]/xp', () => {
     expect((await call(getXp, 'NoSuchAccount1', '', stranger.cookie)).status).toBe(404);
 
     const hidden = await seed.account({ owner: owner.userId });
-    for (const category of ['stats', 'events', 'activity'] as const) {
+    for (const category of ['stats', 'events', 'activity', 'location_live'] as const) {
       await seed.sharing(hidden.id, category, 'private');
     }
     const res = await call(getXp, hidden.publicId, '', stranger.cookie);

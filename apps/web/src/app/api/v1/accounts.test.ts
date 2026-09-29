@@ -21,6 +21,7 @@ import {
   idParams,
   makeKey,
   seedWorld,
+  setAudience,
   v1Request,
   type TestKey,
   type World,
@@ -42,6 +43,10 @@ let memberLiveKey: TestKey;
 beforeAll(async () => {
   ctx = await withTestDb({ label: 'v1accounts' });
   world = await seedWorld(ctx);
+  // The member has no location category here: live location (guild by default, D-82) is private.
+  for (const { hash } of [world.main, world.alt]) {
+    await setAudience(ctx, hash, 'location_live', 'private');
+  }
   ownerKey = await makeKey(ctx, world.ownerId, { name: 'owner, everything' });
   memberKey = await makeKey(ctx, world.memberId, { name: 'member, everything' });
   listKey = await makeKey(ctx, world.ownerId, {
