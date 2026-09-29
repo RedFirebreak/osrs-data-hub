@@ -69,10 +69,13 @@ walks the `cause` chain and `safeDbErrorMessage(err)` returns only the Postgres 
 Identity and serial values are taken at INSERT, not at COMMIT. Transaction A takes seq 1 and commits
 slowly, B takes seq 2 and commits first; a reader between the two commits sees only 2, advances its
 cursor to 2 and never sees 1. PG17's `transaction_timeout` is no fix: when it fires it terminates the
-session. Fix: never hand out a cursor past rows that may still commit: serve only rows older than a
-margin measured from a `clock_timestamp()` insert column, keep event-inserting transactions short (the
-events insert last, lock waits before it), or filter on `pg_snapshot_xmin(pg_current_snapshot())`
-(untested). The warning sits on `events.seq` in packages/db/src/schema/activity.ts.
+session. Fix: never hand out a cursor past rows that may still commit: serve only the seqs **below the
+first row that is younger than a margin** (measured from a `clock_timestamp()` insert column), not "every
+row older than the margin": filtering young rows one by one still returns a settled higher seq while a
+lower one is held back, and the cursor skips it (packages/server/src/live/replay.ts `settledCeiling`).
+Keep event-inserting transactions short (the events insert last, lock waits before it). Filtering on
+`pg_snapshot_xmin(pg_current_snapshot())` is an untested alternative. The warning sits on `events.seq`
+in packages/db/src/schema/activity.ts.
 
 *Source: `OBSERVED` (research sandbox, timescale/timescaledb:2.30.1-pg17, `race.mjs`, 2026-09-28)*
 

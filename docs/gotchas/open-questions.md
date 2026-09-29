@@ -40,3 +40,8 @@ here.
   `auth.api.*` calls into `cookies()`, so `auth.api.signOut({ headers })` in a server action clears the
   session cookie (better-auth 1.7.6 `dist/integrations/next-js.mjs:33-103`); read in the source only.
   Settle with a sign-out through a real server action.
+- **Discord 10013 "Unknown User" on the bot member lookup.** The API docs list code 10013 and the bot
+  route may return it for a deleted Discord account; re-verification treats any 404 other than 10007 as a
+  per-user error (fail open, keep checking the rest) and 10004 on the first lookup as a config error.
+  Read in `discord-api-docs` (opcodes-and-status-codes.mdx), never seen live. A live run would have to
+  show which code a deleted user produces.
