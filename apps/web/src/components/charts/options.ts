@@ -37,15 +37,16 @@ export interface ChartTheme {
   tooltipBorder: string;
   fontFamily: string;
   /** Categorical series colours in fixed order (never cycled). */
-  series: readonly [string, string];
+  series: readonly [string, string, string];
 }
 
 /**
- * Series colours stepped per mode (blue, then orange), validated as a pair against the card surface
- * in both modes (colour-blind separation and 3:1 contrast).
+ * Series colours stepped per mode (blue, orange, then aqua), validated in that order against the card
+ * surface in both modes (colour-blind separation of adjacent pairs; 3:1 contrast, except aqua on the
+ * light card at 2.8:1, so a chart using the third colour needs its numbers in text too).
  */
-export const SERIES_LIGHT = ['#2a78d6', '#eb6834'] as const;
-export const SERIES_DARK = ['#3987e5', '#d95926'] as const;
+export const SERIES_LIGHT = ['#2a78d6', '#eb6834', '#1baf7a'] as const;
+export const SERIES_DARK = ['#3987e5', '#d95926', '#199e70'] as const;
 
 /** Used until the page's colours are resolved (and on the server, where nothing is drawn). */
 export const FALLBACK_THEME: ChartTheme = {

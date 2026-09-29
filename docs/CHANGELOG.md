@@ -4,6 +4,17 @@ Changes are consolidated per pull request, newest first. Each entry names the PR
 open), what changed, and any decision (`D-n`, see [ARCHITECTURE.md](ARCHITECTURE.md#decision-log)) or
 gotcha (`AREA-n`, see [gotchas](gotchas/README.md)) it introduced.
 
+## Unreleased — branch `sj/ingest-rejections-chart`
+
+- **Rejected payloads on the ingest chart** (D-83): Admin → Ingest health's "Payloads per minute"
+  chart gets a third series, *Rejected, not archived*: responses whose body never reached
+  `raw_payloads` (unknown or revoked tokens 401, decommissioned 410, oversized 413, rate-limited 429,
+  outdated plugin, a failed archive write). Before, two 401s showed under "Since the hub started" but
+  nowhere on the chart, whose "Other statuses" only ever counts archived payloads. Ingest counts them
+  per minute and status in memory (`RecentMinuteCounts`, the last 60 minutes, on the metrics object);
+  like the Prometheus counters they start at zero when the web process restarts. The chart's third
+  colour is slot 3 of the palette (aqua), validated with the other two in both modes.
+
 ## Unreleased — V1 (branch `red/eloquent-johnson-yufg78`)
 
 Milestones M0 and M1 and the M2 scope of the handoff, plus two M4 items (leaderboards, the decommission
