@@ -16,7 +16,7 @@
  */
 import { BarChart, LineChart } from 'echarts/charts';
 import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components';
-import { init, use, type EChartsType } from 'echarts/core';
+import { init, use as registerParts, type EChartsType } from 'echarts/core';
 import { CanvasRenderer } from 'echarts/renderers';
 import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { cn } from '@/lib/utils';
@@ -28,7 +28,15 @@ import {
   type ChartTheme,
 } from './options';
 
-use([BarChart, LineChart, GridComponent, LegendComponent, TooltipComponent, CanvasRenderer]);
+// Aliased: eslint's react-hooks rule would take echarts' `use` for React's.
+registerParts([
+  BarChart,
+  LineChart,
+  GridComponent,
+  LegendComponent,
+  TooltipComponent,
+  CanvasRenderer,
+]);
 
 export interface EChartProps {
   option: (theme: ChartTheme) => ChartOption;

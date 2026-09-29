@@ -80,7 +80,7 @@ describe('GET /api/live/events', () => {
   });
 
   it('first poll (no cursor): no events, the settled cursor', async () => {
-    for (const query of ['', '?after=', '?after=0', '?after=abc', '?after=-5']) {
+    for (const query of ['', '?after=', '?after=abc', '?after=-5', '?after=1.5']) {
       const body = await poll(query);
       expect(body.events).toEqual([]);
       // The newest settled seq: past the older rows, before the one inserted just now.
@@ -100,5 +100,11 @@ describe('GET /api/live/events', () => {
     const next = await poll(`?after=${body.cursor}`);
     expect(next.events).toEqual([]);
     expect(next.cursor).toBe(seqs.b);
+  });
+
+  it('after=0 is a cursor, not "none": a hub without events hands out 0 and must still deliver its first ones', async () => {
+    const body = await poll('?after=0');
+    expect(body.events.map((m) => m.event.seq)).toEqual([seqs.old, seqs.a, seqs.b]);
+    expect(body.cursor).toBe(seqs.b);
   });
 });

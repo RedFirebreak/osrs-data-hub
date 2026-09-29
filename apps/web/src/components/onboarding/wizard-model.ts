@@ -33,6 +33,8 @@ export const POLL_INTERVAL_MS = 3_000;
 export const POLL_INTERVAL_CONNECTED_MS = 15_000;
 /** Longest device label kept by the hub (DEVICE_LABEL_MAX in @hub/server). */
 export const DEVICE_LABEL_MAX_LENGTH = 64;
+/** Active codes the hub keeps per user (MAX_ACTIVE_PAIRING_CODES in @hub/server); older ones retire. */
+export const MAX_ACTIVE_CODES = 3;
 
 /** A pairing code as the wizard keeps it. */
 export interface WizardCode {
@@ -62,6 +64,8 @@ export interface WizardState {
   codeError: string | null;
   /** Every code this wizard created: a message for an older, still active one counts too. */
   codeIds: readonly string[];
+  /** Expiry of each of those codes on the browser's clock (ms), by id (see codesToPoll). */
+  codeExpiresAtMs: Readonly<Record<string, number>>;
   /** The code that was consumed (polled on step 3 for the first data). */
   pairedCodeId: string | null;
   /** The device pairing created; null until paired. */
@@ -70,6 +74,12 @@ export interface WizardState {
   outdated: OutdatedAttempt | null;
   /** `outdatedAttemptAt` of the last attempt a poll reported (to tell a new attempt from an old). */
   polledOutdatedAt: string | null;
+  /**
+   * A live 'outdated_plugin' message announced an attempt that no poll has reported yet. Live
+   * messages carry no attempt time, so the next new `outdatedAttemptAt` a poll reports is that same
+   * attempt, not another one (else it would re-show the alert after "I pressed Submit again").
+   */
+  liveOutdatedUnpolled: boolean;
   /** When the user said they pressed Submit in the plugin (browser clock, ms). */
   submittedAt: number | null;
   /** The server said the current code expired (the browser clock may disagree). */
@@ -86,10 +96,12 @@ export const INITIAL_WIZARD_STATE: WizardState = {
   codeRequest: 'idle',
   codeError: null,
   codeIds: [],
+  codeExpiresAtMs: {},
   pairedCodeId: null,
   deviceId: null,
   outdated: null,
   polledOutdatedAt: null,
+  liveOutdatedUnpolled: false,
   submittedAt: null,
   expiredByServer: false,
   firstData: null,
@@ -157,8 +169,10 @@ export function wizardReducer(state: WizardState, action: WizardAction): WizardS
         codeIds: state.codeIds.includes(action.code.id)
           ? state.codeIds
           : [...state.codeIds, action.code.id],
+        codeExpiresAtMs: { ...state.codeExpiresAtMs, [action.code.id]: action.code.expiresAtMs },
         outdated: null,
         polledOutdatedAt: null,
+        liveOutdatedUnpolled: false,
         submittedAt: null,
         expiredByServer: false,
       };
@@ -170,7 +184,11 @@ export function wizardReducer(state: WizardState, action: WizardAction): WizardS
       const { message } = action;
       if (!state.codeIds.includes(message.codeId) || state.deviceId !== null) return state;
       if (message.kind === 'consumed') return paired(state, message.codeId, message.deviceId);
-      return { ...state, outdated: { version: message.version, receivedAt: action.at } };
+      return {
+        ...state,
+        outdated: { version: message.version, receivedAt: action.at },
+        liveOutdatedUnpolled: message.codeId === state.code?.id || state.liveOutdatedUnpolled,
+      };
     }
     case 'device': {
       const { message } = action;
@@ -204,11 +222,14 @@ export function wizardReducer(state: WizardState, action: WizardAction): WizardS
         status.outdatedAttemptAt !== null &&
         status.outdatedAttemptAt !== next.polledOutdatedAt
       ) {
-        next = {
-          ...next,
-          polledOutdatedAt: status.outdatedAttemptAt,
-          outdated: { version: status.outdatedVersion, receivedAt: action.at },
-        };
+        next = next.liveOutdatedUnpolled
+          ? // The attempt a live message already announced: learn its time, keep the alert as is.
+            { ...next, polledOutdatedAt: status.outdatedAttemptAt, liveOutdatedUnpolled: false }
+          : {
+              ...next,
+              polledOutdatedAt: status.outdatedAttemptAt,
+              outdated: { version: status.outdatedVersion, receivedAt: action.at },
+            };
       }
       return next;
     }
@@ -227,6 +248,31 @@ export function codeMsLeft(state: WizardState, now: number): number {
 /** The current code can no longer be used (and pairing hasn't happened). */
 export function isCodeExpired(state: WizardState, now: number): boolean {
   return state.code !== null && state.deviceId === null && codeMsLeft(state, now) === 0;
+}
+
+/**
+ * The codes to poll with GET /api/app/pairing-codes/[id] at `now` (browser clock; null before it
+ * runs). Before pairing (steps 1 and 2): every code of this wizard the hub may still accept — the
+ * newest MAX_ACTIVE_CODES within their lifetime, the shown one first and not once the hub said it
+ * expired — because the player may have typed an older one (Regenerate, or Back and Next) and the
+ * reducer accepts any of them; polling only the shown one would leave the wizard waiting forever
+ * when the live message is lost. After pairing: the consumed code on step 3 until the first data
+ * arrived. Empty otherwise.
+ */
+export function codesToPoll(state: WizardState, now: number | null): string[] {
+  if (state.deviceId !== null) {
+    return state.step === 3 && state.firstData === null && state.pairedCodeId !== null
+      ? [state.pairedCodeId]
+      : [];
+  }
+  if (state.step > 2 || now === null) return [];
+  return state.codeIds
+    .slice(-MAX_ACTIVE_CODES)
+    .reverse()
+    .filter(
+      (id) =>
+        !(id === state.code?.id && state.expiredByServer) && (state.codeExpiresAtMs[id] ?? 0) > now,
+    );
 }
 
 /** Show the outdated-plugin alert: an attempt newer than the user's last "I pressed Submit". */

@@ -335,7 +335,10 @@ describe('PATCH /api/app/accounts/[publicId]/sharing', () => {
       expect(res.status, JSON.stringify(body)).toBe(400);
       const err = (await res.json()) as ErrorBody;
       expect(err.error.code).toBe('invalid_request');
-      expect(err.error.details?.map((d) => d.path), JSON.stringify(body)).toContain(path);
+      expect(
+        err.error.details?.map((d) => d.path),
+        JSON.stringify(body),
+      ).toContain(path);
     }
     for (const body of [null, [], 'claim']) {
       expect((await patch(account.publicId, owner.cookie, body)).status).toBe(400);
@@ -376,5 +379,22 @@ describe('PATCH /api/app/accounts/[publicId]/sharing', () => {
   it('401 without a session', async () => {
     const res = await patch('Unknown00000', undefined, { action: 'claim' });
     expect(res.status).toBe(401);
+  });
+
+  it('404 for a public id that cannot exist (a NUL byte is not a database error)', async () => {
+    const owner = await signedIn();
+    const res = await patch('abc\u0000def', owner.cookie, { action: 'claim' });
+    expect(res.status).toBe(404);
+    expect((await get('abc\u0000def', owner.cookie)).status).toBe(404);
+    // CSRF is still checked first.
+    const foreign = await patch(
+      'abc\u0000def',
+      owner.cookie,
+      { action: 'claim' },
+      {
+        origin: 'https://evil.test',
+      },
+    );
+    expect(foreign.status).toBe(403);
   });
 });

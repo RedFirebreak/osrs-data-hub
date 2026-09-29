@@ -19,6 +19,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
+import { dayOnlyLabel } from './dates';
 
 export interface SectionCardProps {
   title: string;
@@ -29,6 +30,12 @@ export interface SectionCardProps {
   updatedAt?: string | null;
   /** Server render time (ISO), for the relative time. */
   now?: string;
+  /**
+   * `updatedAt` carries only the day, in this time zone (the viewer's): the read model withholds the
+   * time from viewers without the `activity` category (D-50), so it is shown as "Updated today",
+   * "yesterday" or a date, never as "9 h ago".
+   */
+  updatedDayIn?: string;
   /** Top-right slot (a badge, a small control). */
   action?: React.ReactNode;
   children?: React.ReactNode;
@@ -42,6 +49,7 @@ export function SectionCard({
   description,
   updatedAt,
   now,
+  updatedDayIn,
   action,
   children,
   className,
@@ -61,23 +69,36 @@ export function SectionCard({
             {title}
           </h2>
         </CardTitle>
+        {/* The description runs under the badge too (the action sits in the title's row only), so
+            a "Not shared" explanation doesn't wrap into a narrow column beside it. */}
         {(description || updatedAt) && (
-          <CardDescription className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <CardDescription className="col-span-full flex flex-wrap items-center gap-x-2 gap-y-1">
             {description}
             {updatedAt && (
               <span className="text-xs">
-                <RelativeTime date={updatedAt} now={now} prefix="Updated" />
+                {updatedDayIn === undefined ? (
+                  <RelativeTime date={updatedAt} now={now} prefix="Updated" />
+                ) : (
+                  <UpdatedDay at={updatedAt} now={now} timezone={updatedDayIn} />
+                )}
               </span>
             )}
           </CardDescription>
         )}
-        {action && <CardAction>{action}</CardAction>}
+        {action && <CardAction className="row-span-1">{action}</CardAction>}
       </CardHeader>
       {children !== undefined && (
         <CardContent className={cn('min-w-0', contentClassName)}>{children}</CardContent>
       )}
     </Card>
   );
+}
+
+/** "Updated today" for a day-only stamp (see SectionCardProps.updatedDayIn). */
+function UpdatedDay({ at, now, timezone }: { at: string; now?: string; timezone: string }) {
+  const label = dayOnlyLabel(at, now ?? new Date(), timezone);
+  if (!label) return null;
+  return <time dateTime={label.day}>Updated {label.text}</time>;
 }
 
 export interface NotSharedCardProps {

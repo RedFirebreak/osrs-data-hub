@@ -131,8 +131,19 @@ describe('PairStep', () => {
 
   it('counts down the Submit wait and mentions polling while the live stream is down', () => {
     const html = pairStep({ waitSecondsLeft: 42, connected: false });
-    expect(text(html)).toContain('Waiting for RuneLite to connect (42 s)');
+    expect(text(html)).toContain('Waiting for RuneLite to connect… (42 s)');
     expect(text(html)).toContain('checking every 3 seconds');
+  });
+
+  it('keeps the per-second countdown out of live regions (no announcement every second)', () => {
+    const html = pairStep({ waitSecondsLeft: 42 });
+    const liveRegions = [
+      ...html.matchAll(/<(\w+)[^>]*role="(?:status|alert)"[^>]*>(.*?)<\/\1>/g),
+    ].map((m) => text(m[2] ?? ''));
+    expect(liveRegions).toContain('Waiting for RuneLite to connect…');
+    for (const region of liveRegions) expect(region).not.toMatch(/\d+ s\b/);
+    // Nor the code's own countdown.
+    for (const region of liveRegions) expect(region).not.toMatch(/Expires in/);
   });
 
   it('shows a failed code request with a retry', () => {
@@ -204,6 +215,25 @@ describe('DoneStep', () => {
     expect(text(html)).toContain(
       'By default, stats, events and activity are visible to the guild; location, equipment and inventory stay private.',
     );
+    expect(text(html)).toContain('plugin settings decide what is sent');
+  });
+
+  it("tells a contributor that the owner decides, and doesn't offer settings they can't change", () => {
+    const html = renderToStaticMarkup(
+      <DoneStep
+        firstData={{
+          account: { publicId: 'AbCdEf123456', name: 'Shared Main', accountType: 0 },
+          role: 'contributor',
+          ownerName: 'Bob',
+        }}
+        onRestart={noop}
+      />,
+    );
+    expect(text(html)).toContain('Bob owns Shared Main and decides who in the guild sees it.');
+    expect(html).toContain('href="/accounts/AbCdEf123456#sharing"');
+    expect(text(html)).toContain('Who can see Shared Main');
+    expect(text(html)).not.toContain('Sharing settings for');
+    expect(text(html)).not.toContain('By default');
     expect(text(html)).toContain('plugin settings decide what is sent');
   });
 

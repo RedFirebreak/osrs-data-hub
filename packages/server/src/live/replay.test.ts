@@ -4,7 +4,12 @@ import { createTestDatabase, type TestDatabase } from '@hub/db/testing';
 import { eq, inArray, max } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { FeedEvent } from '../feed';
-import { LIVE_POLL_SETTLE_MS, LIVE_REPLAY_MAX_AGE_MS, replayEvents } from './replay';
+import {
+  LIVE_POLL_SETTLE_MS,
+  LIVE_REPLAY_MAX_AGE_MS,
+  replayEvents,
+  settledLiveCursor,
+} from './replay';
 import {
   deathData,
   grant,
@@ -322,5 +327,36 @@ describe('replayEvents', () => {
     expect(seqs(await replay(member, { afterSeq: base, settleMs: LIVE_POLL_SETTLE_MS }))).toEqual([
       settled.seq,
     ]);
+  });
+});
+
+describe('settledLiveCursor', () => {
+  it('is 0 on a hub without events, then the newest seq below the first unsettled one (DB-4)', async () => {
+    // Its own database: the cursor looks at every account's events.
+    const fresh = await createTestDatabase('live-cursor');
+    try {
+      expect(await settledLiveCursor(fresh.db)).toBe(0);
+      const u = await seedUser(fresh.db);
+      const acc = await seedAccount(fresh.db, { name: 'Zezima', ownerUserId: u.userId });
+      const settledAt = new Date(Date.now() - 2 * LIVE_POLL_SETTLE_MS);
+      const old = await seedEvent(fresh.db, acc.id, {
+        occurredAt: ago(3 * MIN),
+        insertedAt: new Date(Date.now() - 3 * MIN),
+      });
+      const settled = await seedEvent(fresh.db, acc.id, {
+        occurredAt: ago(MIN),
+        insertedAt: settledAt,
+      });
+      // Inserted just now: a lower seq may still commit after it, so the cursor stops below it,
+      // even though a settled row follows it (seq order and inserted_at order can differ).
+      const young = await seedEvent(fresh.db, acc.id, { occurredAt: ago(MIN) });
+      await seedEvent(fresh.db, acc.id, { occurredAt: ago(MIN), insertedAt: settledAt });
+      expect(old.seq).toBeLessThan(settled.seq);
+      expect(await settledLiveCursor(fresh.db)).toBe(settled.seq);
+      await fresh.db.update(events).set({ insertedAt: settledAt }).where(eq(events.id, young.id));
+      expect(await settledLiveCursor(fresh.db)).toBeGreaterThan(young.seq);
+    } finally {
+      await fresh.drop();
+    }
   });
 });

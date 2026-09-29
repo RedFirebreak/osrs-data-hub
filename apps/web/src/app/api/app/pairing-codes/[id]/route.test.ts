@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { accountLinks, deviceAccounts, osrsAccounts, pairingCodes } from '@hub/db';
+import { CATEGORIES } from '@hub/core';
+import { accountLinks, accountSharing, deviceAccounts, osrsAccounts, pairingCodes } from '@hub/db';
 import { createPairingCode } from '@hub/server';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -114,10 +115,16 @@ describe('GET /api/app/pairing-codes/[id]', () => {
     }
   });
 
-  it('401 without a session', async () => {
+  it('401 without a session, and for a user in grace (even for their own code)', async () => {
     const { userId } = await signedIn();
     const created = await newCode(userId);
     expect((await status(undefined, created.id)).status).toBe(401);
+
+    const graceUser = await ctx.seedUser({ status: 'grace' });
+    const graceCode = await newCode(graceUser);
+    const res = await status(await ctx.signIn(graceUser), graceCode.id);
+    expect(res.status).toBe(401);
+    expect(JSON.stringify(await res.json())).not.toContain(graceCode.code);
   });
 
   it('reports an attempt from an outdated plugin, and an expired code', async () => {
@@ -160,6 +167,42 @@ describe('GET /api/app/pairing-codes/[id]', () => {
       role: 'owner',
       ownerName: 'Alice',
     });
+  });
+
+  it('names no account the user may no longer see (resolveAccess, like the Devices page)', async () => {
+    const owner = await ctx.seedUser({ name: 'Bob' });
+    const { userId, cookie } = await signedIn('Dave');
+
+    // Blocked by the owner, who shares nothing with the guild: Dave may not know it exists (or its
+    // later names), although his device reported it once.
+    const closedCode = await newCode(userId);
+    const closedDevice = await consume(userId, closedCode.id);
+    const closed = await report(closedDevice, 'Closed Main', owner);
+    await ctx.t.db
+      .insert(accountLinks)
+      .values({ accountId: closed.accountId, userId, role: 'contributor', blocked: true });
+    await ctx.t.db.insert(accountSharing).values(
+      CATEGORIES.map((category) => ({
+        accountId: closed.accountId,
+        category,
+        audience: 'private' as const,
+      })),
+    );
+    const closedBody = (await (await status(cookie, closedCode.id)).json()) as StatusBody;
+    expect(closedBody.code).toMatchObject({ status: 'consumed', deviceId: closedDevice });
+    expect(closedBody.device).toBeNull();
+
+    // Hidden (its owner left): invisible to every non-admin.
+    const hiddenCode = await newCode(userId);
+    const hiddenDevice = await consume(userId, hiddenCode.id);
+    const hidden = await report(hiddenDevice, 'Hidden Main', owner);
+    await ctx.t.db
+      .update(osrsAccounts)
+      .set({ status: 'hidden' })
+      .where(eq(osrsAccounts.id, hidden.accountId));
+    const hiddenBody = (await (await status(cookie, hiddenCode.id)).json()) as StatusBody;
+    expect(hiddenBody.device).toBeNull();
+    expect(JSON.stringify([closedBody, hiddenBody])).not.toMatch(/Closed Main|Hidden Main|Bob/);
   });
 
   it("a contributor to someone else's account learns the owner's name", async () => {

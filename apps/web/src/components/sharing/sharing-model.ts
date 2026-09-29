@@ -33,9 +33,7 @@ export function grantCandidates(
     settings.categories.find((c) => c.category === category)?.grants.map((g) => g.userId) ?? [],
   );
   const players = new Set(
-    settings.contributors
-      .filter((c) => c.role === 'owner' || !c.blocked)
-      .map((c) => c.userId),
+    settings.contributors.filter((c) => c.role === 'owner' || !c.blocked).map((c) => c.userId),
   );
   const q = fold(query.trim());
   return members.filter(

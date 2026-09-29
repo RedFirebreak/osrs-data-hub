@@ -8,6 +8,7 @@
     "build": "next build",
     "start": "node .next/standalone/apps/web/server.js",
     "typecheck": "next typegen && tsc -p tsconfig.json",
+    "test:e2e": "playwright test",
     "lint": "eslint ."
   },
   "dependencies": {

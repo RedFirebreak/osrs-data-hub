@@ -5,25 +5,11 @@
  */
 import type { PlaytimeDay } from '@/components/charts/options';
 import { startOfLocalDay, type PlaySession } from '@hub/server';
+import { localDate } from './dates';
+
+export { localDate };
 
 const HOUR_MS = 60 * 60 * 1000;
-
-/** YYYY-MM-DD of `instant` in `timezone` (UTC when the zone is unknown to this runtime). */
-export function localDate(instant: Date, timezone: string): string {
-  let fmt: Intl.DateTimeFormat;
-  try {
-    fmt = new Intl.DateTimeFormat('en-CA', {
-      timeZone: timezone,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    });
-  } catch {
-    return instant.toISOString().slice(0, 10);
-  }
-  const parts = Object.fromEntries(fmt.formatToParts(instant).map((p) => [p.type, p.value]));
-  return `${parts.year}-${parts.month}-${parts.day}`;
-}
 
 /**
  * Milliseconds played on each of the last `days` local days (today included, oldest first) in

@@ -144,7 +144,10 @@ describe('GET /api/app/feed', () => {
       expect(res.status, query).toBe(400);
       const body = (await res.json()) as ErrorBody;
       expect(body.error.code).toBe('invalid_request');
-      expect(body.error.details?.map((d) => d.path), query).toContain(path);
+      expect(
+        body.error.details?.map((d) => d.path),
+        query,
+      ).toContain(path);
     }
   });
 });

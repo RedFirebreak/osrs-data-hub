@@ -36,6 +36,19 @@ const fromNotAfterTo = {
   path: ['from'],
 };
 
+const PUBLIC_ID_PATTERN = /^[A-Za-z0-9]{1,64}$/;
+
+/**
+ * Whether `publicId` can be an account's public id at all (D-46: base62; up to 64 characters, the
+ * read models' own cap). Anything else matches no account, so pages and routes answer it like an
+ * unknown id (404) without a query: a NUL character (`%00` in the path, decoded by Next) would
+ * otherwise reach Postgres, which refuses it in any text parameter (22021 invalid byte sequence),
+ * turning a not-found into a 400 or an error page.
+ */
+export function isPublicIdShape(publicId: unknown): publicId is string {
+  return typeof publicId === 'string' && PUBLIC_ID_PATTERN.test(publicId);
+}
+
 /** The query parameters as an object (a repeated key keeps its last value). */
 function paramsOf(url: string | URL): Record<string, string> {
   return Object.fromEntries(new URL(url).searchParams);
@@ -126,10 +139,7 @@ export function parseFeedQuery(url: string | URL): FeedQuery {
   const p = paramsOf(url);
   const q = z
     .object({
-      account: z
-        .string()
-        .regex(/^[A-Za-z0-9]{1,64}$/, 'not an account id')
-        .optional(),
+      account: z.string().regex(PUBLIC_ID_PATTERN, 'not an account id').optional(),
       types: z
         .string()
         .optional()

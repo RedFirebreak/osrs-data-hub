@@ -169,6 +169,10 @@ describe('GET /api/live/stream', () => {
     const viaQuery = await openStream({}, `?lastEventId=${newest!.seq}`);
     await readUntil(viaQuery.reader, (t) => t.includes(`id: ${seqs[0]}\n`));
 
+    // 0 is a cursor too (what a poll hands out before the hub's first event): everything replays.
+    const fromZero = await openStream({}, '?lastEventId=0');
+    await readUntil(fromZero.reader, (t) => t.includes(`id: ${newest!.seq}\n`));
+
     // A first connection never replays (it would toast old events).
     const fresh = await openStream();
     const first = await readUntil(fresh.reader, (t) => t.includes(': connected'));

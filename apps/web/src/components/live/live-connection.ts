@@ -9,8 +9,9 @@
  * - The cursor is the newest seq seen (SSE `id:` or the poll's `cursor`). A reopened stream carries it
  *   as `?lastEventId=` (the browser's own reconnects send the Last-Event-ID header), so nothing is
  *   lost across `reconnect()`.
- * - Polling never starts at `after=0`: the first poll without a cursor returns no events and the
- *   current cursor, so a page never toasts minutes-old events (the server's contract too).
+ * - The first poll carries no cursor: it returns no events and the current cursor, so a page never
+ *   toasts minutes-old events (the server's contract too). A hub without events answers cursor 0,
+ *   which is a real cursor from then on (`after=0`, `lastEventId=0`), so its first events arrive.
  * - A 401 from the poll means the session is gone (signed out elsewhere, offboarded): the connection
  *   stops and calls `onUnauthorized`.
  */
@@ -149,10 +150,9 @@ export class LiveConnection {
   }
 
   private openStream(): void {
+    // 0 is a real cursor (a hub without events yet), so it is sent too.
     const url =
-      this.cursor !== null && this.cursor > 0
-        ? `${this.streamUrl}?lastEventId=${this.cursor}`
-        : this.streamUrl;
+      this.cursor !== null ? `${this.streamUrl}?lastEventId=${this.cursor}` : this.streamUrl;
     let es: EventSourceLike;
     try {
       es = this.createEventSource(url);
@@ -242,7 +242,8 @@ export class LiveConnection {
   }
 
   private async poll(): Promise<void> {
-    const after = this.cursor !== null && this.cursor > 0 ? this.cursor : null;
+    // Only a client without any cursor asks for one; `after=0` replays a new hub's first events.
+    const after = this.cursor;
     const url = after === null ? this.pollUrl : `${this.pollUrl}?after=${after}`;
     const res = await this.fetchFn(url, {
       cache: 'no-store',

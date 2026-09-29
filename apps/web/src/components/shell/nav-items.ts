@@ -19,13 +19,12 @@ export interface NavItem {
   adminOnly?: boolean;
 }
 
-// `as Route`: these pages belong to other parts of the app (typedRoutes checks literals).
 export const NAV_ITEMS: readonly NavItem[] = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboardIcon },
-  { href: '/guild' as Route, label: 'Guild', icon: UsersIcon },
-  { href: '/devices' as Route, label: 'Devices', icon: MonitorSmartphoneIcon },
+  { href: '/guild', label: 'Guild', icon: UsersIcon },
+  { href: '/devices', label: 'Devices', icon: MonitorSmartphoneIcon },
   { href: '/settings', label: 'Settings', icon: SettingsIcon },
-  { href: '/admin' as Route, label: 'Admin', icon: ShieldIcon, adminOnly: true },
+  { href: '/admin', label: 'Admin', icon: ShieldIcon, adminOnly: true },
 ];
 
 /** The items this user sees. */

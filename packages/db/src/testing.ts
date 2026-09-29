@@ -25,7 +25,10 @@ export async function createTestDatabase(label = 'test'): Promise<TestDatabase> 
     .toLowerCase()
     .slice(0, 20)}_${randomBytes(4).toString('hex')}`;
   const template = inject('hubTemplateDb');
-  if (!template) throw new Error('createTestDatabase needs the globalSetup packages/db/src/testing/global-setup.ts');
+  if (!template)
+    throw new Error(
+      'createTestDatabase needs the globalSetup packages/db/src/testing/global-setup.ts',
+    );
   const admin = new pg.Client({ connectionString: TEST_ADMIN_URL });
   await admin.connect();
   try {

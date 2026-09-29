@@ -28,13 +28,19 @@ export function DeviceLabelEditor({ deviceId, label, className }: DeviceLabelEdi
   const [value, setValue] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  /** The label this editor saved, shown until the refreshed page brings it as `label`. */
-  const [saved, setSaved] = useState<{ label: string | null } | null>(null);
+  /**
+   * The label this editor saved and the `label` prop it replaced: shown only while the prop is still
+   * that old value, i.e. until the refreshed page brings the new one. After that the prop wins again,
+   * so a later rename elsewhere (another tab, an admin) shows up on the next refresh.
+   */
+  const [saved, setSaved] = useState<{ label: string | null; replaced: string | null } | null>(
+    null,
+  );
   const inputRef = useRef<HTMLInputElement>(null);
   const renameRef = useRef<HTMLButtonElement>(null);
   const refocus = useRef<'input' | 'rename' | null>(null);
 
-  const current = saved ? saved.label : label;
+  const current = saved && saved.replaced === label ? saved.label : label;
   const name = deviceName(current);
 
   useEffect(() => {
@@ -77,7 +83,7 @@ export function DeviceLabelEditor({ deviceId, label, className }: DeviceLabelEdi
       } | null;
       if (res.ok) {
         const stored = body?.device?.label ?? null;
-        setSaved({ label: stored });
+        setSaved({ label: stored, replaced: label });
         stopEditing();
         toast.success(`Renamed to ${deviceName(stored)}`);
         router.refresh();

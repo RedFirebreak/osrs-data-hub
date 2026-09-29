@@ -8,9 +8,10 @@
  */
 import { getDb } from '@hub/db';
 import { getXpSeries } from '@hub/server';
-import { ApiError, handleApi, json } from '@/lib/http';
+import { handleApi, json } from '@/lib/http';
 import { requireApiUser } from '@/lib/session';
-import { parseXpQuery } from '../../query';
+import { accountNotFound } from '../../history';
+import { isPublicIdShape, parseXpQuery } from '../../query';
 
 export async function GET(
   request: Request,
@@ -19,9 +20,10 @@ export async function GET(
   return handleApi(async () => {
     const { viewer } = await requireApiUser(request);
     const { publicId } = await ctx.params;
+    if (!isPublicIdShape(publicId)) throw accountNotFound();
     const query = parseXpQuery(request.url, new Date());
     const series = await getXpSeries(getDb().db, viewer, publicId, query);
-    if (!series) throw new ApiError(404, 'not_found', 'Account not found.');
+    if (!series) throw accountNotFound();
     return json(200, series);
   });
 }

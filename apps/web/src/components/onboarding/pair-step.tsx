@@ -142,7 +142,9 @@ export function PairStep(props: PairStepProps) {
                 key={i}
                 aria-hidden
                 className={cn(
-                  'flex h-14 w-11 items-center justify-center rounded-lg border bg-background font-mono text-3xl font-semibold tabular-nums sm:h-16 sm:w-13 sm:text-4xl',
+                  // 5 × w-10 + 4 gaps = 224 px: fits a 320 px phone inside the page, card and
+                  // section padding; w-11 from 360 px up.
+                  'flex h-14 w-10 items-center justify-center rounded-lg border bg-background font-mono text-3xl font-semibold tabular-nums min-[360px]:w-11 sm:h-16 sm:w-13 sm:text-4xl',
                   loading && 'animate-pulse bg-muted',
                   expired && 'text-muted-foreground line-through decoration-2',
                 )}
@@ -257,18 +259,22 @@ export function PairStep(props: PairStepProps) {
         )}
 
         {usable && !outdated && (
-          <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <LoaderCircleIcon aria-hidden className="size-4 animate-spin motion-reduce:hidden" />
-            <span>
-              Waiting for RuneLite to connect
-              {waitSecondsLeft !== null ? ` (${waitSecondsLeft} s)` : ''}…
+            <p>
+              {/* The live region holds only the steady text: the seconds change every second and
+                  would be announced every second. The troubleshooting alert follows at 0. */}
+              <span role="status">Waiting for RuneLite to connect…</span>
+              {waitSecondsLeft !== null && (
+                <span aria-hidden className="tabular-nums">{` (${waitSecondsLeft} s)`}</span>
+              )}
               {!connected && (
                 <span className="block text-xs">
                   Live updates are reconnecting; checking every {POLL_INTERVAL_MS / 1000} seconds.
                 </span>
               )}
-            </span>
-          </p>
+            </p>
+          </div>
         )}
 
         {usable && (troubleshooting || tipsOpen) && (

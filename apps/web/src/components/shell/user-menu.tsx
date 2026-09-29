@@ -1,9 +1,19 @@
 'use client';
-/** The signed-in user's avatar menu in the header: Settings, Privacy, Sign out. */
-import { ChevronDownIcon, LogOutIcon, SettingsIcon, ShieldCheckIcon } from 'lucide-react';
+/** The signed-in user's avatar menu in the header: Settings, Privacy, the theme, Sign out. */
+import {
+  ChevronDownIcon,
+  LogOutIcon,
+  MonitorIcon,
+  MoonIcon,
+  SettingsIcon,
+  ShieldCheckIcon,
+  SunIcon,
+} from 'lucide-react';
+import { useTheme } from 'next-themes';
 import Link from 'next/link';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { initialsOf } from '@/components/account/user-avatar';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import {
@@ -11,17 +21,18 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { signOut } from '@/lib/auth-client';
 
-/** "Zezima" → "Z", "Lynx Titan" → "LT" (avatar fallback). */
-export function initials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  const letters = parts.slice(0, 2).map((p) => Array.from(p)[0] ?? '');
-  return letters.join('').toUpperCase() || '?';
-}
+const THEMES = [
+  { value: 'system', label: 'System', icon: MonitorIcon },
+  { value: 'light', label: 'Light', icon: SunIcon },
+  { value: 'dark', label: 'Dark', icon: MoonIcon },
+] as const;
 
 export interface UserMenuProps {
   name: string;
@@ -31,6 +42,7 @@ export interface UserMenuProps {
 
 export function UserMenu({ name, image, isAdmin }: UserMenuProps) {
   const [signingOut, setSigningOut] = useState(false);
+  const { theme, setTheme } = useTheme();
 
   async function handleSignOut(): Promise<void> {
     setSigningOut(true);
@@ -48,7 +60,8 @@ export function UserMenu({ name, image, isAdmin }: UserMenuProps) {
         <Button variant="ghost" className="h-9 gap-2 px-1.5">
           <Avatar size="sm">
             {image && <AvatarImage src={image} alt="" />}
-            <AvatarFallback>{initials(name)}</AvatarFallback>
+            {/* The same initials as everywhere else the user appears (member lists, account pages). */}
+            <AvatarFallback>{initialsOf(name)}</AvatarFallback>
           </Avatar>
           <span className="hidden max-w-36 truncate sm:inline">{name}</span>
           <ChevronDownIcon aria-hidden className="text-muted-foreground" />
@@ -73,6 +86,16 @@ export function UserMenu({ name, image, isAdmin }: UserMenuProps) {
             Privacy
           </Link>
         </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuLabel>Theme</DropdownMenuLabel>
+        <DropdownMenuRadioGroup value={theme ?? 'system'} onValueChange={setTheme}>
+          {THEMES.map(({ value, label, icon: Icon }) => (
+            <DropdownMenuRadioItem key={value} value={value}>
+              <Icon aria-hidden />
+              {label}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
         <DropdownMenuSeparator />
         <DropdownMenuItem
           disabled={signingOut}

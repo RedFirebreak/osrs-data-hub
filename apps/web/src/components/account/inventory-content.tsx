@@ -37,7 +37,9 @@ export function InventoryContent({ items }: { items: readonly ItemData[] }) {
                 )}
                 {s.name}
               </span>
-              <span className="shrink-0 tabular-nums">{s.value > 0 ? `${formatGp(s.value)} gp` : '—'}</span>
+              <span className="shrink-0 tabular-nums">
+                {s.value > 0 ? `${formatGp(s.value)} gp` : '—'}
+              </span>
             </li>
           ))}
         </ul>

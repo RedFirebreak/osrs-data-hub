@@ -10,7 +10,7 @@
  */
 import { defineRequestState } from '@better-auth/core/context';
 import { getConfig, type HubConfig } from '@hub/core';
-import { getDb, schema, users } from '@hub/db';
+import { getDb, pgErrorCode, safeDbErrorMessage, schema } from '@hub/db';
 import {
   avatarUrl,
   displayName,
@@ -19,15 +19,15 @@ import {
   fetchOwnGuildMember,
   getLogger,
   isAdmin,
-  restoreUser,
+  recordSignIn,
   type GuildPolicy,
+  type Logger,
 } from '@hub/server';
-import { betterAuth } from 'better-auth';
+import { betterAuth, type BetterAuthOptions } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { APIError } from 'better-auth/api';
 import { nextCookies } from 'better-auth/next-js';
 import type { DiscordProfile } from 'better-auth/social-providers';
-import { eq } from 'drizzle-orm';
 
 /** Header our route handler sets from X-Forwarded-For (TRUST_PROXY_HOPS) for Better Auth's limiter. */
 export const CLIENT_IP_HEADER = 'x-hub-client-ip';
@@ -54,6 +54,29 @@ const NO_TOKENS = {
   refreshTokenExpiresAt: null,
 };
 
+/**
+ * Better Auth's own log lines, through pino: the message, and for each extra argument only what is
+ * safe to keep. Its default logger prints raw errors to stderr, and a failed session lookup carries
+ * the session token among the query's bound parameters (AUTH-13, DB-3). An error becomes its name,
+ * SQLSTATE and Postgres message; anything else only its type (or an object's keys).
+ */
+export function betterAuthLogger(log: Logger): NonNullable<BetterAuthOptions['logger']> {
+  return {
+    level: 'warn',
+    log(level, message, ...args: unknown[]) {
+      log[level]({ source: 'better-auth', details: args.map(describeLogArg) }, message);
+    },
+  };
+}
+
+function describeLogArg(arg: unknown): unknown {
+  if (arg instanceof Error) {
+    return { name: arg.name, pgCode: pgErrorCode(arg), error: safeDbErrorMessage(arg) };
+  }
+  if (arg !== null && typeof arg === 'object') return { keys: Object.keys(arg).slice(0, 20) };
+  return typeof arg;
+}
+
 export function guildPolicy(config: HubConfig): GuildPolicy {
   return {
     guildId: config.discord.guildId ?? '',
@@ -75,6 +98,7 @@ function createAuth(config: HubConfig) {
     basePath: '/api/auth',
     secret: config.authSecret,
     trustedOrigins: [config.appOrigin],
+    logger: betterAuthLogger(log),
     database: drizzleAdapter(db, { provider: 'pg', schema, transaction: true }),
     socialProviders: {
       discord: {
@@ -208,38 +232,22 @@ function createAuth(config: HubConfig) {
           before: async (session) => {
             const snap = await memberSnapshot.get();
             if (!snap) return;
-            const [current] = await db
-              .select({ status: users.status, offboardReason: users.offboardReason })
-              .from(users)
-              .where(eq(users.id, session.userId));
-            // Admin offboarding is not undone by logging in (only membership reasons are, handoff §14.4).
-            if (current?.status === 'grace' && current.offboardReason === 'admin') {
+            // Fresh member data; back within the grace period: active again, hidden accounts
+            // visible again. Admin offboarding is not undone by logging in (D-35, handoff §14.4).
+            if ((await recordSignIn(db, session.userId, snap)) === 'revoked') {
               throw new APIError('FORBIDDEN', {
                 code: 'access_revoked',
                 message: 'Your access was removed by an admin.',
               });
             }
-            await db
-              .update(users)
-              .set({
-                name: snap.name,
-                image: snap.image,
-                nickname: snap.nickname,
-                roles: snap.roles,
-                isAdmin: snap.isAdmin,
-                lastVerifiedAt: new Date(),
-                verifyFailures: 0,
-              })
-              .where(eq(users.id, session.userId));
-            if (current?.status === 'grace') {
-              // Back within the grace period: active again, hidden accounts visible again.
-              await restoreUser(db, { userId: session.userId, actorLabel: 'login' });
-            }
           },
         },
       },
     },
+    // Endpoints the hub doesn't use. /list-sessions would hand every session token to browser
+    // JavaScript.
     disabledPaths: [
+      '/list-sessions',
       '/update-user',
       '/change-email',
       '/delete-user',

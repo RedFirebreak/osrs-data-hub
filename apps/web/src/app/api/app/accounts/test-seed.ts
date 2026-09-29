@@ -149,7 +149,13 @@ export function accountSeeder(db: Db) {
     async xp(accountId: number, samples: [skill: string, bucket: string | Date, xp: number][]) {
       const rows = [];
       for (const [skill, bucket, xp] of samples) {
-        rows.push({ accountId, skillId: await skillId(skill), bucket: new Date(bucket), xp, level: 1 });
+        rows.push({
+          accountId,
+          skillId: await skillId(skill),
+          bucket: new Date(bucket),
+          xp,
+          level: 1,
+        });
       }
       if (rows.length > 0) await db.insert(xpSamples).values(rows);
     },

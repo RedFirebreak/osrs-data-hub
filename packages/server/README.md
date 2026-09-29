@@ -15,13 +15,13 @@ does the reads, the writes and the locking. The design is `docs/design/HANDOFF-d
 | `devices/` | The Devices page: list, rename, revoke. |
 | `accounts/` | Read models (dashboard, account page, guild feed, history, XP periods) and the permission inputs (`loadViewer`, `loadAccountAccess`). |
 | `sharing/` | Audiences, grants, ownership transfer and claim, blocking and removing contributors. |
-| `live/` | The LISTEN client, the in-memory `LiveHub` fan-out to SSE streams, and the `Last-Event-ID` replay and polling fallback. |
-| `offboarding/` | Offboarding, restore and grace expiry (handoff §14). `accounts.ts` holds the ownership rules: choosing a successor, moving ownership, and the D-60 takeover of accounts hidden because their owner is in grace. |
+| `live/` | The LISTEN client, the in-memory `LiveHub` fan-out to SSE streams, and the `Last-Event-ID` replay and polling fallback (`replayEvents`, `settledLiveCursor`). |
+| `offboarding/` | Offboarding, restore, grace expiry and the orphaned-account purge (handoff §14, D-61), and what a sign-in does to the user's row (`recordSignIn`, D-35). `accounts.ts` holds the ownership rules: choosing a successor, moving ownership, and the D-60 takeover of accounts hidden because their owner is in grace. |
 | `jobs/` | The worker's jobs: closing stale play sessions, Discord re-verification with its two circuit breakers, and audit-log pruning. |
 | `discord/` | The Discord API client (member lookups with the bot token or the user's OAuth token, the current user) and the membership verdict. |
 | `settings/` | User settings and the decommission switch. |
 | `admin/` | Admin read models (users, ingest health, raw payloads, the audit log) and admin actions. |
-| top-level files | `logger.ts` (pino, redaction), `metrics.ts` (prom-client), `notify.ts` (`pg_notify` inside the writing transaction, D-32), `audit.ts`, `feed.ts` (event redaction for viewers). |
+| top-level files | `logger.ts` (pino, redaction; `HUB_SERVICE` names the process), `metrics.ts` (prom-client), `notify.ts` (`pg_notify` inside the writing transaction, D-32), `audit.ts`, `feed.ts` (event redaction for viewers), `health.ts` (`pingDatabase` for `/api/health`). |
 
 `src/index.ts` re-exports every directory. Tests run against a real database, one per test file
 (`createTestDatabase` from `@hub/db/testing`): `pnpm vitest run --project server`.
@@ -46,7 +46,8 @@ Facts about this package only. Traps of the shared layer are in `docs/gotchas/` 
   loses the stream then. The toast filter is fixed until the next stream.
 - **Replay serves only the settled seq prefix** (DB-4). The polling fallback passes
   `LIVE_POLL_SETTLE_MS` (10 s), so a poll holds back rows younger than that and anything above them.
-  The SSE replay passes 0, because the stream has already subscribed.
+  The SSE replay passes 0, because the stream has already subscribed. A first poll's cursor comes from
+  `settledLiveCursor` and is 0 on a hub without events; 0 is a real cursor to replay after (D-65).
 - **`PresenceMessage.onlineForMs`**: nothing is sent when presence times out (a crash or a hop to a
   special world just stops the payloads). A client marks the account offline `onlineForMs` after it
   received the message. The value is relative, so the browser's clock doesn't matter.

@@ -8,13 +8,16 @@
  *   deviceId, outdatedAttemptAt, outdatedVersion }` (dates as ISO strings). `outdatedAttemptAt` is
  *   set when a plugin below MIN_PLUGIN_VERSION tried the code (the code is not consumed then);
  * - `device`: getDeviceFirstData for the code's device (`{ account, role, ownerName }`), null until
- *   the device has reported an account, and while the code isn't consumed.
+ *   the device has reported an account, while the code isn't consumed, and when the user may no
+ *   longer see that account (resolveAccess, D-22: hidden, or its owner blocked the user and shares
+ *   nothing) — the same rule as the Devices page (listDevices), so an old code's id never keeps
+ *   telling the user the account's current name and owner.
  *
  * 404 for an id that isn't a uuid, doesn't exist or is another user's code (all look the same).
  * Session auth (401).
  */
 import { getDb } from '@hub/db';
-import { getDeviceFirstData, getPairingCodeStatus } from '@hub/server';
+import { getDeviceFirstData, getPairingCodeStatus, loadVisibleAccount } from '@hub/server';
 import { ApiError, handleApi, json } from '@/lib/http';
 import { requireApiUser } from '@/lib/session';
 
@@ -23,15 +26,17 @@ export async function GET(
   ctx: RouteContext<'/api/app/pairing-codes/[id]'>,
 ): Promise<Response> {
   return handleApi(async () => {
-    const { user } = await requireApiUser(request);
+    const { user, viewer } = await requireApiUser(request);
     const { id } = await ctx.params;
     const { db } = getDb();
     const code = await getPairingCodeStatus(db, { userId: user.id, codeId: id });
     if (!code) throw new ApiError(404, 'not_found', 'Pairing code not found.');
-    const device =
+    const firstData =
       code.deviceId === null
         ? null
         : await getDeviceFirstData(db, { userId: user.id, deviceId: code.deviceId });
-    return json(200, { code, device });
+    const visible =
+      firstData !== null && (await loadVisibleAccount(db, viewer, firstData.account.publicId));
+    return json(200, { code, device: visible ? firstData : null });
   });
 }

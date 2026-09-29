@@ -18,8 +18,7 @@ export interface DoneStepProps {
   headingRef?: React.Ref<HTMLHeadingElement>;
 }
 
-// `as Route`: typedRoutes checks paths, not #fragments.
-const SHARING_EXPLAINED = '/privacy#sharing' as Route;
+const SHARING_EXPLAINED = '/privacy#sharing' satisfies Route;
 
 export function DoneStep({ firstData, onRestart, headingRef }: DoneStepProps) {
   const account = firstData?.account ?? null;
@@ -37,22 +36,37 @@ export function DoneStep({ firstData, onRestart, headingRef }: DoneStepProps) {
       />
 
       <div className="flex flex-col gap-2 rounded-xl bg-muted/40 p-4 text-sm ring-1 ring-foreground/10">
-        <p className="text-pretty">
-          By default, stats, events and activity are visible to the guild; location, equipment and
-          inventory stay private.{' '}
-          {account ? (
+        {account && firstData?.role === 'contributor' ? (
+          // Only the owner changes sharing; a contributor's panel is read-only.
+          <p className="text-pretty">
+            {firstData.ownerName
+              ? `${firstData.ownerName} owns ${account.name} and decides who in the guild sees it.`
+              : `The owner of ${account.name} decides who in the guild sees it.`}{' '}
             <Link
               href={`${accountHref(account.publicId)}#sharing` as Route}
               className="font-medium underline underline-offset-4"
             >
-              Sharing settings for {account.name}
+              Who can see {account.name}
             </Link>
-          ) : (
-            <Link href={SHARING_EXPLAINED} className="font-medium underline underline-offset-4">
-              Who can see what
-            </Link>
-          )}
-        </p>
+          </p>
+        ) : (
+          <p className="text-pretty">
+            By default, stats, events and activity are visible to the guild; location, equipment and
+            inventory stay private.{' '}
+            {account ? (
+              <Link
+                href={`${accountHref(account.publicId)}#sharing` as Route}
+                className="font-medium underline underline-offset-4"
+              >
+                Sharing settings for {account.name}
+              </Link>
+            ) : (
+              <Link href={SHARING_EXPLAINED} className="font-medium underline underline-offset-4">
+                Who can see what
+              </Link>
+            )}
+          </p>
+        )}
         <p className="text-pretty text-muted-foreground">
           Your HA Exporter plugin settings decide what is sent to the hub in the first place: what
           you turn off there never reaches the hub.

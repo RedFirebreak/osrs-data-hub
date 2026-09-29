@@ -106,15 +106,20 @@ export function SharingPanel({
   const [members, setMembers] = useState<ActiveMember[] | null>(null);
   const canManage = settings.canManage;
 
-  async function loadMembers(): Promise<void> {
+  /** Loads the grant picker's members; false (after a toast) when that failed. */
+  async function loadMembers(): Promise<boolean> {
     try {
       const res = await fetch('/api/app/members', { credentials: 'same-origin' });
       const body = (await res.json().catch(() => null)) as { members?: ActiveMember[] } | null;
-      if (res.ok && body?.members) setMembers(body.members);
-      else toast.error("The member list couldn't be loaded. Try again in a moment.");
+      if (res.ok && body?.members) {
+        setMembers(body.members);
+        return true;
+      }
+      toast.error("The member list couldn't be loaded. Try again in a moment.");
     } catch {
       toast.error("The member list couldn't be loaded. Check your connection.");
     }
+    return false;
   }
 
   async function apply(change: SharingChange, names: { category?: string; user?: string } = {}) {
@@ -171,8 +176,8 @@ export function SharingPanel({
           <AlertTitle>Claim this account</AlertTitle>
           <AlertDescription className="flex flex-col items-start gap-2">
             <span>
-              Its owner is gone. As one of its players you can become the owner and decide who
-              sees what.
+              Its owner is gone. As one of its players you can become the owner and decide who sees
+              what.
             </span>
             <Button size="sm" disabled={pending} onClick={() => setConfirm({ kind: 'claim' })}>
               Claim ownership
@@ -291,8 +296,8 @@ export function SharingPanel({
                 )}
                 {c.audience !== 'selected' && c.grants.length > 0 && (
                   <p className="text-xs text-muted-foreground">
-                    {c.grants.length === 1 ? '1 person is' : `${c.grants.length} people are`}{' '}
-                    added; that applies while this is set to Selected people.
+                    {c.grants.length === 1 ? '1 person is' : `${c.grants.length} people are`} added;
+                    that applies while this is set to Selected people.
                   </p>
                 )}
               </li>
@@ -357,11 +362,21 @@ export function SharingPanel({
 
       <AlertDialog open={confirm !== null} onOpenChange={(open) => !open && setConfirm(null)}>
         <AlertDialogContent>
-          {confirm && <ConfirmText confirm={confirm} />}
+          {confirm && (
+            <ConfirmText
+              confirm={confirm}
+              viewerIsOwner={relation === 'owner'}
+              hasOwner={hasOwner}
+            />
+          )}
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              variant={confirm?.kind === 'claim' || confirm?.kind === 'transfer' ? 'default' : 'destructive'}
+              variant={
+                confirm?.kind === 'claim' || confirm?.kind === 'transfer'
+                  ? 'default'
+                  : 'destructive'
+              }
               onClick={() => confirm && runConfirmed(confirm)}
             >
               {confirm ? confirmLabel(confirm) : 'Confirm'}
@@ -391,7 +406,12 @@ function PlayerMenu({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon-sm" disabled={disabled} aria-label={`Manage ${player.name}`}>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          disabled={disabled}
+          aria-label={`Manage ${player.name}`}
+        >
           <EllipsisVerticalIcon aria-hidden />
         </Button>
       </DropdownMenuTrigger>
@@ -439,7 +459,16 @@ function confirmLabel(confirm: Confirm): string {
   }
 }
 
-function ConfirmText({ confirm }: { confirm: Confirm }) {
+function ConfirmText({
+  confirm,
+  viewerIsOwner,
+  hasOwner,
+}: {
+  confirm: Confirm;
+  /** false for an admin overriding (they aren't the one handing the account on). */
+  viewerIsOwner: boolean;
+  hasOwner: boolean;
+}) {
   let title: string;
   let text: string;
   switch (confirm.kind) {
@@ -450,7 +479,9 @@ function ConfirmText({ confirm }: { confirm: Confirm }) {
       break;
     case 'transfer':
       title = `Make ${confirm.user.name} the owner?`;
-      text = `${confirm.user.name} will control this account's sharing and players. You stay a player and keep seeing everything, but you can't change sharing any more unless they hand it back.`;
+      text = viewerIsOwner
+        ? `${confirm.user.name} will control this account's sharing and players. You stay a player and keep seeing everything, but you can't change sharing any more unless they hand it back.`
+        : `${confirm.user.name} will control this account's sharing and players.${hasOwner ? ' The current owner stays a player of it.' : ''}`;
       break;
     case 'block':
       title = `Block ${confirm.user.name}?`;

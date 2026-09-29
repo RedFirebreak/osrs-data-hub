@@ -129,6 +129,15 @@ export class ConfigError extends Error {
   override name = 'ConfigError';
 }
 
+/**
+ * HUB_NAME as shown and sent to the plugin: at most 64 characters (code points, so an emoji is never
+ * cut in half), trimmed after the cut too, so it never ends in a space an admin can't type back
+ * (the decommission switch asks for the name). Empty → the default.
+ */
+export function hubNameFrom(raw: string): string {
+  return [...raw.trim()].slice(0, 64).join('').trim() || 'osrs-data-hub';
+}
+
 /** Parses env into HubConfig; throws ConfigError listing every invalid variable. */
 export function parseConfig(env: Record<string, string | undefined> = process.env): HubConfig {
   const r = EnvSchema.safeParse(env);
@@ -146,7 +155,7 @@ export function parseConfig(env: Record<string, string | undefined> = process.en
   return {
     appUrl: e.APP_URL,
     appOrigin: e.APP_URL.origin,
-    hubName: e.HUB_NAME.trim().slice(0, 64) || 'osrs-data-hub',
+    hubName: hubNameFrom(e.HUB_NAME),
     minPluginVersion: e.MIN_PLUGIN_VERSION,
     databaseUrl: e.DATABASE_URL,
     authSecret: e.AUTH_SECRET,

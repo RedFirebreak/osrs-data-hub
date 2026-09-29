@@ -1,6 +1,6 @@
 # Gotchas
 
-76 traps, grouped into five files, found while building osrs-data-hub. Each is written up
+77 traps, grouped into five files, found while building osrs-data-hub. Each is written up
 once under a stable ID and referenced by ID from everywhere else, so there is exactly one place to edit
 when something changes. Package-agnostic: things that are true of the shared layer (the HA Exporter
 plugin protocol, Next.js, Better Auth, Drizzle, Postgres/TimescaleDB, pg-boss, the Discord API, and the
@@ -26,7 +26,7 @@ defeats the point of them being separate.
 | [database.md](database.md) | `DB`, `TSDB` — Postgres behaviour, drizzle-orm 0.45 and drizzle-kit 0.31 (queries, errors, the migrator), and TimescaleDB 2.30 (hypertables, compression, continuous aggregates, policies, the Docker image) | 27 |
 | [nextjs.md](nextjs.md) | `NEXT` — Next.js 16 (route handlers, server actions, RSC, proxy.ts, instrumentation, basePath, standalone output, the dev and build CLI) | 12 |
 | [plugin.md](plugin.md) | `PLUGIN` — the HA Exporter v1.5 wire protocol as seen from the hub (payload shapes, Gson serialization, the OkHttp transport, status handling, the retry queue, the pairing panel) | 13 |
-| [toolchain.md](toolchain.md) | `PGBOSS`, `TOOL`, `ZOD` — build, lint and package tooling (TypeScript, ESLint, pnpm, tsup, shadcn, Docker base images) and the pg-boss and zod libraries | 10 |
+| [toolchain.md](toolchain.md) | `PGBOSS`, `TOOL`, `ZOD` — build, lint, test and package tooling (TypeScript, ESLint, pnpm, tsup, shadcn, Playwright, Docker base images) and the pg-boss and zod libraries | 11 |
 | [open-questions.md](open-questions.md) | read from docs, not yet observed — no IDs, not in the index | — |
 
 **Source key.** Every entry ends with the source it was settled from:
@@ -60,7 +60,7 @@ The `gotcha` skill walks this, including a trap that fits no existing file.
 | [AUTH-13](auth.md#auth-13) | Better Auth | While the database is down, every signed-in route answers 500 instead of 503, and the log shows `[Better Auth]: INTERNAL_SERVER_ERROR DrizzleQueryError: Failed query: select … from "session" … params: <session token>`. |
 | [DISCORD-1](auth.md#discord-1) | Discord | Re-verification marks every member, or a large share of them, as having left the guild in a single run. |
 | **[database.md](database.md)** | | |
-| [DB-1](database.md#db-1) | Database | An insert fails with `22P02 invalid input syntax for type json` or `unsupported Unicode escape sequence` (`\u0000 cannot be converted to text`). |
+| [DB-1](database.md#db-1) | Database | An insert fails with `22P02 invalid input syntax for type json` or `unsupported Unicode escape sequence` (`\u0000 cannot be converted to text`), or a lookup by a URL path segment containing `%00` fails with `22021 invalid byte sequence for encoding "UTF8": 0x00`. |
 | [DB-2](database.md#db-2) | Database | A resent event is stored twice although the insert uses `ON CONFLICT … DO NOTHING` on a unique key. |
 | [DB-3](database.md#db-3) | Database | A caught database error has `err.code === undefined`, and its logged message contains tokens, coordinates or other bound parameters. |
 | [DB-4](database.md#db-4) | Database | A cursor feed (`?after=<seq>`, SSE `Last-Event-ID`) permanently misses some rows that are in the table. |
@@ -123,7 +123,8 @@ The `gotcha` skill walks this, including a trap that fits no existing file.
 | [TOOL-4](toolchain.md#tool-4) | Toolchain | The tsup-bundled worker crashes at start with `Error: Dynamic require of "events" is not supported`, or with `ReferenceError: __dirname is not defined in ES module scope` from pino. |
 | [TOOL-5](toolchain.md#tool-5) | Toolchain | `node_modules/.pnpm` holds several `drizzle-orm@0.45.3_<peers>` directories, and workspace packages resolve different ones. |
 | [TOOL-6](toolchain.md#tool-6) | Toolchain | A Docker build on `node:26-alpine` fails with `sh: corepack: not found`. |
-| [TOOL-7](toolchain.md#tool-7) | Toolchain | After `pnpm format`, `tools/check_gotchas.py` reports `has no '*Source: ...*' line` for every entry, and doc tables are re-padded. |
+| [TOOL-7](toolchain.md#tool-7) | Toolchain | After `pnpm format`, `tools/check_gotchas.py` reports `has no '*Source: ...*' line` for every entry and doc tables are re-padded, or tests that splice a payload fixture as a string fail (`expected [] to deeply equal [ 'player.inventory' ]`). |
+| [TOOL-8](toolchain.md#tool-8) | Toolchain | A Playwright run whose `globalSetup` creates the app's database fails with `Timed out waiting 60000ms from config.webServer`, or the server logs `database "…" does not exist` at start although `globalSetup` created it. |
 | [ZOD-1](toolchain.md#zod-1) | zod | Unknown or new fields in a plugin payload vanish after parsing: stored event data lacks keys the plugin sent. |
 
 ## Retired IDs

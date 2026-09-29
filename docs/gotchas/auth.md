@@ -163,7 +163,8 @@ parameter, here the session token ([DB-3](database.md#db-3)); and `pgErrorCode`/
 nothing on the thrown error, so an outage looks like a bug. Fix: map a Better Auth `APIError` with a 5xx
 `statusCode` (`isAPIError` from `better-auth/api`) to 503 + `Retry-After` in the route's error mapper
 (apps/web lib/http.ts does), and give `betterAuth()` a `logger.log` that logs errors by name,
-`pgErrorCode` and `safeDbErrorMessage` only, never the error object.
+`pgErrorCode` and `safeDbErrorMessage` only, never the error object (apps/web lib/auth.ts
+`betterAuthLogger`; lib/session.test.ts checks that the token reaches no log call).
 
 *Source: `OBSERVED` (apps/web vitest, database unreachable, better-auth 1.7.6 + drizzle-orm 0.45.3, 2026-09-29: the token appeared twice on stderr, `handleApi` answered 500); `SOURCE` (better-auth api/routes/session.mjs:231-232)*
 

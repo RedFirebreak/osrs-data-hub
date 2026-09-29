@@ -24,8 +24,7 @@ export function generateMetadata(): Metadata {
   return { title: `Dashboard · ${getConfig().hubName}` };
 }
 
-// `as Route`: the wizard belongs to another part of the app (typedRoutes checks literals).
-const WIZARD = '/onboarding' as Route;
+const WIZARD = '/onboarding' satisfies Route;
 
 export default async function DashboardPage() {
   const { user, viewer } = await requireUser();

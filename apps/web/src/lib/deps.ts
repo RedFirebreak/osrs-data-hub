@@ -4,9 +4,10 @@
  * and live on globalThis: route handlers, RSC and instrumentation are separate module instances in
  * Next, and a module-level limiter would exist once per instance (NEXT-3, D-37).
  */
-import { getConfig, sha256Hex, type TokenBucketLimiter } from '@hub/core';
-import { devices, getDb, pgErrorCode } from '@hub/db';
+import { getConfig, type TokenBucketLimiter } from '@hub/core';
+import { getDb, pgErrorCode } from '@hub/db';
 import {
+  authenticateDevice,
   createIngestLimiter,
   createPairLimits,
   getLogger,
@@ -16,7 +17,6 @@ import {
   type PairDeps,
   type PairLimits,
 } from '@hub/server';
-import { eq } from 'drizzle-orm';
 import { json } from './http';
 
 const g = globalThis as unknown as {
@@ -86,8 +86,9 @@ export const PLUGIN_GET_ERROR =
 /**
  * 400 `{"ok":false,"error":PLUGIN_GET_ERROR}` for GET/HEAD on /api/osrs-data/* (never a redirect,
  * PLUGIN-2); HEAD gets the same status and headers without a body. A GET that carries the token of
- * a paired device is a plugin behind a redirect: logged with the device id (never the token), so an
- * admin can find it. Unknown tokens are not logged: anyone can send those, as often as they like.
+ * a paired device (not revoked, its user active: authenticateDevice) is a plugin behind a redirect:
+ * logged with the device id (never the token), so an admin can find it. Unknown tokens are not
+ * logged: anyone can send those, as often as they like.
  */
 export function pluginGetResponse(request: Request, endpoint: 'pair' | 'events'): Response {
   const token = request.headers.get('x-osrs-token');
@@ -102,10 +103,7 @@ async function logMisdirectedPlugin(token: string, endpoint: 'pair' | 'events'):
   const log = getLogger();
   try {
     const { db } = getDb(getConfig().databaseUrl);
-    const [device] = await db
-      .select({ id: devices.id, userId: devices.userId })
-      .from(devices)
-      .where(eq(devices.tokenHash, sha256Hex(token)));
+    const device = await authenticateDevice(db, token);
     if (!device) return;
     log.warn(
       { endpoint, deviceId: device.id, userId: device.userId },

@@ -24,9 +24,10 @@ live in [`gotchas/`](gotchas/README.md) and are cited by ID.
 9. [Permissions and privacy](#9-permissions-and-privacy)
 10. [Live updates](#10-live-updates)
 11. [Worker jobs](#11-worker-jobs)
-12. [Configuration and operations](#12-configuration-and-operations)
-13. [Milestones and status](#13-milestones-and-status)
-14. [Decision log](#decision-log)
+12. [Web UI](#12-web-ui)
+13. [Configuration and operations](#13-configuration-and-operations)
+14. [Milestones and status](#14-milestones-and-status)
+15. [Decision log](#decision-log)
 
 ## 1. System context
 
@@ -57,7 +58,8 @@ processes goes through Postgres `LISTEN/NOTIFY`.
 ## 2. Repository layout
 
 ```
-apps/web            Next.js: UI, /api/osrs-data/* (plugin), /api/live/* (SSE), /api/v1/* (M3)
+apps/web            Next.js: UI (§12), /api/app/* (the UI's routes), /api/osrs-data/* (plugin),
+                    /api/live/* (SSE, §10), /api/v1/* (M3); Playwright e2e in apps/web/e2e
 apps/worker         pg-boss jobs + the migrate entrypoint
 packages/core       pure logic: payload schemas, version gate, time/staleness rules, event
                     normalization, derived-write planning, permission resolver, rate limiters, config
@@ -196,47 +198,119 @@ filter and the API.
 
 ## 10. Live updates
 
-`GET /api/live/stream` (session auth, SSE). The web process holds one `LISTEN` connection
-(`hub_events`, `hub_state`, `hub_pairing`) and fans out to every open stream after the permission check
-and the viewer's toast filter. Heartbeat comment every 25 s, `retry:` hint, `X-Accel-Buffering: no`,
-`Last-Event-ID` replays the last 5 minutes; `/api/live/events?after=<seq>` is the polling fallback.
-Toasts are skipped for events older than 15 minutes (they still reach the feed).
+**Server.** `GET /api/live/stream` (session auth, SSE; 401 JSON when signed out). The web process
+holds one `LISTEN` connection (`hub_events`, `hub_state`, `hub_pairing`; started by
+`instrumentation.ts`, reconnecting with a backoff) and one `LiveHub` (`packages/server/src/live/`), both
+on `globalThis` (D-37). Ingest and pairing call `pg_notify` inside their transaction, so only committed
+data is announced (D-32). The hub fans each notification out to every open stream after the
+permission check (`resolveAccess`, D-22) and the viewer's toast filter, and drops the streams of users
+who are no longer active. Messages:
 
-In the browser, one `LiveProvider` (apps/web `components/live/`) per signed-in page tree owns the
-connection: it reopens a stream the browser gave up on with a backoff (5 s → 60 s), polls every 10 s
-while the stream isn't open (the first poll only learns the cursor, so a page never toasts old events),
-de-duplicates events by id (replay and polling overlap the stream), and reopens the stream with
-`?lastEventId=` when the toast filter changes, because the server captures the filter when a stream
-opens. Presence messages carry `onlineForMs`, and the client marks an account offline after that long
-without another message, since nothing is sent when a client crashes. A `resync` refreshes the server
-components (and reopens the stream at most once a minute); a 401 from the poll refreshes, which sends
-the browser to `/login`.
+| Message | To whom | Carries |
+|---|---|---|
+| `event` (`id:` = the event's `seq`) | viewers who may read the account's `events` | the redacted feed event and a `toast` flag (the viewer's filter; never for events older than 15 minutes) |
+| `presence` | viewers with the account's `activity` | online, world, special world, last seen, `onlineForMs` |
+| `pairing` | the user who created the code | `consumed` (with the device) or `outdated_plugin` (with the version) |
+| `device` | the device's user | the first data from a newly paired device (account, owner or contributor) |
+| `resync` | one stream | "refetch": after the `LISTEN` connection reconnected, or a replay cut off at its limit |
+
+The stream starts with `retry: 5000`, writes a heartbeat comment every 25 s and re-checks the Better
+Auth session on each one (a stream whose session is gone ends; the browser's reconnect then gets 401),
+and sends `X-Accel-Buffering: no` and `Cache-Control: no-cache, no-transform`. A reconnect carrying
+`Last-Event-ID` (or `?lastEventId=`) first replays the viewer's events of the last 5 minutes after that
+seq, at most 200, then a `resync` if it was cut off (D-65); live messages arriving meanwhile are held
+back so seqs stay ascending. A first connection never replays, since that would toast old events.
+
+`GET /api/live/events?after=<seq>` is the polling fallback. Without `after`, it answers no events and
+the current *settled* cursor: the newest seq below any row inserted in the last 10 s, since `seq` is
+taken at insert and a lower one can still commit after a higher one (DB-4). With `after` (0 included:
+a hub without events hands out 0) it answers the viewer's settled events after it from the last
+5 minutes and the next cursor (D-65).
+
+**Browser.** One `LiveProvider` (apps/web `components/live/`) per signed-in page tree owns the
+connection. It reopens a stream the browser gave up on with a backoff (5 s → 60 s), polls every 10 s
+while the stream isn't open, de-duplicates events by id (replay and polling overlap the stream), and
+reopens the stream with `?lastEventId=` when the toast filter changes, because the server captures the
+filter when a stream opens. Presence messages carry `onlineForMs`, and the client marks an account
+offline after that long without another message, since nothing is sent when a client crashes. A
+`resync` refreshes the server components (and reopens the stream at most once a minute); a 401 from
+the poll refreshes, which sends the browser to `/login`. Toasts (sonner) appear top right, below the
+sticky header. The stream is also the route that renews the session cookie for an active user (D-64).
 
 ## 11. Worker jobs
 
 | Job | Schedule |
 |---|---|
-| Close stale presence and sessions | every minute |
-| Discord re-verification | every 6 h, staggered |
-| Offboarding grace expiry, then the orphaned-account purge (D-61) | hourly |
-| Re-apply Timescale policies from env | at startup |
-| Clean up raw payloads | periodic (retention policy does the work) |
-| Prune the audit log | daily |
+| Close stale presence and sessions (`close-stale-sessions`) | every minute |
+| Discord re-verification (`reverify-members`): a batch of users last checked over 6 h ago (D-43), two circuit breakers (D-62); off, with a warning at startup and on each run, without `DISCORD_BOT_TOKEN` and `DISCORD_GUILD_ID` | every 15 min |
+| Offboarding grace expiry, then the orphaned-account purge (`expire-grace`, D-61) | hourly |
+| Prune the audit log (`prune-audit-log`) | daily |
+| Re-apply Timescale policies from env (D-40) | at startup |
+| Clean up raw payloads | the retention policy does the work; no job |
 
-## 12. Configuration and operations
+Every queue uses pg-boss's `stately` policy, so runs never overlap or pile up (D-63), and a failed job is
+logged and stored with its SQLSTATE and Postgres message only (DB-3). The worker stops cleanly on
+SIGTERM (pg-boss graceful stop, then the pool).
+
+## 12. Web UI
+
+The pages of handoff §12, built with the Next.js App Router (server components by default, `'use client'`
+only where a page is interactive), Tailwind v4 and shadcn/ui, lucide icons, sonner toasts, and ECharts
+behind one client-only wrapper (`components/charts/echart.tsx`, `next/dynamic` with `ssr: false`) that
+reads the theme's CSS variables. Dark mode follows the OS, with System / Light / Dark in the account
+menu (`next-themes`). Every page works at phone width.
+
+| Page | What it shows |
+|---|---|
+| `/login` | Discord sign-in, with a message for each refusal (`not_guild_member`, `missing_role`, `discord_unavailable`, `access_revoked`, a cancelled consent); a user in grace sees it too. |
+| `/` (dashboard) | "Online now" (live), a card per own account (presence, total level, overall XP, gains today and 7 days, the last five events), and an empty state that points at the wizard. |
+| `/onboarding` | The pairing wizard (handoff §6.3): Install → Pair (a 5-digit code and the base URL from `APP_URL`) → First data → Done. Progress arrives as live `pairing` and `device` messages, with a poll of every code the plugin may still use (every 3 s while the stream is down, every 15 s as a safety net). An outdated plugin is named with its version, since older plugins don't show the hub's error text. |
+| `/devices` | Paired devices: label (renamable), plugin version, outdated warning, last seen, accounts; revoke. |
+| `/accounts/[publicId]` | Header (type, live presence, owner, previous names), skills table (real level with the virtual one beside it, D-44; gains today/7/30/365 days), XP chart, sessions and playtime per local day, events timeline (type filters, "load more", live), vitals, live location as text, gear by slot with its change log, the inventory, wealth per day, and the sharing panel (audiences, grants, block/unblock/remove, transfer, claim; D-52). |
+| `/guild` | Members with their visible accounts and live online dots, the activity feed, gains leaderboards per period and skill. |
+| `/settings` | Toast filter (types, minimum loot value) and time zone. |
+| `/privacy` | Public: what is stored and for how long (from the configuration), the sharing defaults, what admins can see, what returning to the guild restores. |
+| `/admin/*` | Users (offboard, restore), devices (revoke), ingest health (rates, rejections since start), raw payloads (filters and an audited viewer), audit log, configuration (secrets redacted), decommission switch. |
+
+Rules every page and route follows:
+
+- **Access.** Every page under `(app)` calls `requireUser()` (the layout does too, but a layout isn't
+  re-rendered on client navigation); signed-out and grace users go to `/login`. Admin pages call
+  `requireAdmin()`, which answers 404 to everyone else. An account the viewer may not see, an unknown
+  one and an id that can't be one (checked before any query, since Postgres refuses NUL, DB-1) all
+  answer the same 404. A section the viewer may not see isn't rendered at all; one the plugin didn't
+  send says "Not shared" (D-4). Stamps of viewers without `activity` are day-only (D-50).
+- **Data.** Pages and routes read and write through `@hub/server` only (with `getDb()` handed in);
+  client components never value-import `@hub/server` or `@hub/db`, and `@hub/core` is side-effect free
+  so a client import of one helper doesn't ship its Node-only modules (D-67, NEXT-12).
+- **Mutations** are route handlers under `/api/app/*` (D-36): Origin check first (`assertSameOrigin`,
+  403), then `requireApiUser` (401) or the admin guard (403), then a body capped at 64 KiB (413) and
+  parsed strictly (400). Errors are mapped by `handleApi`: database outages and Better Auth 5xx are
+  503 + `Retry-After` (AUTH-13), everything unexpected a 500 that leaks nothing.
+- **Sessions** are renewed only by route handlers; page renders read them with `disableRefresh`
+  (AUTH-12, D-64). A database error while a page checks the session shows the error page rather than
+  `/login`. Better Auth's own log lines go through pino without error objects (AUTH-13).
+- **URLs.** Absolute URLs come from `APP_URL` (D-26), never from `request.url` (NEXT-2); links are
+  checked by `typedRoutes`, with `as Route` only for strings built at run time.
+
+The web app's Vitest project covers every route handler and page-level access rule against a real
+database; Playwright covers the wizard end to end (`pnpm test:e2e`, D-13) and takes screenshots of every
+page for visual review (`E2E_SCREENSHOTS=1`); see [DEVELOPMENT.md](DEVELOPMENT.md).
+
+## 13. Configuration and operations
 
 All configuration is environment variables; see [`.env.example`](../.env.example) for the full list with
 defaults, and [`OPERATIONS.md`](OPERATIONS.md) for deploys, backups and the reverse proxy.
 
-## 13. Milestones and status
+## 14. Milestones and status
 
 | Milestone | Scope | Status |
 |---|---|---|
-| M0 Scaffold | monorepo, compose, DB + Timescale migrations, CI, fixtures | in progress |
-| M1 Ingest + onboarding | login + guild gate, pairing, ingest, wizard, devices, dashboard, toasts, default sharing | in progress |
-| M2 History & sharing | charts, aggregates/retention, sessions, equipment, wealth, locations, sharing UI, guild page, re-verification/offboarding, admin basics | planned |
+| M0 Scaffold | monorepo, compose, DB + Timescale migrations, CI, fixtures | done; the fixtures are built from the plugin source (`0ec2a36`), not yet captured from a side-loaded plugin |
+| M1 Ingest + onboarding | login + guild gate, pairing, ingest, wizard, devices, dashboard, toasts, default sharing | done, with the wizard e2e test |
+| M2 History & sharing | charts, aggregates/retention, sessions, equipment, wealth, locations, sharing UI, guild page, re-verification/offboarding, admin basics | done; the 30-day location trail is stored and served (`/api/app/accounts/[id]/locations`) but not drawn |
 | M3 Public API | API keys, `/api/v1/*`, OpenAPI, cursor feed, `/snapshot` | planned |
-| M4 Hardening | metrics dashboards, verified restores, export/delete, leaderboards, decommission switch | planned |
+| M4 Hardening | metrics dashboards, verified restores, export/delete, leaderboards, decommission switch | partly: gains leaderboards (guild page), the decommission switch (D-56) and `/metrics` are built; dashboards, a verified restore, "download my data" and "delete my data" are not |
 
 ## Decision log
 
@@ -283,7 +357,7 @@ Decisions are permanent IDs; a reversed decision is marked superseded, never del
 | D-36 | App mutations (pairing codes, devices, settings, sharing) use **route handlers with an Origin check**, not Server Actions. | Server Actions fail with 500 when the reverse proxy rewrites `Host` (NEXT-5); route handlers are also easy to test. | Build |
 | D-37 | Every process-wide singleton (DB pool, auth, logger, metrics, rate limiters, the LISTEN client and SSE hub) lives on `globalThis`. | Next runs route handlers and RSC in separate module instances (NEXT-3). | Build |
 | D-38 | `GET` on the plugin endpoints answers `400 {"error": …}` explaining that the URL must be exactly the `https://` one from the wizard; the endpoints never redirect. | A redirect turns the plugin's POST into a body-less GET or is not followed at all; data is lost silently (PLUGIN-2). | Build (plugin source) |
-| D-39 | Better Auth: only the user table is renamed (`users`); Discord tokens are stripped from `account`; token/profile-editing endpoints are disabled; users get a placeholder email `<discordId>@discord.invalid`. | Minimal token exposure; the hub doesn't request the email scope (AUTH-3, AUTH-4). | Build |
+| D-39 | Better Auth: only the user table is renamed (`users`); Discord tokens are stripped from `account`; token/profile-editing endpoints (and `/list-sessions`, which returns session tokens) are disabled; users get a placeholder email `<discordId>@discord.invalid`. | Minimal token exposure; the hub doesn't request the email scope (AUTH-3, AUTH-4). | Build |
 | D-40 | Migrations create **structure only**; the worker reconciles compression, retention and aggregate-refresh policies from env at startup. Raw-payload clean-up is the retention policy (no job); backups are the `backup` service, not a worker job. | `if_not_exists` doesn't update policies (TSDB-3); test databases stay free of background jobs; the worker image has no `pg_dump`. | Build |
 | D-41 | Toolchain: TypeScript **6.0.3 pinned**, ESLint 10 flat config at the root, Vitest projects, Node 24 in images. | TS 7 has no JS API for typescript-eslint/Next (TOOL-1). | Build |
 | D-42 | Client IP = the `X-Forwarded-For` entry `TRUST_PROXY_HOPS` from the right; the same IP is handed to Better Auth through an internal header. | Next 16 has no `request.ip`; one setting for both limiters. | Build |
@@ -308,3 +382,7 @@ Decisions are permanent IDs; a reversed decision is marked superseded, never del
 | D-61 | **Orphaned accounts are purged on a time gate.** The hourly grace job hard-deletes (all data, including continuous-aggregate rows, TSDB-2) every account with **no owner and no non-blocked link to any user**, once it has been hidden, or if never hidden unseen, for `OFFBOARD_GRACE_DAYS`: `coalesce(hidden_at, last_seen) < now − OFFBOARD_GRACE_DAYS`. Each account is re-checked under ingest's account lock first. Accounts whose owner is in grace are settled by that owner's grace expiry (transfer to a successor, or delete); accounts with an existing owner are never purged. | Handoff §14.5 deletes account data only when a user's grace expires. What slips through (a bare row from a refused first payload, an account left with only blocked contributors) could never be matched again and would keep its data forever. Together with §14.5 every account either has an owner who can reach it or is deleted within a bounded time. | Build (requested by the owner, 2026-09-29) |
 | D-62 | Supersedes D-34's circuit-breaker clause. **Two breakers**; either one means the run offboards nobody (`aborted`), with one error log. Per batch: more than 20 % departures among at least 5 users Discord answered for. Rolling: users re-verification offboarded in the last 6 h (a `user.offboarded` audit entry by the worker, the user still in grace for `left_guild`/`lost_role`) plus this batch's departures exceed max(3, 20 % of the active users plus those counted). It clears when the window passes or an admin restores (or admin-offboards) those users. | Checks are staggered (1–4 users per run), so a per-batch rule alone almost never applies; a required role deleted and recreated in Discord would have offboarded the whole guild a few users at a time. | Build |
 | D-63 | Every worker queue uses pg-boss's `stately` policy (at most one queued and one active job); a queue created with another policy is deleted and re-created at startup, and its schedule written again. | Runs never overlap or pile up; pg-boss 12 can't change a policy in place (PGBOSS-2). | Build |
+| D-64 | Web sessions and outages: page renders read the session with `disableRefresh` and only route handlers renew it (the live stream renews an active user's); `requireUser` lets a database error through to the error page instead of sending the user to `/login`; route handlers answer a database outage and a Better Auth 5xx with 503 + `Retry-After`. | A page renewal moved the database expiry but not the cookie, so active users were signed out 7 days after signing in (AUTH-12); an outage looked like being signed out, or like a bug (AUTH-13). | Build |
+| D-65 | Live catch-up: cursor 0 is a real cursor (`?after=0`, `lastEventId=0`), and only a missing one means "first poll" (no events, the settled cursor); a replay cut off at its limit (200) ends with `resync`. | A hub without events handed out cursor 0 and then never delivered its first events to a client that only polls; a truncated replay was indistinguishable from being caught up. | Build |
+| D-66 | Tests of Better Auth routes run with its Origin check on (`withTestDb` sets `skipOriginCheck = false`). | Better Auth turns the check off under `NODE_ENV=test`, so CSRF tests passed without testing anything (AUTH-11). | Build |
+| D-67 | `@hub/core` is declared `"sideEffects": false`: its modules must not do anything at import time. | Client components import small helpers from it; without the flag the barrel pulled `node:crypto` (as crypto-browserify) and zod into the browser, an 839 KB chunk (NEXT-12). | Build |

@@ -163,13 +163,25 @@ export interface XpChartInput {
 }
 
 /**
+ * Below this share of the window a line is too short to see (a history that began minutes ago in a
+ * 30-day range), so its points are drawn as dots.
+ */
+const MIN_VISIBLE_LINE_SHARE = 0.02;
+
+/**
  * The XP chart: one step line (`step: 'end'`: XP is change-only and monotonic, so a value holds until
  * the next change instead of interpolating between samples), a 10% area wash, a crosshair tooltip
- * with the exact XP. The y-axis fits the data (XP ranges are far from zero).
+ * with the exact XP. The y-axis fits the data (XP ranges are far from zero). A line covering only a
+ * sliver of the window (a new account) gets dots, so the chart isn't blank.
  */
 export function xpChartOption(input: XpChartInput, theme: ChartTheme): ChartOption {
   const data = stepPoints(input.points, input.to);
   const color = theme.series[0];
+  const windowMs = input.to.getTime() - input.from.getTime();
+  const first = data[0];
+  const last = data.at(-1);
+  const spanMs = first && last ? last[0] - first[0] : 0;
+  const showSymbol = data.length > 0 && spanMs < windowMs * MIN_VISIBLE_LINE_SHARE;
   return {
     animation: false,
     textStyle: { fontFamily: theme.fontFamily },
@@ -208,11 +220,12 @@ export function xpChartOption(input: XpChartInput, theme: ChartTheme): ChartOpti
         type: 'line',
         name: input.skill,
         step: 'end',
-        showSymbol: false,
+        showSymbol,
         symbolSize: 8,
         data,
         color,
         lineStyle: { width: 2, color, cap: 'round', join: 'round' },
+        itemStyle: { color, borderColor: theme.tooltipBackground, borderWidth: 2 },
         areaStyle: { color, opacity: 0.1 },
         emphasis: { disabled: true },
       },
@@ -231,8 +244,11 @@ export interface PlaytimeDay {
 function shortDay(day: string): string {
   const t = Date.parse(`${day}T00:00:00Z`);
   if (!Number.isFinite(t)) return day;
-  return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' })
-    .format(new Date(t));
+  return new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+    timeZone: 'UTC',
+  }).format(new Date(t));
 }
 
 /** Playtime per day: bars (≤ 24px, 4px rounded tops) in hours, tooltip with the exact duration. */
@@ -354,7 +370,10 @@ export function wealthOption(days: readonly WealthPoint[], theme: ChartTheme): C
       left: 0,
       icon: 'roundRect',
       itemWidth: 12,
-      itemHeight: 2,
+      itemHeight: 3,
+      // The series' itemStyle (a 2px border in the card colour, for the dots) would otherwise draw
+      // over the 3px key and make it invisible.
+      itemStyle: { borderWidth: 0 },
       textStyle: { color: theme.mutedText, fontFamily: theme.fontFamily, fontSize: 12 },
       data: [WEALTH_SERIES.last, WEALTH_SERIES.max],
     },

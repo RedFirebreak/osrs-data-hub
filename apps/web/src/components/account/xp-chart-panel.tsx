@@ -140,7 +140,8 @@ export function XpChartPanel({
               key={r}
               type="button"
               aria-pressed={range === r}
-              aria-label={XP_RANGE_LABELS[r]}
+              // Starts with the visible text, so voice control finds it by what it shows (WCAG 2.5.3).
+              aria-label={`${SHORT_RANGE_LABELS[r]} (${XP_RANGE_LABELS[r]})`}
               onClick={() => setRange(r)}
               className={cn(
                 'h-7 rounded-md px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none',
@@ -159,7 +160,9 @@ export function XpChartPanel({
             <span className={cn('font-medium tabular-nums', gained > 0 && 'text-foreground')}>
               {formatGain(gained)} XP
             </span>{' '}
-            in {loaded.skill} over {XP_RANGE_LABELS[loaded.range].toLowerCase()}
+            in {loaded.skill}{' '}
+            {trackedSince(firstSeen, loaded.from) ??
+              `over ${XP_RANGE_LABELS[loaded.range].toLowerCase()}`}
           </>
         ) : busy ? (
           'Loading…'
@@ -199,6 +202,18 @@ export function XpChartPanel({
       )}
     </div>
   );
+}
+
+const SINCE_DAY = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' });
+
+/**
+ * "since Sep 29, when the hub first saw it" when the account is younger than the range: "0 XP over
+ * 30 days" would claim a month of history the hub doesn't have. Null otherwise.
+ */
+function trackedSince(firstSeen: string, from: Date): string | null {
+  const first = Date.parse(firstSeen);
+  if (!Number.isFinite(first) || first <= from.getTime()) return null;
+  return `since ${SINCE_DAY.format(new Date(first))}, when the hub first saw this account`;
 }
 
 /** XP gained over the loaded points (last − first); null with fewer than one point. */

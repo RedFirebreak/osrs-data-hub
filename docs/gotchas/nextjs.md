@@ -120,12 +120,13 @@ until a route handler imports the module: a top-level `path.join(import.meta.dir
 'drizzle')` in packages/db/src/migrate.ts breaks every route that imports `@hub/db`, even though the web
 app never migrates. packages/fixtures/src/index.ts has the same pattern. Fix: in any package the web app
 imports, don't read `import.meta.dirname`/`filename` at module top level; derive the path from
-`import.meta.url` (the build passes with `path.dirname(new URL(import.meta.url).pathname)`), or resolve it
-lazily inside the function that needs it. Not `new URL('../drizzle', import.meta.url)`: Turbopack takes
+`import.meta.url` (the build passes with `path.dirname(new URL(import.meta.url).pathname)`, and with
+`path.dirname(fileURLToPath(import.meta.url))`, which packages/db/src/migrate.ts uses because it also
+decodes `%20`), or resolve it lazily inside the function that needs it. Not `new URL('../drizzle', import.meta.url)`: Turbopack takes
 that form for an asset import and fails with `Module not found: Can't resolve '../drizzle'`. Compare
 ([NEXT-10](#next-10)), the other workspace-package trap only `next build` shows.
 
-*Source: `OBSERVED` (apps/web `next build`, Next 16.3.6 Turbopack, 2026-09-29: fails with the migrate.ts line, passes with it derived from `import.meta.url`)*
+*Source: `OBSERVED` (apps/web `next build`, Next 16.3.6 Turbopack, 2026-09-29: fails with the migrate.ts line, passes with it derived from `import.meta.url`, both forms)*
 
 ### NEXT-12
 **The browser downloads a ~440 KB chunk containing `crypto-browserify`, and `next build` passes without a warning, after a `'use client'` component imports one small helper from a workspace package whose index also re-exports a module that imports `node:crypto`.**
@@ -135,10 +136,10 @@ Turbopack does not fail on Node built-ins in client bundles: it substitutes brow
 unused modules of an `export *` barrel dropped, so importing `relativeTime` from `@hub/core` in a client
 component ships `crypto.ts` (and the polyfill) with it; the same goes for zod via `config.ts`. Nothing
 breaks, so it only shows as bundle size. Fix: `"sideEffects": false` in the workspace package's
-`package.json` (verified: the polyfill chunk disappears), or give client code an entry point that
-doesn't reach Node-only modules. Never value-import `@hub/server` or `@hub/db` from client code at all;
+`package.json` (verified: the polyfill chunk disappears; packages/core has it), or give client code an
+entry point that doesn't reach Node-only modules. Never value-import `@hub/server` or `@hub/db` from client code at all;
 type-only imports must be written `import type { … }`, because under `verbatimModuleSyntax`
 `import { type X }` still emits a bare `import '<pkg>'`. Compare ([NEXT-10](#next-10)), another
 Turbopack behaviour specific to TS-source workspace packages.
 
-*Source: `OBSERVED` (scratch Next 16.3.6 Turbopack app, 2026-09-29: a client component importing a barrel that re-exports a `node:crypto` module produced a 439,080-byte chunk with crypto-browserify; the same package with `"sideEffects": false` produced none)*
+*Source: `OBSERVED` (scratch Next 16.3.6 Turbopack app, 2026-09-29: a client component importing a barrel that re-exports a `node:crypto` module produced a 439,080-byte chunk with crypto-browserify; the same package with `"sideEffects": false` produced none; apps/web, 2026-09-29: an 839,174-byte client chunk with crypto-browserify and zod gone after adding it to packages/core, static chunks 2.7 MB → 1.9 MB)*

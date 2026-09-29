@@ -1,8 +1,8 @@
 /**
  * The skills table (handoff §12): Overall first, then the skills in the in-game grid order (the read
  * model already sorts them), with the real level (a virtual level above 99 is shown subtly next to
- * it, PLUGIN-9), XP, and XP gained today / over 7, 30 and 365 days. Overall's level is the real total
- * level (D-44). Server component.
+ * it, PLUGIN-9), XP, and XP gained today / over 7, 30 and 365 days (phones: today only). Overall's
+ * level is the real total level (D-44). Server component.
  */
 import { MAX_REAL_LEVEL, OVERALL, formatGain, formatNumber } from '@hub/core';
 import type { SkillRow } from '@hub/server';
@@ -16,11 +16,13 @@ import {
 } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
 
+// On phones only Today fits next to Level and XP; the longer gains start at the sm breakpoint
+// (the dashboard card and the XP chart cover them there).
 const GAIN_COLUMNS = [
-  { key: 'day', label: 'Today', title: 'Since midnight in your time zone' },
-  { key: 'week', label: '7 days', title: 'Over the last 7 days' },
-  { key: 'month', label: '30 days', title: 'Over the last 30 days' },
-  { key: 'year', label: '1 year', title: 'Over the last 365 days' },
+  { key: 'day', label: 'Today', title: 'Since midnight in your time zone', wide: false },
+  { key: 'week', label: '7 days', title: 'Over the last 7 days', wide: true },
+  { key: 'month', label: '30 days', title: 'Over the last 30 days', wide: true },
+  { key: 'year', label: '1 year', title: 'Over the last 365 days', wide: true },
 ] as const;
 
 export interface SkillsTableProps {
@@ -46,7 +48,12 @@ export function SkillsTable({ rows, className }: SkillsTableProps) {
             XP
           </TableHead>
           {GAIN_COLUMNS.map((c) => (
-            <TableHead key={c.key} scope="col" className="text-right" title={c.title}>
+            <TableHead
+              key={c.key}
+              scope="col"
+              className={cn('text-right', c.wide && 'hidden sm:table-cell')}
+              title={c.title}
+            >
               {c.label}
             </TableHead>
           ))}
@@ -80,6 +87,7 @@ export function SkillsTable({ rows, className }: SkillsTableProps) {
                     key={c.key}
                     className={cn(
                       'text-right',
+                      c.wide && 'hidden sm:table-cell',
                       gain > 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-muted-foreground',
                     )}
                   >

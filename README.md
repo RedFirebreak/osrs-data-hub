@@ -59,4 +59,4 @@ pnpm db:migrate && pnpm dev
 
 ## Status
 
-V1 is being built milestone by milestone (see [docs/ARCHITECTURE.md §13](docs/ARCHITECTURE.md#13-milestones-and-status)).
+V1 is being built milestone by milestone (see [docs/ARCHITECTURE.md §14](docs/ARCHITECTURE.md#14-milestones-and-status)).

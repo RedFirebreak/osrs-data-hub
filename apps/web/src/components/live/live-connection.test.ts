@@ -233,6 +233,32 @@ describe('LiveConnection polling fallback', () => {
     expect(eventIds()).toEqual(['n1', 'n2']);
   });
 
+  it('on a hub without events, cursor 0 is kept and sent, so the first events still arrive', async () => {
+    fetchFn.mockResolvedValueOnce(respond(200, { events: [], cursor: 0 })).mockResolvedValueOnce(
+      respond(200, {
+        events: [{ event: feedEvent({ id: 'first', seq: 1 }), toast: true }],
+        cursor: 1,
+      }),
+    );
+    conn.start();
+    latest().fail(false);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(fetchFn).toHaveBeenLastCalledWith('/api/live/events', expect.anything());
+    expect(conn.lastSeq).toBe(0);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(fetchFn).toHaveBeenLastCalledWith('/api/live/events?after=0', expect.anything());
+    expect(eventIds()).toEqual(['first']);
+  });
+
+  it('reopens the stream with lastEventId=0 once a poll said the hub had no events', async () => {
+    conn.start();
+    latest().fail(false);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(conn.lastSeq).toBe(0);
+    conn.reconnect();
+    expect(latest().url).toBe('/api/live/stream?lastEventId=0');
+  });
+
   it('continues after the newest seq the stream delivered', async () => {
     fetchFn.mockResolvedValue(respond(200, { events: [], cursor: 57 }));
     conn.start();

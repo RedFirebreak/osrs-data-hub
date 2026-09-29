@@ -25,7 +25,10 @@ interface ErrorBody {
   error: { code: string; message: string; details?: { path: string; message: string }[] };
 }
 
-type Handler = (request: Request, ctx: { params: Promise<{ publicId: string }> }) => Promise<Response>;
+type Handler = (
+  request: Request,
+  ctx: { params: Promise<{ publicId: string }> },
+) => Promise<Response>;
 
 function call(handler: Handler, publicId: string, query: string, cookie?: string) {
   const path = `/api/app/accounts/${publicId}/x${query}`;
@@ -112,7 +115,10 @@ describe('GET /api/app/accounts/[publicId]/xp', () => {
       expect(res.status, query).toBe(400);
       const body = (await res.json()) as ErrorBody;
       expect(body.error.code).toBe('invalid_request');
-      expect(body.error.details?.map((d) => d.path), query).toContain(path);
+      expect(
+        body.error.details?.map((d) => d.path),
+        query,
+      ).toContain(path);
     }
   });
 
@@ -267,7 +273,11 @@ describe('history routes', () => {
   });
 
   it('400 for a malformed or inverted range', async () => {
-    for (const query of ['?from=1', '?to=not-a-date', '?from=2026-09-29T00:00:00Z&to=2026-09-01T00:00:00Z']) {
+    for (const query of [
+      '?from=1',
+      '?to=not-a-date',
+      '?from=2026-09-29T00:00:00Z&to=2026-09-01T00:00:00Z',
+    ]) {
       const res = await call(getWealth, account.publicId, query, owner.cookie);
       expect(res.status, query).toBe(400);
       expect(((await res.json()) as ErrorBody).error.code).toBe('invalid_request');
@@ -277,5 +287,17 @@ describe('history routes', () => {
   it('404 for a public id that is too long to exist', async () => {
     const res = await call(getSessions, 'x'.repeat(100), '', owner.cookie);
     expect(res.status).toBe(404);
+  });
+
+  it('404, not a database error, for a public id that cannot exist (NUL byte, other characters)', async () => {
+    // Next decodes `%00` in the path into a NUL character, which Postgres refuses as a parameter
+    // (22021); such an id matches no account, so it is the same 404 as any unknown id.
+    for (const publicId of ['abc\u0000def', 'a b', 'Zézima', '../x']) {
+      for (const handler of [getXp, getSessions, getEquipment, getWealth, getLocations]) {
+        const res = await call(handler, publicId, '', owner.cookie);
+        expect(res.status, JSON.stringify(publicId)).toBe(404);
+        expect(((await res.json()) as ErrorBody).error.code).toBe('not_found');
+      }
+    }
   });
 });

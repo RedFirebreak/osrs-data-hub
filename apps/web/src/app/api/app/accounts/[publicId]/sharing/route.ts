@@ -30,8 +30,10 @@ import {
   setContributorBlocked,
   transferOwnership,
 } from '@hub/server';
-import { ApiError, assertSameOrigin, handleApi, json, readJson } from '@/lib/http';
+import { assertSameOrigin, handleApi, json, readJson } from '@/lib/http';
 import { requireApiUser } from '@/lib/session';
+import { accountNotFound } from '../../history';
+import { isPublicIdShape } from '../../query';
 import { sharingChangeSchema, type SharingChange } from '../../sharing-change';
 
 export async function GET(
@@ -41,8 +43,9 @@ export async function GET(
   return handleApi(async () => {
     const { viewer } = await requireApiUser(request);
     const { publicId } = await ctx.params;
+    if (!isPublicIdShape(publicId)) throw accountNotFound();
     const sharing = await getSharingSettings(getDb().db, viewer, publicId);
-    if (!sharing) throw new ApiError(404, 'not_found', 'Account not found.');
+    if (!sharing) throw accountNotFound();
     return json(200, { sharing });
   });
 }
@@ -55,6 +58,7 @@ export async function PATCH(
     assertSameOrigin(request);
     const { viewer } = await requireApiUser(request);
     const { publicId } = await ctx.params;
+    if (!isPublicIdShape(publicId)) throw accountNotFound();
     const change = sharingChangeSchema.parse(await readJson(request));
     const { db } = getDb();
     await applyChange(db, viewer, publicId, change);

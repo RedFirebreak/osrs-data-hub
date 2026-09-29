@@ -15,7 +15,6 @@ import { UserAvatar } from './user-avatar';
 /** Previous names listed before "and N more". */
 const NAMES_SHOWN = 5;
 
-
 export interface AccountHeaderProps {
   account: Header;
   presence: Section<Presence>;
@@ -92,7 +91,10 @@ export function AccountHeader({ account, presence, now, timezone }: AccountHeade
               {names.slice(0, NAMES_SHOWN).map((n, i) => (
                 <span key={n.name}>
                   {i > 0 && ', '}
-                  <span className="text-foreground" title={`Last seen with this name ${n.lastSeen.slice(0, 10)}`}>
+                  <span
+                    className="text-foreground"
+                    title={`Last seen with this name ${n.lastSeen.slice(0, 10)}`}
+                  >
                     {n.name}
                   </span>
                 </span>

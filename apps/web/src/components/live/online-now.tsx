@@ -39,7 +39,11 @@ export function OnlineNow({ initial, className }: OnlineNowProps) {
           <OnlineDot online={rows.length > 0} label="" pulse={false} />
           Online now
         </h2>
-        <span className="text-xs text-muted-foreground" aria-live="polite">
+        {/* "nobody" only for screen readers: the sentence below already says it on screen. */}
+        <span
+          className={cn('text-xs text-muted-foreground', rows.length === 0 && 'sr-only')}
+          aria-live="polite"
+        >
           {rows.length === 0 ? 'nobody' : `${rows.length} online`}
         </span>
       </div>

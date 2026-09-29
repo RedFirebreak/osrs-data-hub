@@ -8,7 +8,8 @@
  * - Progress arrives on the page's one live stream (LiveProvider, handoff §11): 'pairing' messages
  *   for this wizard's codes and the 'device' message with the first data. While the stream is down
  *   the wizard polls GET /api/app/pairing-codes/[id] every 3 s instead, and every 15 s while it is
- *   open as a safety net (a message missed during a reconnect is not replayed).
+ *   open as a safety net (a message missed during a reconnect is not replayed). It polls every code
+ *   it may still be paired with (codesToPoll), not only the one shown.
  * - Focus moves to the new step's heading on every step change.
  *
  * Reachable any time as "Add device" (dashboard, devices page).
@@ -30,6 +31,7 @@ import {
   asDeviceMessage,
   asPairingMessage,
   codeMsLeft,
+  codesToPoll,
   isCodeExpired,
   parseCreatedCode,
   parsePolledStatus,
@@ -56,7 +58,9 @@ export function OnboardingWizard({ ttlSeconds, minPluginVersion }: OnboardingWiz
   const headingRef = useRef<HTMLHeadingElement>(null);
   const shownStep = useRef(state.step);
 
-  const pairing = state.step === 2 && state.code !== null && state.deviceId === null;
+  // The clock runs while a code may still be paired: its countdown, and which codes to poll (also
+  // after going back to step 1).
+  const pairing = state.step <= 2 && state.codeIds.length > 0 && state.deviceId === null;
   const now = useSecondClock(pairing);
   const expired = now !== null ? isCodeExpired(state, now) : state.expiredByServer;
 
@@ -96,23 +100,20 @@ export function OnboardingWizard({ ttlSeconds, minPluginVersion }: OnboardingWiz
     }
   });
 
-  // The code to poll: the shown one while pairing, the consumed one while waiting for first data.
-  const pollCodeId =
-    state.step === 2 && state.deviceId === null && !expired
-      ? (state.code?.id ?? null)
-      : state.step === 3 && state.firstData === null
-        ? state.pairedCodeId
-        : null;
+  // The codes that may still be paired, or the consumed one while waiting for the first data. A
+  // string key, so the interval restarts only when the set changes (not on every clock tick).
+  const pollKey = codesToPoll(state, now).join(' ');
   const pollMs = connected ? POLL_INTERVAL_CONNECTED_MS : POLL_INTERVAL_MS;
 
   useEffect(() => {
-    if (pollCodeId === null) return;
+    if (pollKey === '') return;
+    const codeIds = pollKey.split(' ');
     const controller = new AbortController();
     let busy = false;
     const timer = setInterval(() => {
       if (busy) return;
       busy = true;
-      void poll(pollCodeId, controller.signal).finally(() => {
+      void Promise.all(codeIds.map((id) => poll(id, controller.signal))).finally(() => {
         busy = false;
       });
     }, pollMs);
@@ -120,7 +121,7 @@ export function OnboardingWizard({ ttlSeconds, minPluginVersion }: OnboardingWiz
       clearInterval(timer);
       controller.abort();
     };
-  }, [pollCodeId, pollMs]);
+  }, [pollKey, pollMs]);
 
   async function createCode(): Promise<void> {
     const seq = ++requestSeq.current;

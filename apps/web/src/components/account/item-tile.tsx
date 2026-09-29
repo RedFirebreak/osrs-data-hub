@@ -28,7 +28,7 @@ export function ItemTile({
     return (
       <div
         className={cn(
-          'flex aspect-square min-w-0 items-center justify-center rounded-md border border-dashed p-1 text-center text-[10px] leading-tight text-muted-foreground/70',
+          'flex aspect-square min-w-0 items-center justify-center rounded-md border border-dashed p-1 text-center text-[10px] leading-tight text-muted-foreground',
           className,
         )}
       >

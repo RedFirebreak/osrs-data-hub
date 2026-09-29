@@ -102,6 +102,39 @@ export async function replayEvents(
   });
 }
 
+/**
+ * Where a poller without a cursor starts (`GET /api/live/events` without `after`): the highest seq it
+ * may start after, 0 for an empty table. That is the newest seq below the first row inserted less
+ * than LIVE_POLL_SETTLE_MS ago (database clock), so no lower seq can still commit after it (DB-4,
+ * as settledCeiling). `floor`, the newest seq received more than two minutes ago, is settled by far
+ * (ingest's lock and statement timeouts are seconds) and bounds both scans to the seq index range of
+ * the last two minutes (received_at and inserted_at have no index).
+ */
+export async function settledLiveCursor(
+  db: DbOrTx,
+  settleMs: number = LIVE_POLL_SETTLE_MS,
+): Promise<number> {
+  const result = await db.execute<{ cursor: number | string }>(sql`
+    WITH f AS (
+      SELECT coalesce((
+        SELECT ${events.seq} FROM ${events}
+        WHERE ${events.receivedAt} <= now() - interval '2 minutes'
+        ORDER BY ${events.seq} DESC LIMIT 1
+      ), 0) AS floor
+    )
+    SELECT greatest(f.floor, coalesce((
+      SELECT max(e.seq) FROM ${events} e
+      WHERE e.seq > f.floor
+        AND e.seq < coalesce((
+          SELECT min(y.seq) FROM ${events} y
+          WHERE y.seq > f.floor
+            AND y.inserted_at > clock_timestamp() - make_interval(secs => ${settleMs / 1000})
+        ), ${Number.MAX_SAFE_INTEGER})
+    ), 0)) AS cursor
+    FROM f`);
+  return Number(result.rows[0]?.cursor ?? 0);
+}
+
 /** The WHERE clause shared by both queries; null when the options can't match anything. */
 function replayWindow(opts: ReplayOptions): SQL | null {
   const nowMs = opts.now.getTime();

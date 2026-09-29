@@ -1,4 +1,5 @@
 import { createDb, session, users, type DbHandle } from '@hub/db';
+import { getLogger } from '@hub/server';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { GET as authGET, POST as authPOST } from '@/app/api/auth/[...all]/route';
@@ -69,9 +70,12 @@ describe('requireApiUser', () => {
     const g = globalThis as unknown as { __hubDb?: DbHandle; __hubAuth?: unknown };
     const testDb = g.__hubDb;
     const testAuth = g.__hubAuth;
-    // Nothing listens on port 1: every query fails to connect. Better Auth's own error log is muted.
+    // Nothing listens on port 1: every query fails to connect.
     const down = createDb('postgres://hub:hub@127.0.0.1:1/nope');
-    const mute = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleCalls = (['error', 'warn', 'log'] as const).map((m) =>
+      vi.spyOn(console, m).mockImplementation(() => {}),
+    );
+    const logged = vi.spyOn(getLogger(), 'error');
     g.__hubDb = down;
     delete g.__hubAuth;
     try {
@@ -82,8 +86,19 @@ describe('requireApiUser', () => {
       expect(res.status).toBe(503);
       expect(res.headers.get('retry-after')).toMatch(/^\d+$/);
       expect(((await res.json()) as { error: { code: string } }).error.code).toBe('unavailable');
+      // Better Auth logged the failed session query through our logger, without its bound
+      // parameters: the session token must appear nowhere (AUTH-13, DB-3).
+      const token = decodeURIComponent(cookie.split('=')[1] ?? '').split('.')[0] ?? '';
+      expect(token.length).toBeGreaterThan(10);
+      expect(logged.mock.calls.some((c) => JSON.stringify(c).includes('better-auth'))).toBe(true);
+      const everything = JSON.stringify([
+        ...consoleCalls.map((spy) => spy.mock.calls),
+        logged.mock.calls,
+      ]);
+      expect(everything).not.toContain(token);
     } finally {
-      mute.mockRestore();
+      for (const spy of consoleCalls) spy.mockRestore();
+      logged.mockRestore();
       g.__hubDb = testDb;
       g.__hubAuth = testAuth;
       await down.pool.end().catch(() => {});
@@ -110,6 +125,15 @@ describe('/api/auth/[...all]', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { user: { id: string; name: string } };
     expect(body.user).toMatchObject({ id: userId, name: 'Lynx Titan' });
+  });
+
+  it('does not serve list-sessions (it would hand session tokens to browser JavaScript)', async () => {
+    const cookie = await ctx.signIn(await ctx.seedUser());
+    const res = await authGET(ctx.request('/api/auth/list-sessions', { cookie }));
+    expect(res.status).toBe(404);
+    expect(await res.text()).not.toContain(
+      decodeURIComponent(cookie.split('=')[1] ?? '').split('.')[0],
+    );
   });
 
   it("refuses a cookie-carrying POST from another origin (Better Auth's CSRF check)", async () => {

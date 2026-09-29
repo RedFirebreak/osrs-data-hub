@@ -8,6 +8,7 @@ import {
   asDeviceMessage,
   asPairingMessage,
   codeMsLeft,
+  codesToPoll,
   describeCountdown,
   describeRole,
   formatCountdown,
@@ -340,6 +341,50 @@ describe('wizardReducer', () => {
   });
 });
 
+describe('codesToPoll', () => {
+  it('polls every code of this wizard the hub may still accept, the shown one first', () => {
+    const s = onStep2(
+      { type: 'codeCreated', code: code('c2', T0 + 360_000) },
+      { type: 'codeCreated', code: code('c3', T0 + 420_000) },
+    );
+    expect(codesToPoll(s, T0)).toEqual(['c3', 'c2', 'c1']);
+    // c1's lifetime is over; the hub has expired it.
+    expect(codesToPoll(s, T0 + 300_000)).toEqual(['c3', 'c2']);
+    // A fourth code retires the oldest on the hub (at most 3 active).
+    const four = wizardReducer(s, { type: 'codeCreated', code: code('c4', T0 + 480_000) });
+    expect(codesToPoll(four, T0)).toEqual(['c4', 'c3', 'c2']);
+    // Still polled after going back to step 1 (pairing there moves on to step 3).
+    expect(codesToPoll(wizardReducer(s, { type: 'goto', step: 1 }), T0)).toEqual([
+      'c3',
+      'c2',
+      'c1',
+    ]);
+    // Nothing before the browser clock runs.
+    expect(codesToPoll(s, null)).toEqual([]);
+  });
+
+  it('leaves out the shown code once the hub said it expired', () => {
+    const s = onStep2(
+      { type: 'codeCreated', code: code('c2', T0 + 360_000) },
+      { type: 'polled', status: polled({ codeId: 'c2', status: 'expired' }), at: T0 },
+    );
+    expect(codesToPoll(s, T0)).toEqual(['c1']);
+  });
+
+  it('polls the consumed code on step 3 until the first data arrived', () => {
+    const paired = onStep2(
+      { type: 'codeCreated', code: code('c2') },
+      { type: 'pairing', message: { kind: 'consumed', codeId: 'c1', deviceId: 'd1' }, at: T0 },
+    );
+    expect(codesToPoll(paired, T0)).toEqual(['c1']);
+    expect(codesToPoll(paired, null)).toEqual(['c1']);
+    const withData = wizardReducer(paired, { type: 'device', message: deviceMessage });
+    expect(codesToPoll(withData, T0)).toEqual([]);
+    expect(codesToPoll(wizardReducer(paired, { type: 'goto', step: 4 }), T0)).toEqual([]);
+    expect(codesToPoll(INITIAL_WIZARD_STATE, T0)).toEqual([]);
+  });
+});
+
 describe('countdown and expiry', () => {
   it('counts down on the browser clock and expires at zero', () => {
     const s = onStep2();
@@ -399,6 +444,43 @@ describe('outdated plugin and troubleshooting', () => {
       at: T0 + 7_000,
     });
     expect(showOutdatedAlert(newAttempt)).toBe(true);
+  });
+
+  it('takes the first poll after a live outdated message as the same attempt, not a new one', () => {
+    // Live message (attempt A), the user restarts RuneLite and presses "I pressed Submit again";
+    // the next poll reports attempt A's time for the first time: that is no new attempt.
+    const attemptA = polled({
+      outdatedAttemptAt: '2026-09-29T10:00:00.000Z',
+      outdatedVersion: '1.4',
+    });
+    const resubmitted = onStep2(outdated, { type: 'submitted', at: T0 + 10_000 });
+    expect(showOutdatedAlert(resubmitted)).toBe(false);
+    const polledA = wizardReducer(resubmitted, {
+      type: 'polled',
+      status: attemptA,
+      at: T0 + 12_000,
+    });
+    expect(showOutdatedAlert(polledA)).toBe(false);
+    expect(showTroubleshooting(polledA, T0 + 10_000 + SUBMIT_TIMEOUT_MS)).toBe(true);
+
+    // Another live message (attempt B) after the poll knew A, Submit again, then a poll reports B.
+    const liveB = wizardReducer(polledA, { ...outdated, at: T0 + 20_000 });
+    expect(showOutdatedAlert(liveB)).toBe(true);
+    const again = wizardReducer(liveB, { type: 'submitted', at: T0 + 25_000 });
+    const polledB = wizardReducer(again, {
+      type: 'polled',
+      status: { ...attemptA, outdatedAttemptAt: '2026-09-29T10:00:20.000Z' },
+      at: T0 + 27_000,
+    });
+    expect(showOutdatedAlert(polledB)).toBe(false);
+
+    // A poll-only attempt after that is new.
+    const polledC = wizardReducer(polledB, {
+      type: 'polled',
+      status: { ...attemptA, outdatedAttemptAt: '2026-09-29T10:01:00.000Z' },
+      at: T0 + 40_000,
+    });
+    expect(showOutdatedAlert(polledC)).toBe(true);
   });
 
   it('shows troubleshooting 60 s after "I pressed Submit" when nothing arrived', () => {

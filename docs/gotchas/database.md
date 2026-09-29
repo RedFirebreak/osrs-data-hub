@@ -4,7 +4,7 @@ Postgres behaviour, drizzle-orm 0.45 and drizzle-kit 0.31 (queries, errors, the 
 
 | ID | Symptom |
 |---|---|
-| [DB-1](#db-1) | An insert fails with `22P02 invalid input syntax for type json` or `unsupported Unicode escape sequence` (`\u0000 cannot be converted to text`). |
+| [DB-1](#db-1) | An insert fails with `22P02 invalid input syntax for type json` or `unsupported Unicode escape sequence` (`\u0000 cannot be converted to text`), or a lookup by a URL path segment containing `%00` fails with `22021 invalid byte sequence for encoding "UTF8": 0x00`. |
 | [DB-2](#db-2) | A resent event is stored twice although the insert uses `ON CONFLICT … DO NOTHING` on a unique key. |
 | [DB-3](#db-3) | A caught database error has `err.code === undefined`, and its logged message contains tokens, coordinates or other bound parameters. |
 | [DB-4](#db-4) | A cursor feed (`?after=<seq>`, SSE `Last-Event-ID`) permanently misses some rows that are in the table. |
@@ -33,7 +33,7 @@ Postgres behaviour, drizzle-orm 0.45 and drizzle-kit 0.31 (queries, errors, the 
 | [TSDB-13](#tsdb-13) | A "last value at or before t" lookup (`ORDER BY bucket DESC LIMIT 1`) on `xp_hourly`/`xp_daily` gets slower as history grows; `EXPLAIN` shows a Sort over an Append of the materialized hypertable instead of an index scan. |
 
 ### DB-1
-**An insert fails with `22P02 invalid input syntax for type json` or `unsupported Unicode escape sequence` (`\u0000 cannot be converted to text`).**
+**An insert fails with `22P02 invalid input syntax for type json` or `unsupported Unicode escape sequence` (`\u0000 cannot be converted to text`), or a lookup by a URL path segment containing `%00` fails with `22021 invalid byte sequence for encoding "UTF8": 0x00`.**
 jsonb accepts only valid JSON and rejects the `\u0000` escape, which the plugin's Gson emits for NUL
 ([PLUGIN-7](plugin.md#plugin-7)): one NUL in any string fails the whole ingest transaction, and answered
 with a 5xx it becomes a poison pill ([PLUGIN-3](plugin.md#plugin-3)). jsonb also decodes escapes,
@@ -41,7 +41,14 @@ reorders keys and keeps only the last duplicate key, so it can't serve as the ar
 Fix: `raw_payloads.body` is `text` (packages/db/src/schema/timeseries.ts); every value headed for a jsonb
 column goes through `stripNul` (packages/core/src/json.ts); a remaining data error is answered 400.
 
-*Source: `OBSERVED` (research sandbox, timescale/timescaledb:2.30.1-pg17, 2026-09-28)*
+`text` can't hold NUL either: any text *parameter* carrying one is refused (`22021`), including a
+`WHERE public_id = $1` lookup. Next decodes `%00` in a path segment into a NUL before the route or
+page sees `params`, so `/accounts/abc%00def` turned a not-found into a 400 or an error page. Fix: check
+an id's shape before querying (apps/web `isPublicIdShape`) and answer anything else like an unknown
+id.
+
+*Source: `OBSERVED` (research sandbox, timescale/timescaledb:2.30.1-pg17, 2026-09-28; apps/web account
+routes and page, Next 16.3.6 + pg18, 2026-09-29: `22021` for a `%00` path segment)*
 
 ### DB-2
 **A resent event is stored twice although the insert uses `ON CONFLICT … DO NOTHING` on a unique key.**

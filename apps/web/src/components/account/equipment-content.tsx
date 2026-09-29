@@ -54,7 +54,10 @@ export function EquipmentGrid({ items }: { items: readonly ItemData[] }) {
         </ul>
       )}
       <p className="text-center text-xs text-muted-foreground">
-        Gear value <span className="font-medium text-foreground">{formatGp(itemsValue([...items]) ?? 0)} gp</span>
+        Gear value{' '}
+        <span className="font-medium text-foreground">
+          {formatGp(itemsValue([...items]) ?? 0)} gp
+        </span>
       </p>
     </div>
   );
@@ -62,8 +65,8 @@ export function EquipmentGrid({ items }: { items: readonly ItemData[] }) {
 
 /**
  * The change log, newest first. `changes` is the history as returned (newest first); each entry is
- * compared with the next older one, and the oldest one on record with nothing (so it lists the set
- * that was worn).
+ * compared with the next older one, and the oldest one returned with nothing (so it lists the set
+ * that was worn; older changes may exist outside the range loaded, so it isn't called the first).
  */
 export function EquipmentLog({
   changes,
@@ -83,10 +86,10 @@ export function EquipmentLog({
         const previous = changes[i + 1];
         const diff = equipmentDiff(previous ? previous.items : null, change.items);
         return (
-          <li key={change.changedAt} className="flex flex-col gap-1 py-2">
+          <li key={`${change.changedAt}-${i}`} className="flex flex-col gap-1 py-2">
             <time dateTime={change.changedAt} className="text-xs text-muted-foreground">
               {formatInZone(change.changedAt, timezone, DATE_TIME_OPTIONS)}
-              {!previous && ' · earliest on record'}
+              {!previous && ' · the set worn then'}
             </time>
             {diff.length === 0 ? (
               <span className="text-muted-foreground">Same gear</span>
@@ -103,7 +106,7 @@ export function EquipmentLog({
                       </span>
                     ) : null}
                     {d.before && previous && d.after && (
-                      <ArrowRightIcon aria-label="replaced by" className="size-3" />
+                      <ArrowRightIcon role="img" aria-label="replaced by" className="size-3" />
                     )}
                     {d.after ? (
                       <span>{itemName(d.after)}</span>

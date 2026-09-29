@@ -25,7 +25,9 @@ export function PlaytimeChart({ days, className }: PlaytimeChartProps) {
         label={`Playtime per day over the last ${days.length} days, ${formatDuration(total / 1000)} in total`}
       />
       <details className="mt-2 text-xs text-muted-foreground">
-        <summary className="cursor-pointer select-none hover:text-foreground">Show as table</summary>
+        <summary className="cursor-pointer select-none hover:text-foreground">
+          Show as table
+        </summary>
         <table className="mt-2 w-full text-left tabular-nums">
           <thead>
             <tr>

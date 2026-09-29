@@ -29,7 +29,9 @@ import { JOBS, SCHEDULED_QUEUE_POLICY, ensureScheduledQueues } from './queues';
 import { timed } from './timed';
 
 const config = getConfig();
-const log = getLogger().child({ service: 'worker' });
+// The logger's base `service` field (a child binding would repeat the key in every JSON line).
+process.env.HUB_SERVICE ??= 'worker';
+const log = getLogger();
 if (!config.databaseUrl) {
   log.fatal('DATABASE_URL is not set');
   process.exit(1);
@@ -113,6 +115,10 @@ async function main() {
     );
   });
   log.info({ jobs: Object.values(JOBS).map((j) => j.name) }, 'worker started');
+  if (!config.discord.botToken || !config.discord.guildId) {
+    // Said once at startup too: the job itself only runs every 15 minutes.
+    log.warn('DISCORD_BOT_TOKEN or DISCORD_GUILD_ID not set: membership re-verification is off');
+  }
 }
 
 let stopping = false;

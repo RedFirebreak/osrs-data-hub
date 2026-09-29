@@ -1,6 +1,6 @@
 # Toolchain and libraries
 
-Build, lint and package tooling (TypeScript, ESLint, pnpm, tsup, shadcn, Docker base images) and the pg-boss and zod libraries.
+Build, lint, test and package tooling (TypeScript, ESLint, pnpm, tsup, shadcn, Playwright, Docker base images) and the pg-boss and zod libraries.
 
 | ID | Symptom |
 |---|---|
@@ -12,7 +12,8 @@ Build, lint and package tooling (TypeScript, ESLint, pnpm, tsup, shadcn, Docker 
 | [TOOL-4](#tool-4) | The tsup-bundled worker crashes at start with `Error: Dynamic require of "events" is not supported`, or with `ReferenceError: __dirname is not defined in ES module scope` from pino. |
 | [TOOL-5](#tool-5) | `node_modules/.pnpm` holds several `drizzle-orm@0.45.3_<peers>` directories, and workspace packages resolve different ones. |
 | [TOOL-6](#tool-6) | A Docker build on `node:26-alpine` fails with `sh: corepack: not found`. |
-| [TOOL-7](#tool-7) | After `pnpm format`, `tools/check_gotchas.py` reports `has no '*Source: ...*' line` for every entry, and doc tables are re-padded. |
+| [TOOL-7](#tool-7) | After `pnpm format`, `tools/check_gotchas.py` reports `has no '*Source: ...*' line` for every entry and doc tables are re-padded, or tests that splice a payload fixture as a string fail (`expected [] to deeply equal [ 'player.inventory' ]`). |
+| [TOOL-8](#tool-8) | A Playwright run whose `globalSetup` creates the app's database fails with `Timed out waiting 60000ms from config.webServer`, or the server logs `database "…" does not exist` at start although `globalSetup` created it. |
 | [ZOD-1](#zod-1) | Unknown or new fields in a plugin payload vanish after parsing: stored event data lacks keys the plugin sent. |
 
 ### PGBOSS-1
@@ -103,14 +104,39 @@ corepack ships with `node:24-alpine` and `node:22-alpine` (0.36.0) but not with 
 *Source: `OBSERVED` (research sandbox, `node:22-alpine`, `node:24-alpine` and `node:26-alpine`, 2026-09-28)*
 
 ### TOOL-7
-**After `pnpm format`, `tools/check_gotchas.py` reports `has no '*Source: ...*' line` for every entry, and doc tables are re-padded.**
+**After `pnpm format`, `tools/check_gotchas.py` reports `has no '*Source: ...*' line` for every entry and doc tables are re-padded, or tests that splice a payload fixture as a string fail (`expected [] to deeply equal [ 'player.inventory' ]`).**
 Prettier formats Markdown by default: it rewrites `*emphasis*` to `_emphasis_` and re-aligns table cells.
 The registry validator looks for the literal `*Source: …*` line of each entry, so one repo-wide
 `prettier --write .` fails every entry (the PostToolUse hook only runs after Edit/Write, not after a
 shell command, so nothing flags it until CI). Fix: `**/*.md` is in `.prettierignore`; if Markdown was
 already rewritten, `git checkout -- docs/` and re-run `python3 tools/check_gotchas.py`.
 
-*Source: `OBSERVED` (this repo, `pnpm format` with prettier 3.9.9, 2026-09-28)*
+The same run pretty-prints JSON too, including files whose exact bytes are the point: the plugin
+payload fixtures (packages/fixtures/payloads, one compact line each, as on the wire) came out
+multi-line, which changes nothing a JSON parser sees, so most suites stayed green; but tests that
+edit a fixture as text (`fixtureBody('snapshot-normal').replace('"skills":{', …)`) silently replaced
+nothing and failed far from the cause. Fix: `packages/fixtures/payloads/**` is in `.prettierignore`
+too; restore reformatted fixtures from git. Anything else byte-exact belongs there as well.
+
+*Source: `OBSERVED` (this repo, `pnpm format` with prettier 3.9.9, 2026-09-28: Markdown; 2026-09-29: the
+fixtures, reformatted in commit 1c14690, failed 3 core parse tests)*
+
+### TOOL-8
+**A Playwright run whose `globalSetup` creates the app's database fails with `Timed out waiting 60000ms from config.webServer`, or the server logs `database "…" does not exist` at start although `globalSetup` created it.**
+Playwright starts `config.webServer` (a runner plugin) *before* `globalSetup`, and waits for its `url`
+to answer 2xx, 3xx or 400–403 before running `globalSetup` at all (1.63 runner: remove output dirs →
+plugin setup → `globalSetup`). So the server boots against a database that doesn't exist yet, and a
+readiness URL that needs it (a health check answering 503) never passes: the run times out without ever
+reaching the setup that would have fixed it. Teardown is reversed: the function `globalSetup` returns
+(dropping the database) runs while the server is still up. The config file is also loaded again in
+every worker. Fix: choose the database name in the config and keep it in `process.env` (workers inherit
+the runner's environment, so they see the same name), point `webServer.env` at it, use a readiness URL
+that renders without the database (`/login` for a signed-out visitor, not `/api/health`), create and
+migrate in `globalSetup`, then wait for whatever the server connects at boot and retries with backoff
+(apps/web/e2e/global-setup.ts waits for the live `LISTEN` connection in `pg_stat_activity`). Or create
+the database in the `webServer` command itself, before it starts the server.
+
+*Source: `SOURCE` (playwright 1.63.0 `lib/runner/index.js` `createGlobalSetupTasks`), `OBSERVED` (apps/web e2e, 2026-09-29: the standalone server logged `3D000 database "hub_e2e_…" does not exist` before `globalSetup` created it)*
 
 ### ZOD-1
 **Unknown or new fields in a plugin payload vanish after parsing: stored event data lacks keys the plugin sent.**

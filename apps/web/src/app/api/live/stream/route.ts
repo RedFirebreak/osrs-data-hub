@@ -181,8 +181,8 @@ export async function GET(request: Request): Promise<Response> {
 
 /**
  * The seq to replay after: the `Last-Event-ID` header the browser sends on reconnect, or
- * `?lastEventId=` (a client that reopens the stream itself). Only a positive integer counts; anything
- * else (absent, 0, garbage) means "no replay".
+ * `?lastEventId=` (a client that reopens the stream itself). A non-negative integer counts (0 is the
+ * cursor of a hub that had no events yet); anything else (absent, garbage) means "no replay".
  */
 function parseLastEventId(request: Request): number | null {
   const raw =
@@ -190,7 +190,7 @@ function parseLastEventId(request: Request): number | null {
   const value = raw?.trim() ?? '';
   if (!/^\d{1,16}$/.test(value)) return null;
   const n = Number(value);
-  return Number.isSafeInteger(n) && n > 0 ? n : null;
+  return Number.isSafeInteger(n) ? n : null;
 }
 
 /** The LISTEN connection, normally started by instrumentation; started here if it wasn't. */

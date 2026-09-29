@@ -18,7 +18,13 @@ import { useLiveSubscription } from '@/components/live/live-provider';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { EventTypeOption } from './event-types';
-import { feedUrl, matchesFilter, mergeEvents, oldestSeq, type TimelineFilter } from './timeline-model';
+import {
+  feedUrl,
+  matchesFilter,
+  mergeEvents,
+  oldestSeq,
+  type TimelineFilter,
+} from './timeline-model';
 
 export interface EventTimelineProps {
   /** The first page, newest first (server-rendered). */
@@ -63,15 +69,28 @@ export function EventTimeline({
   const [loading, setLoading] = useState<'more' | 'filter' | null>(null);
   // Only the newest request may apply its result (a quick second filter change wins).
   const latest = useRef(0);
+  // The types of the events the list shows (the last filter that loaded; `types` runs ahead of it
+  // while a filter change loads).
+  const shownTypes = useRef<readonly string[]>([]);
   const filter: TimelineFilter = { accountPublicId, types };
 
   useLiveSubscription('event', (msg) => {
     if (matchesFilter(msg.event, filter)) setEvents((list) => mergeEvents(list, [msg.event]));
   });
 
+  /**
+   * Loads a page: `before` undefined = the first page of a new filter (replaces the list), else the
+   * next older page (appended). When a filter change fails, the chips go back to the filter the list
+   * still shows, so chips, list, live events and "load more" never disagree.
+   */
   async function load(next: TimelineFilter, before: number | undefined): Promise<void> {
     const id = ++latest.current;
-    setLoading(before === undefined ? 'filter' : 'more');
+    const isFilterChange = before === undefined;
+    setLoading(isFilterChange ? 'filter' : 'more');
+    const fail = (message: string) => {
+      toast.error(message);
+      if (isFilterChange) setTypes(shownTypes.current);
+    };
     try {
       const res = await fetch(feedUrl(next, { before, limit: pageSize }), {
         credentials: 'same-origin',
@@ -79,15 +98,16 @@ export function EventTimeline({
       const body = (await res.json().catch(() => null)) as FeedResponse | null;
       if (id !== latest.current) return;
       if (!res.ok || !body?.events) {
-        toast.error(body?.error?.message ?? "Events couldn't be loaded. Try again in a moment.");
+        fail(body?.error?.message ?? "Events couldn't be loaded. Try again in a moment.");
         return;
       }
       const page = body.events;
-      setEvents((list) => (before === undefined ? page : mergeEvents(list, page)));
+      if (isFilterChange) shownTypes.current = next.types;
+      setEvents((list) => (isFilterChange ? page : mergeEvents(list, page)));
       setHasMore(body.nextBefore !== null && body.nextBefore !== undefined);
     } catch {
       if (id === latest.current) {
-        toast.error("Events couldn't be loaded. Check your connection and try again.");
+        fail("Events couldn't be loaded. Check your connection and try again.");
       }
     } finally {
       if (id === latest.current) setLoading(null);
@@ -113,7 +133,11 @@ export function EventTimeline({
             All
           </Chip>
           {typeOptions.map((o) => (
-            <Chip key={o.value} pressed={types.includes(o.value)} onClick={() => toggleType(o.value)}>
+            <Chip
+              key={o.value}
+              pressed={types.includes(o.value)}
+              onClick={() => toggleType(o.value)}
+            >
               {o.label}
             </Chip>
           ))}
