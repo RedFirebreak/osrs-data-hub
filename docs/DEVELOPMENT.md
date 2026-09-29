@@ -23,9 +23,9 @@ For Discord login in development, create a Discord application, add the redirect
 `http://localhost:3000/api/auth/callback/discord`, and fill in `DISCORD_CLIENT_ID`,
 `DISCORD_CLIENT_SECRET`, `DISCORD_GUILD_ID` and `AUTH_SECRET` in `.env`.
 
-To pair a RuneLite client with a local hub, run the HA Exporter plugin (≥ 1.5) side-loaded from its
-repository (`./gradlew run`) and use `http://localhost:3000` as the endpoint URL. The Plugin Hub listing
-still serves v1.4, which the hub refuses.
+To pair a RuneLite client with a local hub, install HA Exporter (1.5 or newer, served by the Plugin
+Hub since 2026-09-29) and use `http://localhost:3000` as the endpoint URL. Restarting RuneLite updates
+an older installed version; the hub refuses anything below `MIN_PLUGIN_VERSION`.
 
 ## Commands
 
@@ -56,7 +56,7 @@ drop them (`DROP DATABASE … WITH (FORCE)`) when no run is going.
 
 Plugin behaviour is tested against wire-exact v1.5 payloads in `packages/fixtures` (see its README for
 what each file is and which plugin code path produces it). Replace or extend them with captures from a
-side-loaded plugin when available (handoff M0).
+real client (the Plugin Hub serves 1.5 now; handoff M0).
 
 ### End-to-end test (Playwright)
 

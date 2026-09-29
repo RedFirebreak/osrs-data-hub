@@ -78,7 +78,8 @@ it unit-testable without Postgres.
 The hub is a drop-in endpoint for the plugin's pairing and ingest protocol. The authoritative
 description is handoff §3, verified against the plugin source at
 `xXD4rkDragonXx/runelite-homeassistant-data-exporter@0ec2a36`; where the source and the handoff
-disagree, the source wins and the difference is recorded here.
+disagree, the source wins and the difference is recorded here. The RuneLite Plugin Hub serves v1.5
+since 2026-09-29 (handoff §15 and open point §18.5 are settled), so players install it normally.
 
 The protocol facts the hub relies on:
 
@@ -306,7 +307,7 @@ defaults, and [`OPERATIONS.md`](OPERATIONS.md) for deploys, backups and the reve
 
 | Milestone | Scope | Status |
 |---|---|---|
-| M0 Scaffold | monorepo, compose, DB + Timescale migrations, CI, fixtures | done; the fixtures are built from the plugin source (`0ec2a36`), not yet captured from a side-loaded plugin |
+| M0 Scaffold | monorepo, compose, DB + Timescale migrations, CI, fixtures | done; the fixtures are built from the plugin source (`0ec2a36`), not yet captured from a live client (the Plugin Hub serves 1.5 since 2026-09-29) |
 | M1 Ingest + onboarding | login + guild gate, pairing, ingest, wizard, devices, dashboard, toasts, default sharing | done, with the wizard e2e test |
 | M2 History & sharing | charts, aggregates/retention, sessions, equipment, wealth, locations, sharing UI, guild page, re-verification/offboarding, admin basics | done; the 30-day location trail is stored and served (`/api/app/accounts/[id]/locations`) but not drawn |
 | M3 Public API | API keys, `/api/v1/*`, OpenAPI, cursor feed, `/snapshot` | planned |
@@ -386,3 +387,4 @@ Decisions are permanent IDs; a reversed decision is marked superseded, never del
 | D-65 | Live catch-up: cursor 0 is a real cursor (`?after=0`, `lastEventId=0`), and only a missing one means "first poll" (no events, the settled cursor); a replay cut off at its limit (200) ends with `resync`. | A hub without events handed out cursor 0 and then never delivered its first events to a client that only polls; a truncated replay was indistinguishable from being caught up. | Build |
 | D-66 | Tests of Better Auth routes run with its Origin check on (`withTestDb` sets `skipOriginCheck = false`). | Better Auth turns the check off under `NODE_ENV=test`, so CSRF tests passed without testing anything (AUTH-11). | Build |
 | D-67 | `@hub/core` is declared `"sideEffects": false`: its modules must not do anything at import time. | Client components import small helpers from it; without the flag the barrel pulled `node:crypto` (as crypto-browserify) and zod into the browser, an 839 KB chunk (NEXT-12). | Build |
+| D-68 | The guild page lists an account under its **owner**; it lists it under its contributors too only for viewers who may read the account's contributor list (owner, contributors, admins), the same rule as the sharing settings. | Who else plays an account is the owner's to share; the guild page must not reveal what the sharing settings hide. | Build (requested by the owner, 2026-09-29) |

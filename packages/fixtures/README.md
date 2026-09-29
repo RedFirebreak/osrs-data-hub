@@ -1,6 +1,6 @@
 # HA Exporter v1.5 fixture payloads
 
-Wire-exact request bodies as the HA Exporter plugin (`xXD4rkDragonXx/runelite-homeassistant-data-exporter@0ec2a36`, v1.5) would send them. They are meant to seed `packages/fixtures` until real captures from a side-loaded plugin replace them (handoff §17 M0).
+Wire-exact request bodies as the HA Exporter plugin (`xXD4rkDragonXx/runelite-homeassistant-data-exporter@0ec2a36`, v1.5) would send them. They are meant to seed `packages/fixtures` until real captures from a live client replace them (handoff §17 M0; the Plugin Hub serves v1.5 since 2026-09-29).
 
 ## How they were produced
 

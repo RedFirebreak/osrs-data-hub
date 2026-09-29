@@ -116,8 +116,9 @@ afterAll(async () => {
 });
 
 describe('getGuildOverview', () => {
-  it('lists active members with their visible accounts', async () => {
+  it('lists active members with their visible accounts, each under its owner', async () => {
     const guild = await getGuildOverview(t.db, viewer.viewer, { now: NOW });
+    // Zulu is alice's; Bob contributes to it, which a plain member must not learn (D-68).
     expect(guild.members.map((m) => [m.name, m.accounts.map((a) => a.name)])).toEqual([
       ['alice', ['Whiskey', 'Zulu']],
       [
@@ -125,7 +126,6 @@ describe('getGuildOverview', () => {
         [
           ...Array.from({ length: 12 }, (_, i) => `Fish${String(i + 1).padStart(2, '0')}`),
           'Yankee',
-          'Zulu',
         ],
       ],
     ]);
@@ -135,10 +135,30 @@ describe('getGuildOverview', () => {
     });
   });
 
+  it('lists contributors only to those who may read them in the sharing settings (D-68)', async () => {
+    const shared = (guild: Awaited<ReturnType<typeof getGuildOverview>>) =>
+      guild.members.filter((m) => m.accounts.some((a) => a.name === 'Zulu')).map((m) => m.name);
+    // The owner and the contributor see both players; so does an admin.
+    expect(shared(await getGuildOverview(t.db, alice.viewer, { now: NOW }))).toEqual([
+      'alice',
+      'Bob',
+    ]);
+    expect(shared(await getGuildOverview(t.db, bob.viewer, { now: NOW }))).toEqual([
+      'alice',
+      'Bob',
+    ]);
+    expect(
+      shared(await getGuildOverview(t.db, { ...viewer.viewer, isAdmin: true }, { now: NOW })),
+    ).toEqual(['alice', 'Bob']);
+    // A plain member sees the owner only.
+    expect(shared(await getGuildOverview(t.db, viewer.viewer, { now: NOW }))).toEqual(['alice']);
+  });
+
   it('shows online only where the viewer may see activity', async () => {
     const guild = await getGuildOverview(t.db, viewer.viewer, { now: NOW });
+    const alices = guild.members.find((m) => m.name === 'alice')?.accounts ?? [];
     const bobs = guild.members.find((m) => m.name === 'Bob')?.accounts ?? [];
-    expect(bobs.find((a) => a.name === 'Zulu')?.online).toBe(true);
+    expect(alices.find((a) => a.name === 'Zulu')?.online).toBe(true);
     expect(bobs.find((a) => a.name === 'Yankee')?.online).toBe(false);
     const asBob = await getGuildOverview(t.db, bob.viewer, { now: NOW });
     const own = asBob.members.find((m) => m.name === 'Bob')?.accounts ?? [];

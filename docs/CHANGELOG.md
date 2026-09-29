@@ -9,6 +9,12 @@ gotcha (`AREA-n`, see [gotchas](gotchas/README.md)) it introduced.
 Milestones M0 and M1 and the M2 scope of the handoff, plus two M4 items (leaderboards, the decommission
 switch). Status per milestone: [ARCHITECTURE.md §14](ARCHITECTURE.md#14-milestones-and-status).
 
+### Follow-ups before the PR
+
+- The guild page lists an account under its owner only, unless the viewer may read its contributor
+  list (owner, contributors, admins), matching the sharing settings (D-68).
+- The Plugin Hub serves HA Exporter 1.5: side-load notes removed from the docs.
+
 ### Process and docs
 
 - Archived the design handoff (draft 2) at `docs/design/HANDOFF-draft2.md` and recorded its settled

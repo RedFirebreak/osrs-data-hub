@@ -40,9 +40,11 @@ export interface GuildOverview {
 
 /**
  * The guild page for `viewer`:
- * - members: active users with at least one account visible to the viewer (an account is a member's
- *   when they own it or have a non-blocked link to it, so a shared account appears under each of its
- *   players), sorted by name, each with those accounts sorted by name;
+ * - members: active users with at least one account visible to the viewer, sorted by name, each with
+ *   those accounts sorted by name. An account appears under its owner; it appears under its
+ *   (non-blocked) contributors too only for viewers who may read its contributor list, i.e. the same
+ *   rule as the sharing settings (owner, contributors, admins; D-68). A plain member can't learn from
+ *   this page who else plays an account;
  * - feed: the newest GUILD_FEED_EVENTS events the viewer may see (listFeed rules, redacted);
  * - leaderboards: per period (day = since local midnight in `timezone`, week = 7 days, month = 30
  *   days), Overall first and then every skill in grid order that anyone gained XP in, each with the
@@ -69,8 +71,15 @@ async function loadMembers(
 ): Promise<GuildMember[]> {
   const accountsByUser = new Map<string, AccountWithAccess[]>();
   for (const entry of visible) {
+    // Contributors are listed only to viewers who may read them in the sharing settings (D-68).
+    const seesContributors =
+      entry.access.relation === 'owner' ||
+      entry.access.relation === 'contributor' ||
+      entry.access.canManage;
     const players = new Set(
-      entry.raw.links.filter((l) => l.blocked === false).map((l) => l.userId),
+      seesContributors
+        ? entry.raw.links.filter((l) => l.blocked === false).map((l) => l.userId)
+        : [],
     );
     if (entry.raw.ownerUserId !== null) players.add(entry.raw.ownerUserId);
     for (const userId of players) {
