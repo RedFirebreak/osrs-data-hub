@@ -53,14 +53,17 @@ const GP_SUFFIX: Readonly<Record<string, number>> = {
 };
 
 /**
- * A whole number of gp from 0 to `max`, else null. '' counts as 0; separators are ignored
- * ("1,000,000", "1 000") and the in-game shorthand works ("100k", "1.5m", "2b").
+ * A whole number of gp from 0 to `max`, else null. '' counts as 0; spaces and underscores are
+ * ignored ("1 000"), commas only as thousands separators of a plain number ("1,000,000"), and the
+ * in-game shorthand works ("100k", "1.5m", "2b"). Any other comma is refused rather than dropped:
+ * "1,5m" is a decimal comma (1.5M), and reading it as 15M would silently set ten times the value.
  */
 export function parseMinLootValue(raw: string, max: number): number | null {
-  const text = raw
-    .trim()
-    .toLowerCase()
-    .replace(/[\s,_]/g, '');
+  let text = raw.trim().toLowerCase().replace(/[\s_]/g, '');
+  if (text.includes(',')) {
+    if (!/^\d{1,3}(?:,\d{3})+$/.test(text)) return null;
+    text = text.replace(/,/g, '');
+  }
   if (text === '') return 0;
   const match = /^(\d{1,12})(?:\.(\d{1,3}))?([kmb]?)$/.exec(text);
   if (!match) return null;

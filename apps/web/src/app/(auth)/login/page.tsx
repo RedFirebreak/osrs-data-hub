@@ -32,7 +32,10 @@ export default async function LoginPage(props: PageProps<'/login'>) {
     <Card className="w-full max-w-sm">
       <CardHeader className="justify-items-center text-center">
         <HubMark className="mb-2 size-10 rounded-xl [&_svg]:size-5" />
-        <CardTitle className="text-xl">{config.hubName}</CardTitle>
+        {/* CardTitle is a div: the page's one heading is the h1 inside it. */}
+        <CardTitle className="text-xl">
+          <h1>{config.hubName}</h1>
+        </CardTitle>
         <CardDescription className="text-balance">
           XP, loot and live events of {guildName}, sent by the HA Exporter RuneLite plugin.
         </CardDescription>

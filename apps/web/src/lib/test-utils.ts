@@ -21,7 +21,7 @@
  * Discord OAuth flow isn't possible in tests, and internalAdapter.createSession would run the hub's
  * session hook, which expects the Discord member snapshot of a real sign-in.
  *
- * Better Auth switches its Origin/CSRF check off by itself when NODE_ENV is 'test' (vitest sets it):
+ * Better Auth switches its Origin/CSRF check off by itself when NODE_ENV is 'test' (AUTH-11):
  * withTestDb switches it back on, so POSTs through /api/auth/* are checked as in production (a
  * cookie-carrying POST without a trusted Origin gets 403; `request()` sends the hub's Origin).
  *

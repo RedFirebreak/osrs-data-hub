@@ -174,4 +174,19 @@ describe('PATCH /api/app/settings', () => {
     const res = await patch(undefined, { toastsEnabled: false });
     expect(res.status).toBe(401);
   });
+
+  it('401 for a user in grace, and nothing is stored', async () => {
+    const userId = await ctx.seedUser({ status: 'grace' });
+    const res = await patch(await ctx.signIn(userId), { toastsEnabled: false });
+    expect(res.status).toBe(401);
+    const rows = await ctx.t.db.select().from(userSettings).where(eq(userSettings.userId, userId));
+    expect(rows).toHaveLength(0);
+  });
+
+  it('413 for a body over the cap', async () => {
+    const { cookie } = await signedIn();
+    const res = await patch(cookie, { timezone: 'UTC', padding: 'x'.repeat(70 * 1024) });
+    expect(res.status).toBe(413);
+    expect(((await res.json()) as ErrorBody).error.code).toBe('payload_too_large');
+  });
 });

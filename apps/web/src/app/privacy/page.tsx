@@ -118,7 +118,8 @@ export default async function PrivacyPage() {
             stores only what arrives. It never fills in what you didn&apos;t send from other data,
             and never makes up events or toasts from it: a section the plugin doesn&apos;t send
             shows as &quot;Not shared&quot;. Nothing is sent from Leagues, Deadman and other special
-            worlds unless you turn that on in the plugin.
+            worlds unless you turn that on in the plugin; if you do, the hub keeps only the events
+            and play sessions from those worlds, marked as such.
           </p>
         </Section>
 
@@ -128,7 +129,7 @@ export default async function PrivacyPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Data</TableHead>
-                  <TableHead className="w-44">Kept for</TableHead>
+                  <TableHead className="sm:w-44">Kept for</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -160,7 +161,8 @@ export default async function PrivacyPage() {
               Their access token is stored only as a one-way hash.
             </li>
             <li>
-              One cookie keeps you signed in (up to 7 days). There is no tracking or advertising.
+              One cookie keeps you signed in; it expires about a week after you last used the hub.
+              There is no tracking or advertising.
             </li>
             <li>Your settings (toast filter, time zone).</li>
           </ul>
@@ -180,7 +182,7 @@ export default async function PrivacyPage() {
                 <TableRow>
                   <TableHead>Category</TableHead>
                   <TableHead>Covers</TableHead>
-                  <TableHead className="w-28">Default</TableHead>
+                  <TableHead className="sm:w-28">Default</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -207,8 +209,12 @@ export default async function PrivacyPage() {
           </div>
           <p className="text-muted-foreground">
             Where a death or a superior spawn happened is hidden from anyone who may not see the
-            account&apos;s location. Admins of {guild} can see every account to keep the hub
-            running.
+            account&apos;s location. Admins of {guild} see that every account exists (also accounts
+            hidden while their owner is away) and can change its sharing settings; their own view of
+            each section follows the same rules as everyone else&apos;s. To troubleshoot, admins can
+            open the raw plugin messages of the last {formatHours(config.rawPayloadRetentionHours)},
+            which contain everything the plugin sent; every message an admin opens is recorded in
+            the audit log.
           </p>
         </Section>
 
@@ -217,8 +223,10 @@ export default async function PrivacyPage() {
             Your devices stop being accepted at once and you are signed out. After{' '}
             {formatDays(config.offboardGraceDays)} your user, devices and settings are deleted,
             together with the data of accounts no other active member plays. Accounts someone else
-            still plays keep their history with them. If you come back within that time, everything
-            is restored.
+            still plays keep their history with them. If you sign in again within that time, your
+            access and your hidden accounts come back; your devices have to be paired again, and an
+            account handed to another player meanwhile stays theirs. If an admin removed you, only
+            an admin can undo it.
           </p>
         </Section>
 

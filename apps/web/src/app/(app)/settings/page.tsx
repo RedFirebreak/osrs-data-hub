@@ -51,7 +51,9 @@ export default async function SettingsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>What gets sent to the hub</CardTitle>
+          <CardTitle>
+            <h2>What gets sent to the hub</h2>
+          </CardTitle>
           <CardDescription>
             Your HA Exporter plugin settings in RuneLite decide what reaches the hub in the first
             place.
@@ -83,7 +85,7 @@ export default async function SettingsPage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex flex-wrap items-center gap-2">
-            Delete my data
+            <h2>Delete my data</h2>
             <Badge variant="secondary">Coming soon</Badge>
           </CardTitle>
           <CardDescription>

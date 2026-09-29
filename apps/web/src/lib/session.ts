@@ -7,17 +7,16 @@
  * users while their sessions may still exist, and sessions are database sessions without a cookie
  * cache, so a revoked session stops working at once (AUTH-8).
  *
- * Session renewal (Better Auth extends a session older than `updateAge` on read, in the database AND
- * in the cookie) happens in route handlers only. A Server Component can't write cookies: nextCookies
- * swallows the failed cookies().set(), so a renewal from a page render would push the database expiry
- * out while the browser's cookie keeps its old Max-Age and still expires 7 days after sign-in. Page
- * reads therefore pass disableRefresh; requireApiUser renews, and Next adds the cookie to that route's
- * response (every signed-in page opens /api/live/stream, so active users are renewed).
+ * Session renewal happens in route handlers only (AUTH-12). Better Auth extends a session older than
+ * `updateAge` on read, in the database AND in the cookie, but a Server Component can't write cookies:
+ * nextCookies swallows the failed cookies().set(), so a renewal from a page render would push the
+ * database expiry out while the browser's cookie keeps its old Max-Age and still expires 7 days after
+ * sign-in. Page reads therefore pass disableRefresh; requireApiUser renews, and Next adds the cookie to
+ * that route's response (every signed-in page opens /api/live/stream, so active users are renewed).
  */
 import type { Viewer } from '@hub/core';
 import { getDb } from '@hub/db';
 import { loadViewer } from '@hub/server';
-import type { Route } from 'next';
 import { headers } from 'next/headers';
 import { notFound, redirect, unstable_rethrow } from 'next/navigation';
 import { cache } from 'react';
@@ -113,8 +112,7 @@ export const getViewer = cache(async (): Promise<CurrentUser | null> => {
  */
 export async function requireUser(): Promise<CurrentUser> {
   const current = await pageUser();
-  // `as Route`: the login page belongs to another part of the app (typedRoutes checks the literal).
-  if (!current || current.viewer.status !== 'active') redirect('/login' as Route);
+  if (!current || current.viewer.status !== 'active') redirect('/login');
   return current;
 }
 

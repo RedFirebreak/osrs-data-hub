@@ -185,7 +185,7 @@ const TYPED_ERROR_STATUS = { not_found: 404, forbidden: 403, invalid: 400 } as c
  * - ZodError → 400 `invalid_request` with `details: [{ path, message }]` (field errors);
  * - a transient database error (lock timeout 55P03, connection loss, …) → 503 + Retry-After, and so
  *   is a Better Auth 5xx: its session lookup (requireApiUser) turns a database outage into a bare
- *   500 APIError `FAILED_TO_GET_SESSION` without the cause; a Better Auth 401 → 401;
+ *   500 APIError `FAILED_TO_GET_SESSION` without the cause (AUTH-13); a Better Auth 401 → 401;
  * - a data error from the database (SQLSTATE 22/23/54, e.g. a malformed uuid) → 400;
  * - anything else → 500 `internal_error`.
  * Next's own control-flow errors (redirect(), notFound(), a prerender bailout) are rethrown. Database

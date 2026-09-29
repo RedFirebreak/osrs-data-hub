@@ -1,0 +1,85 @@
+/**
+ * The login page as a Server Component render sees it (next/headers stubbed with the request's
+ * headers, like lib/session-pages.test.ts): who gets redirected, who sees the button, and the
+ * markup (one h1, the mapped error text).
+ */
+import { renderToStaticMarkup } from 'react-dom/server';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { TooltipProvider } from '@/components/ui/tooltip';
+import { withTestDb, type WebTestContext } from '@/lib/test-utils';
+import LoginPage from './page';
+
+const page = vi.hoisted(() => ({ headers: new Headers() }));
+
+vi.mock('next/headers', () => ({
+  headers: () => Promise.resolve(page.headers),
+  cookies: () =>
+    Promise.resolve({ get: () => undefined, getAll: () => [], has: () => false, set: () => {} }),
+}));
+
+let ctx: WebTestContext;
+
+beforeAll(async () => {
+  ctx = await withTestDb({ label: 'loginpage' });
+});
+beforeEach(() => {
+  page.headers = new Headers();
+});
+afterAll(() => ctx.cleanup());
+
+function props(searchParams: Record<string, string | string[] | undefined> = {}) {
+  return { params: Promise.resolve({}), searchParams: Promise.resolve(searchParams) };
+}
+
+/** The rendered HTML, or "redirect:<path>" when the page redirected. */
+async function render(
+  searchParams: Record<string, string | string[] | undefined> = {},
+): Promise<string> {
+  try {
+    const element = await LoginPage(props(searchParams) as PageProps<'/login'>);
+    return renderToStaticMarkup(<TooltipProvider>{element}</TooltipProvider>);
+  } catch (err) {
+    const digest = (err as { digest?: unknown }).digest;
+    if (typeof digest === 'string' && digest.startsWith('NEXT_REDIRECT')) {
+      return `redirect:${digest.split(';')[2]}`;
+    }
+    throw err;
+  }
+}
+
+async function signIn(opts: Parameters<WebTestContext['seedUser']>[0] = {}): Promise<void> {
+  const userId = await ctx.seedUser(opts);
+  page.headers = new Headers({ cookie: await ctx.signIn(userId) });
+}
+
+describe('login page', () => {
+  it('shows the hub name as the page heading and one sign-in button when signed out', async () => {
+    const html = await render();
+    expect(html).toMatch(/<h1[^>]*>Test Hub<\/h1>/);
+    expect(html.match(/<h1/g)).toHaveLength(1);
+    expect(html).toContain('Sign in with Discord');
+    expect(html).not.toContain('role="alert"');
+  });
+
+  it('sends an active user to the dashboard', async () => {
+    await signIn();
+    expect(await render()).toBe('redirect:/');
+    expect(await render({ error: 'not_guild_member' })).toBe('redirect:/');
+  });
+
+  it('treats a user in grace as signed out (no redirect loop with requireUser)', async () => {
+    await signIn({ status: 'grace' });
+    expect(await render()).toContain('Sign in with Discord');
+  });
+
+  it('explains a refused sign-in and never echoes raw text', async () => {
+    const html = await render({ error: 'MISSING_ROLE' });
+    expect(html).toContain('role="alert"');
+    expect(html).toContain('have a role that gives access');
+    const odd = await render({ error: '<script>x</script>', error_description: 'evil' });
+    expect(odd).toContain('Sign-in failed (unknown_error)');
+    expect(odd).not.toContain('&lt;script');
+    expect(odd).not.toContain('<script');
+    expect(odd).not.toContain('evil');
+  });
+});

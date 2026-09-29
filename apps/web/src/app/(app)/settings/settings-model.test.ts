@@ -119,6 +119,22 @@ describe('parseMinLootValue', () => {
   it.each(['-1', '1.5', 'abc', '1e6', '3b', '1.2345m'])('rejects %j', (raw) => {
     expect(parseMinLootValue(raw, MAX)).toBeNull();
   });
+
+  // A comma is a thousands separator only in whole groups of three; a decimal comma ("1,5m", as
+  // Dutch and German players write it) must be refused, not read as 15M.
+  it.each(['1,5m', '2,5k', '1,5', '10,00', '1,500k', '1,000.5', ',100', '100,'])(
+    'refuses the ambiguous comma in %j',
+    (raw) => {
+      expect(parseMinLootValue(raw, MAX)).toBeNull();
+    },
+  );
+
+  it.each([
+    ['10,000', 10_000],
+    ['1,000,000', 1_000_000],
+  ])('%j is thousands separators → %d', (raw, expected) => {
+    expect(parseMinLootValue(raw, MAX)).toBe(expected);
+  });
 });
 
 describe('fieldErrorsFrom', () => {

@@ -88,7 +88,9 @@ function EmptyDashboard() {
         <PlugZapIcon className="size-6" />
       </span>
       <CardHeader className="w-full justify-items-center">
-        <CardTitle className="text-lg">Connect RuneLite to see your accounts</CardTitle>
+        <CardTitle className="text-lg">
+          <h2>Connect RuneLite to see your accounts</h2>
+        </CardTitle>
         <CardDescription className="max-w-prose text-balance">
           Install the HA Exporter plugin, pair it with a 5-digit code and log in to OSRS: your
           accounts, XP and loot show up here. It takes about two minutes.

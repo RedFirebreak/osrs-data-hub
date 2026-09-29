@@ -18,7 +18,6 @@ export default function ErrorPage({
   return (
     <main
       id="main"
-      role="alert"
       className="flex min-h-[60dvh] flex-1 flex-col items-center justify-center gap-4 px-4 py-16 text-center"
     >
       <span
@@ -27,7 +26,8 @@ export default function ErrorPage({
       >
         <TriangleAlertIcon className="size-6" />
       </span>
-      <div className="flex flex-col gap-1">
+      {/* The alert role on the content: <main> may not change its role (it stays the landmark). */}
+      <div role="alert" className="flex flex-col gap-1">
         <h1 className="text-2xl font-semibold tracking-tight">Something went wrong</h1>
         <p className="max-w-md text-sm text-balance text-muted-foreground">
           The hub couldn&apos;t load this page. This is usually temporary: try again in a moment. If

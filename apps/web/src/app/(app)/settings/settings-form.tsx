@@ -163,7 +163,9 @@ export function SettingsForm({
     <form onSubmit={(e) => void save(e)} noValidate className="flex flex-col gap-6">
       <Card>
         <CardHeader>
-          <CardTitle>Live toasts</CardTitle>
+          <CardTitle>
+            <h2>Live toasts</h2>
+          </CardTitle>
           <CardDescription>
             Pop-ups on the right when something happens to an account you can see. They only cover
             events the players&apos; plugins send, and never events older than 15 minutes.
@@ -250,7 +252,7 @@ export function SettingsForm({
                   aria-invalid={shownErrors.toastMinLootValue ? true : undefined}
                   aria-describedby={`${id}-min-loot-help${shownErrors.toastMinLootValue ? ` ${id}-min-loot-error` : ''}`}
                 />
-                <div className="flex flex-wrap gap-1.5" aria-label="Quick values">
+                <div className="flex flex-wrap gap-1.5" role="group" aria-label="Quick values">
                   {LOOT_PRESETS.map((value) => (
                     <Button
                       key={value}
@@ -266,7 +268,7 @@ export function SettingsForm({
               </div>
               <p id={`${id}-min-loot-help`} className="text-sm text-muted-foreground">
                 {minLoot === null
-                  ? 'Whole gp, or shorthand like 100k or 1.5m.'
+                  ? 'Whole gp, or shorthand like 100k or 1.5m (decimals with a point).'
                   : minLoot === 0
                     ? 'Every loot drop and loot chest can toast.'
                     : `Loot drops and loot chests below ${formatGp(minLoot)} gp don't toast. Other events are not affected.`}
@@ -294,7 +296,9 @@ export function SettingsForm({
 
       <Card>
         <CardHeader>
-          <CardTitle>Time zone</CardTitle>
+          <CardTitle>
+            <h2>Time zone</h2>
+          </CardTitle>
           <CardDescription>
             Decides where &quot;today&quot; starts for gains on your dashboard.
           </CardDescription>

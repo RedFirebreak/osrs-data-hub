@@ -9,7 +9,7 @@
  */
 import type { OnlineEntry } from '@hub/server';
 import Link from 'next/link';
-import { useMemo } from 'react';
+import { useId, useMemo } from 'react';
 import { accountHref } from '@/components/accounts/account-link';
 import { AccountTypeBadge } from '@/components/accounts/account-type-badge';
 import { OnlineDot } from '@/components/accounts/online-dot';
@@ -25,16 +25,17 @@ export interface OnlineNowProps {
 export function OnlineNow({ initial, className }: OnlineNowProps) {
   const live = useLivePresenceMap();
   const rows = useMemo(() => mergeOnlineNow(initial, live), [initial, live]);
+  const headingId = useId();
   return (
     <section
-      aria-labelledby="online-now-heading"
+      aria-labelledby={headingId}
       className={cn(
         'rounded-xl bg-card p-4 text-card-foreground ring-1 ring-foreground/10',
         className,
       )}
     >
       <div className="flex items-baseline justify-between gap-2">
-        <h2 id="online-now-heading" className="flex items-center gap-2 text-sm font-medium">
+        <h2 id={headingId} className="flex items-center gap-2 text-sm font-medium">
           <OnlineDot online={rows.length > 0} label="" pulse={false} />
           Online now
         </h2>
