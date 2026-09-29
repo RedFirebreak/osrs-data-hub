@@ -1,0 +1,33 @@
+import { sql } from 'drizzle-orm';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { applyTimescalePolicies, validatePolicyConfig } from './policies';
+import { createTestDatabase, type TestDatabase } from './testing';
+
+let t: TestDatabase;
+beforeAll(async () => {
+  t = await createTestDatabase('policies');
+});
+afterAll(async () => {
+  await t?.drop();
+});
+
+const base = { xpRawRetentionDays: 365, locationRetentionDays: 30, rawPayloadRetentionHours: 72 };
+
+describe('applyTimescalePolicies', () => {
+  it('adds all seven policies, then is a no-op, then replaces only what changed', async () => {
+    const first = await applyTimescalePolicies(t.db, base);
+    expect(first).toHaveLength(7);
+    expect(await applyTimescalePolicies(t.db, base)).toEqual([]);
+    const changed = await applyTimescalePolicies(t.db, { ...base, locationRetentionDays: 14 });
+    expect(changed).toEqual(['retention location_samples 14 days']);
+    const jobs = await t.db.execute<{ n: number }>(
+      sql`SELECT count(*)::int AS n FROM timescaledb_information.jobs WHERE hypertable_schema = 'public'`,
+    );
+    expect(jobs.rows[0]!.n).toBe(7);
+  });
+
+  it('refuses a raw XP retention inside the aggregate refresh window', () => {
+    expect(() => validatePolicyConfig({ ...base, xpRawRetentionDays: 7 })).toThrow(/at least 14/);
+    expect(() => validatePolicyConfig({ ...base, rawPayloadRetentionHours: 1.5 })).toThrow();
+  });
+});

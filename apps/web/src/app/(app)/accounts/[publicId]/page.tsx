@@ -1,0 +1,516 @@
+/**
+ * The account page (handoff §12): header (name, type, live presence, owner, previous names), then one
+ * card per section. Each section follows the read model's three states (handoff §10, D-4): hidden
+ * when the viewer may not see its category, a "Not shared" card when the plugin never sent it, or the
+ * data. Sections backed by a history (sessions, gear changes, wealth) and the sharing panel stream in
+ * behind skeletons. notFound() when the account doesn't exist or isn't visible to the viewer, so the
+ * two can't be told apart.
+ *
+ * The visibility check runs first, before anything streams, and the rest of the page loads inside a
+ * <Suspense> with the page skeleton: a segment loading.tsx would start the response as 200 before
+ * notFound(), leaving an unknown account a "soft 404" (NEXT-14).
+ *
+ * Live: presence follows the LiveProvider (AccountPresence), new events are prepended to the timeline,
+ * and the server-rendered numbers refresh every minute (AutoRefresh).
+ */
+import {
+  CATEGORY_LABELS,
+  DEFAULT_AUDIENCE,
+  formatGp,
+  formatNumber,
+  getConfig,
+  itemsValue,
+} from '@hub/core';
+import type { Viewer } from '@hub/core';
+import { getDb } from '@hub/db';
+import {
+  PAGE_EVENTS,
+  getAccountPage,
+  getEquipmentHistory,
+  getSessions,
+  getSharingSettings,
+  getUserSettings,
+  getWealthHistory,
+  loadVisibleAccount,
+  type AccountPage,
+} from '@hub/server';
+import type { Metadata } from 'next';
+import { notFound } from 'next/navigation';
+import { Suspense, cache } from 'react';
+import { isPublicIdShape } from '@/app/api/app/accounts/query';
+import { AccountHeader } from '@/components/account/account-header';
+import { AccountSkeleton } from '@/components/account/account-skeleton';
+import { ActivityContent } from '@/components/account/activity-section';
+import { EquipmentGrid, EquipmentLog } from '@/components/account/equipment-content';
+import { EventTimeline } from '@/components/account/event-timeline';
+import { eventTypeOptions } from '@/components/account/event-types';
+import { InventoryContent } from '@/components/account/inventory-content';
+import { LocationContent } from '@/components/account/location-content';
+import { playtimeByDay } from '@/components/account/playtime';
+import { NotSharedCard, SectionCard } from '@/components/account/section-card';
+import { SkillsTable } from '@/components/account/skills-table';
+import { VitalsContent } from '@/components/account/vitals-content';
+import { XpChartPanel } from '@/components/account/xp-chart-panel';
+import { NotSharedBadge } from '@/components/accounts/not-shared-badge';
+import { WealthChart } from '@/components/charts/wealth-chart';
+import { AutoRefresh } from '@/components/shell/auto-refresh';
+import { SharingPanel } from '@/components/sharing/sharing-panel';
+import { Skeleton } from '@/components/ui/skeleton';
+import { requireUser } from '@/lib/session';
+import { cn } from '@/lib/utils';
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+/** Days of play sessions behind the playtime chart and the sessions list. */
+const ACTIVITY_DAYS = 30;
+/** Days of gear changes and wealth shown. */
+const HISTORY_DAYS = 90;
+
+/**
+ * The quick check before anything streams (NEXT-14): the account if the viewer may know it exists,
+ * else null. Shared by generateMetadata and the page within one request.
+ */
+const loadVisible = cache(async (publicId: string) => {
+  const { viewer } = await requireUser();
+  // An id that can't be one (`%00` decodes to a NUL, which Postgres refuses) is just not found.
+  return isPublicIdShape(publicId) ? loadVisibleAccount(getDb().db, viewer, publicId) : null;
+});
+
+/** The page's data (inside the Suspense boundary). */
+const loadAccount = cache(async (publicId: string) => {
+  const { user, viewer } = await requireUser();
+  const { db } = getDb();
+  const { timezone } = await getUserSettings(db, user.id);
+  const renderedAt = new Date();
+  const page = await getAccountPage(db, viewer, publicId, { now: renderedAt, timezone });
+  return { viewer, timezone, renderedAt, page };
+});
+
+export async function generateMetadata({
+  params,
+}: PageProps<'/accounts/[publicId]'>): Promise<Metadata> {
+  const { publicId } = await params;
+  const visible = await loadVisible(publicId);
+  return { title: `${visible?.account.name ?? 'Account'} · ${getConfig().hubName}` };
+}
+
+export default async function AccountPageRoute({ params }: PageProps<'/accounts/[publicId]'>) {
+  const { publicId } = await params;
+  // See NEXT-14: before any Suspense boundary, so the answer is a real 404.
+  if (!(await loadVisible(publicId))) notFound();
+  return (
+    <Suspense fallback={<AccountSkeleton />}>
+      <AccountContent publicId={publicId} />
+    </Suspense>
+  );
+}
+
+async function AccountContent({ publicId }: { publicId: string }) {
+  const { viewer, timezone, renderedAt, page } = await loadAccount(publicId);
+  // Hidden since the check a moment ago (rare): the not-found UI, if no longer a 404 status.
+  if (!page) notFound();
+  const now = renderedAt.toISOString();
+  // Without `activity` (presence hidden), skills, equipment and inventory carry only the day (D-50).
+  const dayOnlyIn = page.presence.visible ? undefined : timezone;
+  const ctx: SectionContext = { viewer, publicId, page, now, timezone, renderedAt, dayOnlyIn };
+
+  const main = [
+    skillsSection(ctx),
+    xpSection(ctx),
+    activitySection(ctx),
+    eventsSection(ctx),
+  ].filter(Boolean);
+  const aside = [
+    vitalsSection(ctx),
+    locationSection(ctx),
+    equipmentSection(ctx),
+    inventorySection(ctx),
+    wealthSection(ctx),
+  ].filter(Boolean);
+
+  return (
+    <div className="flex flex-col gap-6">
+      <AccountHeader
+        account={page.account}
+        presence={page.presence}
+        now={now}
+        timezone={timezone}
+      />
+      {main.length === 0 && aside.length === 0 ? (
+        <SectionCard
+          title="Nothing else shared with you"
+          description="The owner of this account doesn't share its stats, events or activity with you."
+        />
+      ) : (
+        <div
+          className={cn(
+            'grid items-start gap-6',
+            main.length > 0 && aside.length > 0 && 'lg:grid-cols-3',
+            main.length === 0 && 'md:grid-cols-2',
+          )}
+        >
+          {main.length > 0 && (
+            <div className={cn('flex min-w-0 flex-col gap-6', aside.length > 0 && 'lg:col-span-2')}>
+              {main}
+            </div>
+          )}
+          {aside.length > 0 && main.length > 0 ? (
+            <div className="flex min-w-0 flex-col gap-6">{aside}</div>
+          ) : (
+            aside
+          )}
+        </div>
+      )}
+      {/* getSharingSettings admits exactly these viewers; for anyone else a skeleton would flash
+          and vanish on every visit. */}
+      {(page.account.relation === 'owner' ||
+        page.account.relation === 'contributor' ||
+        page.account.canManage) && (
+        <Suspense fallback={<CardSkeleton rows={6} />}>
+          <SharingSection viewer={viewer} publicId={publicId} account={page.account} now={now} />
+        </Suspense>
+      )}
+      <AutoRefresh everyMs={60_000} />
+    </div>
+  );
+}
+
+interface SectionContext {
+  viewer: Viewer;
+  publicId: string;
+  page: AccountPage;
+  now: string;
+  timezone: string;
+  renderedAt: Date;
+  /** The viewer's time zone when section times are day-only (D-50), else undefined. */
+  dayOnlyIn: string | undefined;
+}
+
+// --- Main column ---------------------------------------------------------------------------------
+
+function skillsSection({ page, now, dayOnlyIn }: SectionContext) {
+  const skills = page.skills;
+  if (!skills.visible) return null;
+  if (!skills.shared) {
+    return <NotSharedCard key="skills" id="skills" title="Skills" what="stats (skills and XP)" />;
+  }
+  return (
+    <SectionCard
+      key="skills"
+      id="skills"
+      title="Skills"
+      updatedAt={skills.updatedAt}
+      now={now}
+      updatedDayIn={dayOnlyIn}
+      description={
+        <span>
+          Total level{' '}
+          <span className="font-medium text-foreground tabular-nums">
+            {formatNumber(skills.data.totalLevel)}
+          </span>{' '}
+          · Overall XP{' '}
+          <span className="font-medium text-foreground tabular-nums">
+            {formatNumber(skills.data.overallXp)}
+          </span>
+        </span>
+      }
+      contentClassName="px-0 sm:px-(--card-spacing)"
+    >
+      <SkillsTable rows={skills.data.rows} />
+    </SectionCard>
+  );
+}
+
+function xpSection({ page, publicId }: SectionContext) {
+  const skills = page.skills;
+  if (!skills.visible || !skills.shared) return null;
+  return (
+    <SectionCard
+      key="xp"
+      id="xp"
+      title="XP history"
+      description="XP of one skill over time; it only ever goes up."
+    >
+      <XpChartPanel
+        publicId={publicId}
+        skills={skills.data.rows.map((r) => r.skill)}
+        firstSeen={page.account.firstSeen}
+      />
+    </SectionCard>
+  );
+}
+
+function activitySection(ctx: SectionContext) {
+  if (!ctx.page.presence.visible) return null;
+  return (
+    <SectionCard
+      key="activity"
+      id="activity"
+      title="Sessions & playtime"
+      description={`The last ${ACTIVITY_DAYS} days, in your time zone.`}
+    >
+      <Suspense fallback={<ContentSkeleton rows={5} chart />}>
+        <ActivityLoader ctx={ctx} />
+      </Suspense>
+    </SectionCard>
+  );
+}
+
+async function ActivityLoader({ ctx }: { ctx: SectionContext }) {
+  const to = ctx.renderedAt;
+  const sessions = await getSessions(getDb().db, ctx.viewer, ctx.publicId, {
+    from: new Date(to.getTime() - ACTIVITY_DAYS * DAY_MS),
+    to,
+  });
+  if (sessions === null) return null;
+  const playtime = playtimeByDay(sessions, {
+    now: to,
+    days: ACTIVITY_DAYS,
+    timezone: ctx.timezone,
+  });
+  return <ActivityContent sessions={sessions} playtime={playtime} timezone={ctx.timezone} />;
+}
+
+function eventsSection({ page, publicId, now }: SectionContext) {
+  const events = page.recentEvents;
+  if (!events.visible) return null;
+  return (
+    <SectionCard
+      key="events"
+      id="events"
+      title="Events"
+      description="Loot, level-ups, deaths and more, newest first."
+      action={events.shared ? undefined : <NotSharedBadge what="events" />}
+    >
+      <EventTimeline
+        initial={events.shared ? events.data : []}
+        pageSize={PAGE_EVENTS}
+        accountPublicId={publicId}
+        typeOptions={eventTypeOptions()}
+        now={now}
+        linkAccounts={false}
+        label={`Events of ${page.account.name}`}
+        empty={
+          <p className="py-4 text-sm text-muted-foreground">
+            {events.shared
+              ? 'No events yet.'
+              : "No events have arrived for this account. The player's plugin settings decide which events are sent."}{' '}
+            New events appear here as they happen.
+          </p>
+        }
+      />
+    </SectionCard>
+  );
+}
+
+// --- Side column ---------------------------------------------------------------------------------
+
+function vitalsSection({ page, now }: SectionContext) {
+  const vitals = page.vitals;
+  if (!vitals.visible) return null;
+  if (!vitals.shared) {
+    return (
+      <NotSharedCard key="vitals" id="vitals" title="Vitals" what="HP, prayer or the spellbook" />
+    );
+  }
+  return (
+    <SectionCard key="vitals" id="vitals" title="Vitals" updatedAt={vitals.updatedAt} now={now}>
+      <VitalsContent vitals={vitals.data} />
+    </SectionCard>
+  );
+}
+
+function locationSection({ page, now }: SectionContext) {
+  const location = page.location;
+  if (!location.visible) return null;
+  if (!location.shared) {
+    return <NotSharedCard key="location" id="location" title="Location" what="the location" />;
+  }
+  return (
+    <SectionCard
+      key="location"
+      id="location"
+      title="Location"
+      updatedAt={location.updatedAt}
+      now={now}
+    >
+      <LocationContent location={location.data} />
+    </SectionCard>
+  );
+}
+
+function equipmentSection(ctx: SectionContext) {
+  const equipment = ctx.page.equipment;
+  if (!equipment.visible) return null;
+  if (!equipment.shared) {
+    return <NotSharedCard key="equipment" id="equipment" title="Equipment" what="the equipment" />;
+  }
+  return (
+    <SectionCard
+      key="equipment"
+      id="equipment"
+      title="Equipment"
+      updatedAt={equipment.updatedAt}
+      now={ctx.now}
+      updatedDayIn={ctx.dayOnlyIn}
+    >
+      <div className="flex flex-col gap-4">
+        <EquipmentGrid items={equipment.data.items} />
+        <div>
+          <h3 className="mb-1 text-xs font-medium text-muted-foreground">Changes</h3>
+          <Suspense fallback={<ContentSkeleton rows={3} />}>
+            <EquipmentLogLoader ctx={ctx} />
+          </Suspense>
+        </div>
+      </div>
+    </SectionCard>
+  );
+}
+
+async function EquipmentLogLoader({ ctx }: { ctx: SectionContext }) {
+  const to = ctx.renderedAt;
+  const changes = await getEquipmentHistory(getDb().db, ctx.viewer, ctx.publicId, {
+    from: new Date(to.getTime() - HISTORY_DAYS * DAY_MS),
+    to,
+  });
+  if (changes === null) return null;
+  return <EquipmentLog changes={changes} timezone={ctx.timezone} />;
+}
+
+function inventorySection({ page, now, dayOnlyIn }: SectionContext) {
+  const inventory = page.inventory;
+  if (!inventory.visible) return null;
+  if (!inventory.shared) {
+    return <NotSharedCard key="inventory" id="inventory" title="Inventory" what="the inventory" />;
+  }
+  const gear =
+    page.equipment.visible && page.equipment.shared
+      ? (itemsValue(page.equipment.data.items) ?? 0)
+      : null;
+  return (
+    <SectionCard
+      key="inventory"
+      id="inventory"
+      title="Inventory"
+      updatedAt={inventory.updatedAt}
+      now={now}
+      updatedDayIn={dayOnlyIn}
+      description={
+        <span>
+          Worth{' '}
+          <span className="font-medium text-foreground tabular-nums">
+            {formatGp(inventory.data.value)} gp
+          </span>
+          {gear !== null && (
+            <>
+              {' '}
+              · carried with gear{' '}
+              <span className="font-medium text-foreground tabular-nums">
+                {formatGp(inventory.data.value + gear)} gp
+              </span>
+            </>
+          )}
+        </span>
+      }
+    >
+      <InventoryContent items={inventory.data.items} />
+    </SectionCard>
+  );
+}
+
+function wealthSection(ctx: SectionContext) {
+  if (!ctx.page.inventory.visible) return null;
+  return (
+    <Suspense key="wealth" fallback={<CardSkeleton rows={0} chart />}>
+      <WealthLoader ctx={ctx} />
+    </Suspense>
+  );
+}
+
+async function WealthLoader({ ctx }: { ctx: SectionContext }) {
+  const to = ctx.renderedAt;
+  const days = await getWealthHistory(getDb().db, ctx.viewer, ctx.publicId, {
+    from: new Date(to.getTime() - HISTORY_DAYS * DAY_MS),
+    to,
+  });
+  if (days === null) return null;
+  const inventoryShared = ctx.page.inventory.visible && ctx.page.inventory.shared;
+  // Nothing to chart and the inventory card already says it isn't sent.
+  if (days.length === 0 && !inventoryShared) return null;
+  return (
+    <SectionCard
+      id="wealth"
+      title="Wealth"
+      description={`Carried value (inventory and gear) per day, last ${HISTORY_DAYS} days.`}
+    >
+      {days.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          No wealth history yet. It builds up day by day while the plugin sends the inventory.
+        </p>
+      ) : (
+        <WealthChart days={days} />
+      )}
+    </SectionCard>
+  );
+}
+
+// --- Sharing -------------------------------------------------------------------------------------
+
+async function SharingSection({
+  viewer,
+  publicId,
+  account,
+  now,
+}: {
+  viewer: Viewer;
+  publicId: string;
+  account: AccountPage['account'];
+  now: string;
+}) {
+  const settings = await getSharingSettings(getDb().db, viewer, publicId);
+  if (!settings) return null;
+  return (
+    <SectionCard
+      id="sharing"
+      title="Sharing"
+      description={
+        settings.canManage
+          ? 'Choose who in the guild sees each part of this account.'
+          : 'Who in the guild sees each part of this account.'
+      }
+    >
+      <SharingPanel
+        // A new owner (transfer, claim) remounts the panel with the refreshed settings.
+        key={`${account.owner?.userId ?? 'none'}:${settings.canManage}`}
+        publicId={publicId}
+        initial={settings}
+        categoryLabels={CATEGORY_LABELS}
+        defaults={DEFAULT_AUDIENCE}
+        hasOwner={account.owner !== null}
+        relation={account.relation}
+        now={now}
+      />
+    </SectionCard>
+  );
+}
+
+// --- Skeletons -----------------------------------------------------------------------------------
+
+function ContentSkeleton({ rows, chart = false }: { rows: number; chart?: boolean }) {
+  return (
+    <div className="flex flex-col gap-3" role="status" aria-label="Loading">
+      {chart && <Skeleton className="h-64 w-full rounded-lg" />}
+      {Array.from({ length: rows }, (_, i) => (
+        <Skeleton key={i} className="h-5 w-full" />
+      ))}
+    </div>
+  );
+}
+
+function CardSkeleton({ rows, chart = false }: { rows: number; chart?: boolean }) {
+  return (
+    <div className="flex flex-col gap-4 rounded-xl p-4 ring-1 ring-foreground/10">
+      <Skeleton className="h-5 w-32" />
+      <ContentSkeleton rows={rows} chart={chart} />
+    </div>
+  );
+}

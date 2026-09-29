@@ -1,0 +1,8 @@
+GET /api/osrs-data/events HTTP/1.1
+X-Osrs-Token: tok
+X-Osrs-Exporter-Version: 1.5
+Host: 127.0.0.1:18777
+Connection: Keep-Alive
+Accept-Encoding: gzip
+User-Agent: okhttp/3.14.9
+

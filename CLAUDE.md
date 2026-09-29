@@ -1,5 +1,7 @@
 ## Self documenting
+
 Update documentation in the `docs/` folder while making changes to the project. Use the following structure:
+
 - `docs/ARCHITECTURE.md`: Use this file for architectural decisions, high level design and design of the project.
 - `docs/CHANGELOG.md`: Keep track of changes to the project, consolidating entries into PR's.
 

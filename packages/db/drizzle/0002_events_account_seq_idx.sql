@@ -1,0 +1,1 @@
+CREATE INDEX "events_account_seq_idx" ON "events" USING btree ("account_id","seq" DESC NULLS LAST);

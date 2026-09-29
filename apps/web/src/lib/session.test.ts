@@ -1,0 +1,232 @@
+import { createDb, session, users, type DbHandle } from '@hub/db';
+import { getLogger } from '@hub/server';
+import { eq } from 'drizzle-orm';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { GET as authGET, POST as authPOST } from '@/app/api/auth/[...all]/route';
+import { CLIENT_IP_HEADER, getAuth } from './auth';
+import { ApiError, handleApi, json } from './http';
+import { getApiUser, requireApiUser } from './session';
+import { withTestDb, type WebTestContext } from './test-utils';
+
+let ctx: WebTestContext;
+
+beforeAll(async () => {
+  ctx = await withTestDb({ label: 'session' });
+});
+afterAll(() => ctx.cleanup());
+
+describe('requireApiUser', () => {
+  it('throws 401 without a cookie', async () => {
+    await expect(requireApiUser(ctx.request('/api/app/x'))).rejects.toMatchObject({
+      status: 401,
+      code: 'unauthorized',
+    });
+  });
+
+  it('returns the user and a fresh viewer for a signed-in cookie (signIn helper)', async () => {
+    const userId = await ctx.seedUser({ name: 'Zezima' });
+    const cookie = await ctx.signIn(userId);
+    const current = await requireApiUser(ctx.request('/api/app/x', { cookie }));
+    expect(current.user).toMatchObject({ id: userId, name: 'Zezima', isAdmin: false });
+    expect(current.viewer).toEqual({ userId, status: 'active', isAdmin: false });
+
+    // Promoted meanwhile: the admin flag comes from the users table, not the session.
+    await ctx.t.db.update(users).set({ isAdmin: true }).where(eq(users.id, userId));
+    const again = await requireApiUser(ctx.request('/api/app/x', { cookie }));
+    expect(again.viewer.isAdmin).toBe(true);
+  });
+
+  it('refuses a cookie with a forged signature', async () => {
+    const userId = await ctx.seedUser();
+    const cookie = await ctx.signIn(userId);
+    const [name, value = ''] = cookie.split('=');
+    const token = decodeURIComponent(value).split('.')[0] ?? '';
+    const forged = `${name}=${encodeURIComponent(`${token}.${'A'.repeat(43)}=`)}`;
+    await expect(requireApiUser(ctx.request('/x', { cookie: forged }))).rejects.toBeInstanceOf(
+      ApiError,
+    );
+  });
+
+  it('refuses a user in grace even while a session row still exists', async () => {
+    const userId = await ctx.seedUser({ status: 'grace' });
+    const cookie = await ctx.signIn(userId);
+    await expect(requireApiUser(ctx.request('/x', { cookie }))).rejects.toMatchObject({
+      status: 401,
+    });
+    expect(await getApiUser(ctx.request('/x', { cookie }))).toBeNull();
+  });
+
+  it('stops working as soon as the session row is deleted (no cookie cache, AUTH-8)', async () => {
+    const userId = await ctx.seedUser();
+    const cookie = await ctx.signIn(userId);
+    expect(await getApiUser(ctx.request('/x', { cookie }))).not.toBeNull();
+    await ctx.t.db.delete(session).where(eq(session.userId, userId));
+    expect(await getApiUser(ctx.request('/x', { cookie }))).toBeNull();
+  });
+
+  it('a database outage during the session lookup is 503 + Retry-After, not 500 or 401', async () => {
+    const userId = await ctx.seedUser();
+    const cookie = await ctx.signIn(userId);
+    const g = globalThis as unknown as { __hubDb?: DbHandle; __hubAuth?: unknown };
+    const testDb = g.__hubDb;
+    const testAuth = g.__hubAuth;
+    // Nothing listens on port 1: every query fails to connect.
+    const down = createDb('postgres://hub:hub@127.0.0.1:1/nope');
+    const consoleCalls = (['error', 'warn', 'log'] as const).map((m) =>
+      vi.spyOn(console, m).mockImplementation(() => {}),
+    );
+    const logged = vi.spyOn(getLogger(), 'error');
+    g.__hubDb = down;
+    delete g.__hubAuth;
+    try {
+      const res = await handleApi(async () => {
+        await requireApiUser(ctx.request('/api/app/x', { cookie }));
+        return json(200, {});
+      });
+      expect(res.status).toBe(503);
+      expect(res.headers.get('retry-after')).toMatch(/^\d+$/);
+      expect(((await res.json()) as { error: { code: string } }).error.code).toBe('unavailable');
+      // Better Auth logged the failed session query through our logger, without its bound
+      // parameters: the session token must appear nowhere (AUTH-13, DB-3).
+      const token = decodeURIComponent(cookie.split('=')[1] ?? '').split('.')[0] ?? '';
+      expect(token.length).toBeGreaterThan(10);
+      expect(logged.mock.calls.some((c) => JSON.stringify(c).includes('better-auth'))).toBe(true);
+      const everything = JSON.stringify([
+        ...consoleCalls.map((spy) => spy.mock.calls),
+        logged.mock.calls,
+      ]);
+      expect(everything).not.toContain(token);
+    } finally {
+      for (const spy of consoleCalls) spy.mockRestore();
+      logged.mockRestore();
+      g.__hubDb = testDb;
+      g.__hubAuth = testAuth;
+      await down.pool.end().catch(() => {});
+    }
+  });
+
+  it('answers 401 JSON through handleApi', async () => {
+    const res = await handleApi(async () => {
+      await requireApiUser(ctx.request('/x'));
+      return json(200, {});
+    });
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({
+      error: { code: 'unauthorized', message: expect.any(String) as string },
+    });
+  });
+});
+
+describe('/api/auth/[...all]', () => {
+  it('serves get-session for the signed-in cookie', async () => {
+    const userId = await ctx.seedUser({ name: 'Lynx Titan' });
+    const cookie = await ctx.signIn(userId);
+    const res = await authGET(ctx.request('/api/auth/get-session', { cookie }));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { user: { id: string; name: string } };
+    expect(body.user).toMatchObject({ id: userId, name: 'Lynx Titan' });
+  });
+
+  it('does not serve list-sessions (it would hand session tokens to browser JavaScript)', async () => {
+    const cookie = await ctx.signIn(await ctx.seedUser());
+    const res = await authGET(ctx.request('/api/auth/list-sessions', { cookie }));
+    expect(res.status).toBe(404);
+    expect(await res.text()).not.toContain(
+      decodeURIComponent(cookie.split('=')[1] ?? '').split('.')[0],
+    );
+  });
+
+  it("refuses a cookie-carrying POST from another origin (Better Auth's CSRF check)", async () => {
+    const userId = await ctx.seedUser();
+    const cookie = await ctx.signIn(userId);
+    const signOut = (headers: Record<string, string>, sameOrigin: boolean) =>
+      authPOST(
+        ctx.request('/api/auth/sign-out', {
+          method: 'POST',
+          cookie,
+          headers,
+          sameOrigin,
+          json: {},
+        }),
+      );
+    expect((await signOut({ origin: 'https://evil.example.com' }, false)).status).toBe(403);
+    expect((await signOut({}, false)).status).toBe(403);
+    expect(await getApiUser(ctx.request('/x', { cookie }))).not.toBeNull();
+
+    const res = await signOut({}, true);
+    expect(res.status).toBe(200);
+    expect(await getApiUser(ctx.request('/x', { cookie }))).toBeNull();
+  });
+
+  it('overwrites a client-sent client-IP header with the X-Forwarded-For rule (D-42)', async () => {
+    const auth = getAuth();
+    const seen: (string | null)[] = [];
+    const spy = vi.spyOn(auth, 'handler').mockImplementation((request: Request) => {
+      seen.push(request.headers.get(CLIENT_IP_HEADER));
+      return Promise.resolve(new Response(null, { status: 204 }));
+    });
+    try {
+      await authGET(
+        ctx.request('/api/auth/get-session', {
+          headers: { [CLIENT_IP_HEADER]: '6.6.6.6', 'x-forwarded-for': '6.6.6.6, 203.0.113.5' },
+        }),
+      );
+      // No X-Forwarded-For: the spoofed header is removed, not kept.
+      await authGET(
+        ctx.request('/api/auth/get-session', { headers: { [CLIENT_IP_HEADER]: '6.6.6.6' } }),
+      );
+    } finally {
+      spy.mockRestore();
+    }
+    expect(seen).toEqual(['203.0.113.5', null]);
+  });
+
+  it('copies the request Next wraps in a Proxy, body included (NEXT-13)', async () => {
+    // What Next 16 does to a route handler's request (proxyNextRequest): Node 24's Request can't
+    // copy a Proxy with `new Request(proxy, …)`.
+    const asNextPassesIt = (request: Request) =>
+      new Proxy(request, {
+        get(target, prop) {
+          const value: unknown = Reflect.get(target, prop, target);
+          return typeof value === 'function' ? (value as () => unknown).bind(target) : value;
+        },
+      });
+    const auth = getAuth();
+    const seen: { method: string; url: string; ip: string | null; body: string }[] = [];
+    const spy = vi.spyOn(auth, 'handler').mockImplementation(async (request: Request) => {
+      seen.push({
+        method: request.method,
+        url: request.url,
+        ip: request.headers.get(CLIENT_IP_HEADER),
+        body: await request.text(),
+      });
+      return new Response(null, { status: 204 });
+    });
+    try {
+      const post = ctx.request('/api/auth/sign-in/social', {
+        method: 'POST',
+        headers: { 'x-forwarded-for': '203.0.113.5' },
+        json: { provider: 'discord' },
+      });
+      expect((await authPOST(asNextPassesIt(post))).status).toBe(204);
+      const get = ctx.request('/api/auth/get-session?x=1');
+      expect((await authGET(asNextPassesIt(get))).status).toBe(204);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(seen).toEqual([
+      {
+        method: 'POST',
+        url: expect.stringMatching(/\/api\/auth\/sign-in\/social$/) as string,
+        ip: '203.0.113.5',
+        body: '{"provider":"discord"}',
+      },
+      {
+        method: 'GET',
+        url: expect.stringMatching(/\/api\/auth\/get-session\?x=1$/) as string,
+        ip: null,
+        body: '',
+      },
+    ]);
+  });
+});
