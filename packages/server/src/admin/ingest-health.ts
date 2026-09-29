@@ -5,11 +5,13 @@
  *
  * raw_payloads only holds bodies that got past auth, the version gate, the size cap and the rate
  * limit, so rejected 401/400-version/413/429 requests are not in these numbers: the Prometheus
- * counters (hub_ingest_payloads_total by status) have them.
+ * counters (hub_ingest_payloads_total by status) have them, and the per-minute series takes them
+ * from the process's in-memory count (`rejected`, D-83) when the caller hands it over.
  */
 import { compareVersions, parsePluginVersion } from '@hub/core';
 import { devices, users, type Db } from '@hub/db';
 import { eq, inArray, isNull, sql } from 'drizzle-orm';
+import type { RecentMinuteCounts } from '../recent-counts';
 
 const MINUTE_MS = 60_000;
 const HOUR_MS = 60 * MINUTE_MS;
@@ -25,8 +27,14 @@ export type StatusCounts = Record<string, number>;
 export interface MinuteCounts {
   /** Start of the minute. */
   minute: Date;
+  /** Archived payloads (raw_payloads). */
   total: number;
   byStatus: StatusCounts;
+  /**
+   * Responses whose body was never archived (401, 410, 413, 429, …), by status, from this process's
+   * in-memory count (D-83): empty before the web process started, and without `rejected` handed in.
+   */
+  rejected: StatusCounts;
 }
 
 export interface SkippedTotals {
@@ -72,11 +80,14 @@ export interface IngestHealth {
  * raw_payloads.meta (skippedSections, skippedEvents), plugin versions of non-revoked devices, and
  * the ten devices that sent the most payloads in the last hour.
  */
-export async function getIngestHealth(db: Db, opts: { now?: Date } = {}): Promise<IngestHealth> {
+export async function getIngestHealth(
+  db: Db,
+  opts: { now?: Date; rejected?: RecentMinuteCounts } = {},
+): Promise<IngestHealth> {
   const now = opts.now ?? new Date();
   const [perMinute, totals, skipped, topSkippedSections, pluginVersions, noisyDevices] =
     await Promise.all([
-      loadPerMinute(db, now),
+      loadPerMinute(db, now, opts.rejected),
       loadStatusTotals(db, now),
       loadSkipped(db, now),
       loadTopSkippedSections(db, now),
@@ -92,7 +103,11 @@ function iso(d: Date): string {
   return d.toISOString();
 }
 
-async function loadPerMinute(db: Db, now: Date): Promise<MinuteCounts[]> {
+async function loadPerMinute(
+  db: Db,
+  now: Date,
+  rejected: RecentMinuteCounts | undefined,
+): Promise<MinuteCounts[]> {
   const lastMinute = Math.floor(now.getTime() / MINUTE_MS) * MINUTE_MS;
   const from = lastMinute - (HEALTH_MINUTES - 1) * MINUTE_MS;
   // Epoch ms, not the timestamp: drizzle hands raw timestamptz values over as strings.
@@ -105,10 +120,13 @@ async function loadPerMinute(db: Db, now: Date): Promise<MinuteCounts[]> {
     WHERE received_at >= ${iso(new Date(from))}::timestamptz
       AND received_at <= ${iso(now)}::timestamptz
     GROUP BY 1, 2`);
+  // The same minutes (the last one is the minute of `now`), oldest first.
+  const rejectedSeries = rejected?.series(now, HEALTH_MINUTES) ?? [];
   const series: MinuteCounts[] = Array.from({ length: HEALTH_MINUTES }, (_, i) => ({
     minute: new Date(from + i * MINUTE_MS),
     total: 0,
     byStatus: {},
+    rejected: rejectedSeries[i]?.byKey ?? {},
   }));
   for (const row of res.rows) {
     const bucket = series[Math.round((row.minute_ms - from) / MINUTE_MS)];

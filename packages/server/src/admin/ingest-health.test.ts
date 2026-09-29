@@ -84,11 +84,13 @@ describe('getIngestHealth', () => {
       minute: new Date('2026-09-28T12:00:00Z'),
       total: 4,
       byStatus: { '200': 3, '400': 1 },
+      rejected: {},
     });
     expect(health.perMinute.at(-6)).toEqual({
       minute: new Date('2026-09-28T11:55:00Z'),
       total: 3,
       byStatus: { '200': 1, '503': 1, pending: 1 },
+      rejected: {},
     });
     expect(health.perMinute[0]).toMatchObject({ total: 1, byStatus: { '200': 1 } });
     expect(health.perMinute[1]).toMatchObject({ total: 0, byStatus: {} });
@@ -196,5 +198,28 @@ describe('getIngestHealth over payloads stored by the real ingest pipeline', () 
         user: { id: userId, name: userId },
       }),
     ]);
+  });
+
+  it('adds the responses ingest never archived to their minute, from the in-memory count (D-83)', async () => {
+    const h = createHarness(t);
+    const userId = await h.seedUser();
+    const device = await h.seedDevice(userId);
+    const body = wire('snapshot-normal', { hash: newHash() });
+    expect(await h.send(device, body)).toMatchObject({ status: 200 });
+    expect(await h.send(device, body, { token: 'f'.repeat(64) })).toMatchObject({ status: 401 });
+    expect(await h.send(device, body, { token: null })).toMatchObject({ status: 401 });
+    const now = new Date(h.clock.now);
+
+    const health = await getIngestHealth(t.db, { now, rejected: h.metrics.ingestUnarchived });
+    const last = health.perMinute.at(-1);
+    expect(last?.rejected).toEqual({ '401': 2 });
+    // The archive holds only the accepted payloads (the earlier test's are in this minute too).
+    expect(Object.keys(last?.byStatus ?? {})).toEqual(['200']);
+    expect(health.perMinute.slice(0, -1).every((m) => Object.keys(m.rejected).length === 0)).toBe(
+      true,
+    );
+    // Without the count handed in, the series is the archive alone.
+    const archiveOnly = await getIngestHealth(t.db, { now });
+    expect(archiveOnly.perMinute.at(-1)?.rejected).toEqual({});
   });
 });

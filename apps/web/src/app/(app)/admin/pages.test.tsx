@@ -204,6 +204,7 @@ describe('ingest and raw payloads', () => {
   it('shows totals, statuses and the noisy device', async () => {
     const out = await render(() => IngestPage());
     expect(out).toContain('Payloads per minute');
+    expect(out).toContain('Rejected payloads (unknown or revoked tokens');
     expect(out).toContain('Unavailable');
     expect(out).toContain('player.inventory');
     expect(out).toContain('Gaming PC');

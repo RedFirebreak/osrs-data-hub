@@ -60,7 +60,8 @@ interface IngestRun {
  * Handles one ingest request and never throws: every outcome is a PluginResponse with the status
  * the plugin needs (D-19, D-30). Every return path is timed (ingestLatency) and counted
  * (ingestPayloads{status}); every authenticated request counts its plugin version. After the body is
- * archived, the returned status and meta are recorded on the archive row.
+ * archived, the returned status and meta are recorded on the archive row; a response without an
+ * archive row is counted per minute instead (ingestUnarchived, D-83), for the ingest health chart.
  */
 export async function handleIngest(deps: IngestDeps, req: IngestRequest): Promise<PluginResponse> {
   const recv = deps.now?.() ?? new Date();
@@ -84,6 +85,7 @@ export async function handleIngest(deps: IngestDeps, req: IngestRequest): Promis
   }
   await recordOutcome(run, response);
   deps.metrics.ingestPayloads.inc({ status: String(response.status) });
+  if (run.archive === null) deps.metrics.ingestUnarchived.add(String(response.status), recv);
   stopTimer();
   return response;
 }

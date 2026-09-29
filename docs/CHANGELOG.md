@@ -37,6 +37,16 @@ Handoff §16's metrics, complete, with a Grafana dashboard and alert rules as co
   running when the client cancelled threw at `enqueue` (NEXT-16). It is now counted as cancelled, not
   logged as an error.
 - `checkApiRate` now says which limit refused a request (`limit: 'key' | 'snapshot'`).
+## Unreleased — branch `sj/ingest-rejections-chart`
+
+- **Rejected payloads on the ingest chart** (D-83): Admin → Ingest health's "Payloads per minute"
+  chart gets a third series, *Rejected, not archived*: responses whose body never reached
+  `raw_payloads` (unknown or revoked tokens 401, decommissioned 410, oversized 413, rate-limited 429,
+  outdated plugin, a failed archive write). Before, two 401s showed under "Since the hub started" but
+  nowhere on the chart, whose "Other statuses" only ever counts archived payloads. Ingest counts them
+  per minute and status in memory (`RecentMinuteCounts`, the last 60 minutes, on the metrics object);
+  like the Prometheus counters they start at zero when the web process restarts. The chart's third
+  colour is slot 3 of the palette (aqua), validated with the other two in both modes.
 
 ## Unreleased — V1 (branch `red/eloquent-johnson-yufg78`)
 

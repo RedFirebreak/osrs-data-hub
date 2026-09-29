@@ -1,6 +1,6 @@
 /**
  * Admin → Ingest health (handoff §12, §7.6): from getIngestHealth — payloads per minute over the last
- * hour (accepted vs. other statuses), totals by HTTP status for 1 h and 24 h, skipped sections and
+ * hour (accepted, other statuses, and rejections that were never archived, D-83), totals by HTTP status for 1 h and 24 h, skipped sections and
  * events with the most-skipped section paths, the plugin versions of active devices, and the noisiest
  * devices by payloads in the last hour (with their user and label, linking to their raw payloads).
  *
@@ -52,12 +52,14 @@ function percent(part: number, whole: number): string {
 export default async function AdminIngestPage() {
   await requireAdmin();
   const config = getConfig();
-  const health = await getIngestHealth(getDb().db);
-  const sinceStart = countsByLabel((await getMetrics().ingestPayloads.get()).values, 'status');
+  const metrics = getMetrics();
+  const health = await getIngestHealth(getDb().db, { rejected: metrics.ingestUnarchived });
+  const sinceStart = countsByLabel((await metrics.ingestPayloads.get()).values, 'status');
   const points: MinutePoint[] = health.perMinute.map((m) => ({
     minute: m.minute.toISOString(),
     total: m.total,
     byStatus: m.byStatus,
+    rejected: m.rejected,
   }));
   const hourTotal = sumCounts(health.lastHour);
   const dayTotal = sumCounts(health.last24h);
@@ -96,11 +98,13 @@ export default async function AdminIngestPage() {
             <h3>Payloads per minute</h3>
           </CardTitle>
           <CardDescription>
-            The last {HEALTH_MINUTES} minutes; the newest minute is still running.
+            The last {HEALTH_MINUTES} minutes; the newest minute is still running. Rejected payloads
+            (unknown or revoked tokens, oversized bodies, rate limits) are never archived and are
+            counted since the hub started, so earlier minutes show none.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {points.every((p) => p.total === 0) ? (
+          {points.every((p) => p.total === 0 && Object.keys(p.rejected).length === 0) ? (
             <AdminEmptyState icon={ActivityIcon} title="No payloads in the last hour">
               Payloads arrive while members play with the HA Exporter plugin paired.
             </AdminEmptyState>
