@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/main.ts",
+    "dev": "tsx watch --import=../../tools/dev-env.mjs src/main.ts",
     "build": "tsup",
     "start": "node dist/main.js",
     "migrate": "tsx src/migrate.ts",

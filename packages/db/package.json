@@ -12,7 +12,7 @@
     "lint": "eslint .",
     "generate": "drizzle-kit generate",
     "check": "drizzle-kit check",
-    "migrate": "tsx src/migrate-cli.ts"
+    "migrate": "tsx --import=../../tools/dev-env.mjs src/migrate-cli.ts"
   },
   "dependencies": {
     "@hub/core": "workspace:*",

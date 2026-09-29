@@ -20,6 +20,13 @@ switch). Status per milestone: [ARCHITECTURE.md §14](ARCHITECTURE.md#14-milesto
   local runs on Node 22 had passed. A regression test hands the route a Proxy-wrapped request.
 - A `readBodyCapped` test no longer depends on how far Node's streams read ahead (Node 24 reads
   one chunk more than Node 22).
+- Local dev reads the root `.env`: `pnpm dev`, `pnpm dev:worker` and `pnpm db:migrate` preload
+  `tools/dev-env.mjs`, which loads `.env` and, on top, an optional gitignored `.env.dev` for dev-only
+  overrides (the database on `127.0.0.1` while `.env` keeps `db` for the full stack). Before, Next read
+  only `apps/web/.env*` and tsx read nothing, so `pnpm db:migrate` stopped with `DATABASE_URL is not set`
+  on the documented setup. Not `--env-file`, which crashes `next dev` (NEXT-15). `.claude/launch.json`
+  starts the web app for Claude's browser preview; DEVELOPMENT.md covers `.env.dev` and a no-admin
+  `corepack enable` on Windows.
 
 ### M4 (part) — data rights, and fixes from review
 

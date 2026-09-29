@@ -18,6 +18,7 @@ Next.js 16 (route handlers, server actions, RSC, proxy.ts, instrumentation, base
 | [NEXT-12](#next-12) | The browser downloads a ~440 KB chunk containing `crypto-browserify`, and `next build` passes without a warning, after a `'use client'` component imports one small helper from a workspace package whose index also re-exports a module that imports `node:crypto`. |
 | [NEXT-13](#next-13) | Every request to a route handler that copies its request with `new Request(request, …)` (Better Auth's `/api/auth/*`, for one) answers 500 on Node 24, logging `TypeError: Cannot read private member #state from an object whose class did not declare it`, while the same code passes on Node 22 and in unit tests. |
 | [NEXT-14](#next-14) | An unknown id's page shows the not-found UI but answers HTTP 200, with `<meta name="robots" content="noindex">` in its HTML, while a `notFound()` from a layout answers 404. |
+| [NEXT-15](#next-15) | `pnpm dev` or a tsx script in a workspace package ignores the repo-root `.env` (`DATABASE_URL is not set`), and starting Next as `node --env-file=… next dev` exits at once with code 9: `--env-file-if-exists= is not allowed in NODE_OPTIONS`. |
 
 ### NEXT-1
 **Changing `basePath` or an `APP_URL` path prefix at runtime has no effect: the app still answers on the prefix it was built with and 404s on the new one.**
@@ -179,3 +180,18 @@ the check cheap: the shell waits for it. With `cacheComponents` every dynamic ro
 shell first, and the docs send such checks to `proxy.ts` instead.
 
 *Source: `DOCS` (next/dist/docs 01-app/02-guides/streaming.md "The HTTP contract", 01-app/03-api-reference/03-file-conventions/loading.md "Status Codes"); `OBSERVED` (apps/web standalone build, Next 16.3.6, 2026-09-29: `/accounts/Nothing00000` answered 200 with "Account not found" while `/accounts/[publicId]/loading.tsx` existed; `/admin/*` for a non-admin answered 404)*
+
+### NEXT-15
+**`pnpm dev` or a tsx script in a workspace package ignores the repo-root `.env` (`DATABASE_URL is not set`), and starting Next as `node --env-file=… next dev` exits at once with code 9: `--env-file-if-exists= is not allowed in NODE_OPTIONS`.** `next dev` loads `.env*` only from the app directory (`apps/web`), and tsx loads none at
+all, so a `.env` at the repo root reaches neither. Node's own `--env-file`/`--env-file-if-exists` looks
+like the fix and works for tsx, but it crashes `next dev`: Next re-parses its own `process.execArgv` and
+hands every flag to the dev-server child through `NODE_OPTIONS` (`startServer` → `formatNodeOptions` in
+`next/dist/cli/next-dev.js`), and Node refuses `--env-file*` in `NODE_OPTIONS`. Preload a module that
+calls `process.loadEnvFile()` instead: `node --import=<module> node_modules/next/dist/bin/next dev`
+(`--import` is allowed in `NODE_OPTIONS`; tsx and `tsx watch` pass it through too). The child is forked
+with the parent's environment, so it has the variables already; it runs the preload again, harmlessly,
+because `process.loadEnvFile` never overwrites a variable that is set. That rule also sets the order: load
+the override file first, and the shell beats both. Next collapses a repeated flag to its last value when it
+re-parses, so pass one `--import`. This repo: `tools/dev-env.mjs`.
+
+*Source: `SOURCE` (next 16.3.6 `dist/cli/next-dev.js`, `dist/server/lib/utils.js`); `OBSERVED` (apps/web `pnpm dev`, Next 16.3.6 on Node 22.14, 2026-09-29: exit 9 with the message above; `pnpm db:migrate` stopped with `DATABASE_URL is not set` while the root `.env` set it)*

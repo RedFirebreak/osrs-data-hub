@@ -1,5 +1,6 @@
 # Local development database only: docker compose -f compose.dev.yaml up -d
-# Then: cp .env.example .env, set DATABASE_URL=postgres://hub:hub@localhost:5432/hub
+# Then: cp .env.example .env, set DATABASE_URL=postgres://hub:hub@127.0.0.1:5432/hub (in .env, or in
+# .env.dev to keep .env for the full stack; see docs/DEVELOPMENT.md "Environment files")
 # Tests use the same server (they create and drop their own databases).
 name: osrs-data-hub-dev
 

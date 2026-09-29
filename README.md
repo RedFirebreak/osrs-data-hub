@@ -58,6 +58,9 @@ cp .env.example .env   # set DATABASE_URL=postgres://hub:hub@127.0.0.1:5432/hub 
 pnpm db:migrate && pnpm dev
 ```
 
+The dev scripts read the root `.env`, with an optional `.env.dev` on top (see
+[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#environment-files)).
+
 ## Status
 
 V1 is being built milestone by milestone (see [docs/ARCHITECTURE.md §14](docs/ARCHITECTURE.md#14-milestones-and-status)).

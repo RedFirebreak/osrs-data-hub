@@ -19,6 +19,27 @@ pnpm dev                                      # web on http://localhost:3000
 pnpm dev:worker                               # scheduled jobs (optional in dev)
 ```
 
+On Windows, when Node lives in `C:\Program Files\nodejs`, `corepack enable` needs an elevated shell.
+Without one, put the shim in your user npm folder, which the Node installer adds to `PATH`:
+`corepack enable --install-directory "$env:APPDATA\npm" pnpm` (PowerShell).
+
+### Environment files
+
+`pnpm dev`, `pnpm dev:worker` and `pnpm db:migrate` load the repo-root `.env` through a preload,
+`tools/dev-env.mjs`: neither Next nor tsx reads a `.env` above the package directory. A gitignored
+`.env.dev` next to it, if present, overrides `.env` for those scripts only, and variables set in the
+shell override both. Use it to keep one `.env` for both the dev scripts and a local
+`docker compose up` of the full stack, which reads only `.env` and needs the database host `db`:
+
+```bash
+# .env.dev
+DATABASE_URL=postgres://hub:hub@127.0.0.1:5432/hub
+```
+
+Don't run the full stack and `pnpm dev` at the same time: both listen on port 3000 (`WEB_PORT` moves
+the stack's). `pnpm test` and `pnpm test:e2e` don't read either file; they create their own databases
+(below).
+
 For Discord login in development, create a Discord application, add the redirect URI
 `http://localhost:3000/api/auth/callback/discord`, and fill in `DISCORD_CLIENT_ID`,
 `DISCORD_CLIENT_SECRET`, `DISCORD_GUILD_ID` and `AUTH_SECRET` in `.env`.
