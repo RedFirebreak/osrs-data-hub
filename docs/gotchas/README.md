@@ -1,6 +1,6 @@
 # Gotchas
 
-67 traps, grouped into five files, found while building osrs-data-hub. Each is written up
+70 traps, grouped into five files, found while building osrs-data-hub. Each is written up
 once under a stable ID and referenced by ID from everywhere else, so there is exactly one place to edit
 when something changes. Package-agnostic: things that are true of the shared layer (the HA Exporter
 plugin protocol, Next.js, Better Auth, Drizzle, Postgres/TimescaleDB, pg-boss, the Discord API, and the
@@ -23,7 +23,7 @@ defeats the point of them being separate.
 | File | Covers | Entries |
 |---|---|---|
 | [auth.md](auth.md) | `AUTH`, `DISCORD` — Better Auth 1.7 (Discord provider, Drizzle adapter, hooks, sessions, endpoints) and the Discord HTTP API (OAuth, guild member lookups) | 11 |
-| [database.md](database.md) | `DB`, `TSDB` — Postgres behaviour, drizzle-orm 0.45 and drizzle-kit 0.31 (queries, errors, the migrator), and TimescaleDB 2.30 (hypertables, compression, continuous aggregates, policies, the Docker image) | 24 |
+| [database.md](database.md) | `DB`, `TSDB` — Postgres behaviour, drizzle-orm 0.45 and drizzle-kit 0.31 (queries, errors, the migrator), and TimescaleDB 2.30 (hypertables, compression, continuous aggregates, policies, the Docker image) | 27 |
 | [nextjs.md](nextjs.md) | `NEXT` — Next.js 16 (route handlers, server actions, RSC, proxy.ts, instrumentation, basePath, standalone output, the dev and build CLI) | 10 |
 | [plugin.md](plugin.md) | `PLUGIN` — the HA Exporter v1.5 wire protocol as seen from the hub (payload shapes, Gson serialization, the OkHttp transport, status handling, the retry queue, the pairing panel) | 13 |
 | [toolchain.md](toolchain.md) | `PGBOSS`, `TOOL`, `ZOD` — build, lint and package tooling (TypeScript, ESLint, pnpm, tsup, shadcn, Docker base images) and the pg-boss and zod libraries | 9 |
@@ -70,6 +70,7 @@ The `gotcha` skill walks this, including a trap that fits no existing file.
 | [DB-11](database.md#db-11) | Database | `SET LOCAL lock_timeout = $1` fails with `42601 syntax error at or near "$1"`. |
 | [DB-12](database.md#db-12) | Database | The bundled migrate entrypoint fails with `Can't find meta/_journal.json file`. |
 | [DB-13](database.md#db-13) | Database | `pg_notify` fails with `22023 payload string too long` and takes the transaction it was called in down with it. |
+| [DB-14](database.md#db-14) | Database | Node logs `DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated`, from code that runs several queries with `Promise.all` inside `db.transaction`. |
 | [TSDB-1](database.md#tsdb-1) | Timescale | Hourly or daily XP history older than the raw retention disappears from `xp_hourly`/`xp_daily` after a refresh. |
 | [TSDB-2](database.md#tsdb-2) | Timescale | After deleting an account, its rows are still in `xp_hourly`/`xp_daily`, and `DELETE FROM xp_hourly` fails with `55000 cannot delete from view`. |
 | [TSDB-3](database.md#tsdb-3) | Timescale | A changed retention or compression setting has no effect after restart; the log only shows `WARNING: … A policy already exists with different arguments`. |
@@ -81,6 +82,8 @@ The `gotcha` skill walks this, including a trap that fits no existing file.
 | [TSDB-9](database.md#tsdb-9) | Timescale | Compression, `CREATE MATERIALIZED VIEW … WITH (timescaledb.continuous)` or `add_retention_policy` fail with `functionality not supported under the current "apache" license`. |
 | [TSDB-10](database.md#tsdb-10) | Timescale | Timescale jobs (retention, compression, refresh) silently stop running in some databases, and the server log says `TimescaleDB background worker limit of 16 exceeded`. |
 | [TSDB-11](database.md#tsdb-11) | Timescale | A drizzle-kit-generated migration fails on a hypertable with `operation not supported on hypertables with compressed chunks` or `cannot add column with NOT NULL constraint without default to a hypertable that has columnstore enabled`. |
+| [TSDB-12](database.md#tsdb-12) | Timescale | Two concurrent ingest transactions fail with `40P01 deadlock detected`; one of them waits for a `ShareRowExclusiveLock` on a plain table while inserting into a hypertable. |
+| [TSDB-13](database.md#tsdb-13) | Timescale | A "last value at or before t" lookup (`ORDER BY bucket DESC LIMIT 1`) on `xp_hourly`/`xp_daily` gets slower as history grows; `EXPLAIN` shows a Sort over an Append of the materialized hypertable instead of an index scan. |
 | **[nextjs.md](nextjs.md)** | | |
 | [NEXT-1](nextjs.md#next-1) | Next.js | Changing `basePath` or an `APP_URL` path prefix at runtime has no effect: the app still answers on the prefix it was built with and 404s on the new one. |
 | [NEXT-2](nextjs.md#next-2) | Next.js | Redirects and absolute URLs built in a route handler point at `http://0.0.0.0:3000/…` or `localhost` instead of the public host. |

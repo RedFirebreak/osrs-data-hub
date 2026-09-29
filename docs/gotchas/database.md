@@ -17,6 +17,7 @@ Postgres behaviour, drizzle-orm 0.45 and drizzle-kit 0.31 (queries, errors, the 
 | [DB-11](#db-11) | `SET LOCAL lock_timeout = $1` fails with `42601 syntax error at or near "$1"`. |
 | [DB-12](#db-12) | The bundled migrate entrypoint fails with `Can't find meta/_journal.json file`. |
 | [DB-13](#db-13) | `pg_notify` fails with `22023 payload string too long` and takes the transaction it was called in down with it. |
+| [DB-14](#db-14) | Node logs `DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated`, from code that runs several queries with `Promise.all` inside `db.transaction`. |
 | [TSDB-1](#tsdb-1) | Hourly or daily XP history older than the raw retention disappears from `xp_hourly`/`xp_daily` after a refresh. |
 | [TSDB-2](#tsdb-2) | After deleting an account, its rows are still in `xp_hourly`/`xp_daily`, and `DELETE FROM xp_hourly` fails with `55000 cannot delete from view`. |
 | [TSDB-3](#tsdb-3) | A changed retention or compression setting has no effect after restart; the log only shows `WARNING: … A policy already exists with different arguments`. |
@@ -28,6 +29,8 @@ Postgres behaviour, drizzle-orm 0.45 and drizzle-kit 0.31 (queries, errors, the 
 | [TSDB-9](#tsdb-9) | Compression, `CREATE MATERIALIZED VIEW … WITH (timescaledb.continuous)` or `add_retention_policy` fail with `functionality not supported under the current "apache" license`. |
 | [TSDB-10](#tsdb-10) | Timescale jobs (retention, compression, refresh) silently stop running in some databases, and the server log says `TimescaleDB background worker limit of 16 exceeded`. |
 | [TSDB-11](#tsdb-11) | A drizzle-kit-generated migration fails on a hypertable with `operation not supported on hypertables with compressed chunks` or `cannot add column with NOT NULL constraint without default to a hypertable that has columnstore enabled`. |
+| [TSDB-12](#tsdb-12) | Two concurrent ingest transactions fail with `40P01 deadlock detected`; one of them waits for a `ShareRowExclusiveLock` on a plain table while inserting into a hypertable. |
+| [TSDB-13](#tsdb-13) | A "last value at or before t" lookup (`ORDER BY bucket DESC LIMIT 1`) on `xp_hourly`/`xp_daily` gets slower as history grows; `EXPLAIN` shows a Sort over an Append of the materialized hypertable instead of an index scan. |
 
 ### DB-1
 **An insert fails with `22P02 invalid input syntax for type json` or `unsupported Unicode escape sequence` (`\u0000 cannot be converted to text`).**
@@ -173,6 +176,16 @@ seq), never serialized rows; listeners read the data themselves.
 
 *Source: `OBSERVED` (research sandbox, timescale/timescaledb:2.30.1-pg17 and -pg18, 2026-09-28)*
 
+### DB-14
+**Node logs `DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated`, from code that runs several queries with `Promise.all` inside `db.transaction`.**
+A drizzle transaction handle is one pooled `pg` client. `Promise.all([tx.select…, tx.select…])` queues
+several queries on that client at once; pg 8.23 still serializes them but warns, and pg 9 removes the
+behaviour. The same helper is fine on the pool (`db`), which is why it only shows up once a caller passes
+a transaction. Fix: run queries on a possibly-transactional handle sequentially
+(packages/server/src/accounts/access.ts `loadAccountAccess`).
+
+*Source: `OBSERVED` (server tests, pg 8.23.0, 2026-09-28)*
+
 ### TSDB-1
 **Hourly or daily XP history older than the raw retention disappears from `xp_hourly`/`xp_daily` after a refresh.**
 Retention drops raw chunks, and dropping them writes an invalidation for that range. The next refresh
@@ -279,3 +292,27 @@ all. Fix: hand-edit such generated migrations: add the column with a default, an
 affected chunks before a type change.
 
 *Source: `OBSERVED` (research sandbox, timescale/timescaledb:2.30.1, 2026-09-28)*
+
+### TSDB-12
+**Two concurrent ingest transactions fail with `40P01 deadlock detected`; one of them waits for a `ShareRowExclusiveLock` on a plain table while inserting into a hypertable.**
+Inserting a row that needs a NEW chunk makes TimescaleDB create the chunk's foreign-key constraints,
+which takes `ShareRowExclusiveLock` on every plain table the hypertable references (`osrs_accounts` for
+`xp_samples`/`location_samples`) and waits for every open writer of that table. A transaction that
+already updated `osrs_accounts` and then inserts into a hypertable at a chunk boundary deadlocks with a
+second one doing the same. Fix: in a transaction, write the hypertables before (or without) touching the
+referenced row, and retry the whole transaction on 40P01 (packages/server/src/ingest/store.ts retries
+40P01/40001/23505 in-process; a retry costs about `deadlock_timeout`, 1 s).
+
+*Source: `OBSERVED` (ingest concurrency tests, timescale/timescaledb:2.30.1-pg18, 2026-09-28)*
+
+### TSDB-13
+**A "last value at or before t" lookup (`ORDER BY bucket DESC LIMIT 1`) on `xp_hourly`/`xp_daily` gets slower as history grows; `EXPLAIN` shows a Sort over an Append of the materialized hypertable instead of an index scan.**
+A real-time continuous aggregate is a view: the union of the materialization hypertable and a live
+aggregate over the raw rows above the watermark. The planner can't push `ORDER BY bucket DESC LIMIT 1`
+through the aggregate, so it computes every bucket for that (account, skill) and sorts them; about
+1.3 ms per lookup at 1,500 hourly rows versus 0.01 ms on the raw hypertable, and it grows with history.
+Fix: look the value up in the raw hypertable first and only fall back to the aggregate for pairs the raw
+lookup missed, with the `IS NULL` guard inside the LATERAL so the fallback isn't evaluated otherwise
+(packages/server/src/accounts/xp.ts).
+
+*Source: `OBSERVED` (accounts read-model benchmarks, timescale/timescaledb:2.30.1-pg18, 2026-09-28)*

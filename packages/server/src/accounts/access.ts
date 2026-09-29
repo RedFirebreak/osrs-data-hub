@@ -37,41 +37,41 @@ export async function loadAccountAccess(
   const out = new Map<number, AccountAccess>();
   const ids = [...new Set(accountIds)];
   if (ids.length === 0) return out;
-  const [accounts, links, sharing, grants] = await Promise.all([
-    db
-      .select({
-        id: osrsAccounts.id,
-        status: osrsAccounts.status,
-        ownerUserId: osrsAccounts.ownerUserId,
-      })
-      .from(osrsAccounts)
-      .where(inArray(osrsAccounts.id, ids)),
-    db
-      .select({
-        accountId: accountLinks.accountId,
-        userId: accountLinks.userId,
-        role: accountLinks.role,
-        blocked: accountLinks.blocked,
-      })
-      .from(accountLinks)
-      .where(inArray(accountLinks.accountId, ids)),
-    db
-      .select({
-        accountId: accountSharing.accountId,
-        category: accountSharing.category,
-        audience: accountSharing.audience,
-      })
-      .from(accountSharing)
-      .where(inArray(accountSharing.accountId, ids)),
-    db
-      .select({
-        accountId: accountShareGrants.accountId,
-        category: accountShareGrants.category,
-        userId: accountShareGrants.granteeUserId,
-      })
-      .from(accountShareGrants)
-      .where(inArray(accountShareGrants.accountId, ids)),
-  ]);
+  // Sequential on purpose: callers pass transaction handles, and concurrent queries on one pg client
+  // are deprecated (they stop working in pg 9, DB-14).
+  const accounts = await db
+    .select({
+      id: osrsAccounts.id,
+      status: osrsAccounts.status,
+      ownerUserId: osrsAccounts.ownerUserId,
+    })
+    .from(osrsAccounts)
+    .where(inArray(osrsAccounts.id, ids));
+  const links = await db
+    .select({
+      accountId: accountLinks.accountId,
+      userId: accountLinks.userId,
+      role: accountLinks.role,
+      blocked: accountLinks.blocked,
+    })
+    .from(accountLinks)
+    .where(inArray(accountLinks.accountId, ids));
+  const sharing = await db
+    .select({
+      accountId: accountSharing.accountId,
+      category: accountSharing.category,
+      audience: accountSharing.audience,
+    })
+    .from(accountSharing)
+    .where(inArray(accountSharing.accountId, ids));
+  const grants = await db
+    .select({
+      accountId: accountShareGrants.accountId,
+      category: accountShareGrants.category,
+      userId: accountShareGrants.granteeUserId,
+    })
+    .from(accountShareGrants)
+    .where(inArray(accountShareGrants.accountId, ids));
   for (const a of accounts) {
     out.set(a.id, {
       status: a.status,

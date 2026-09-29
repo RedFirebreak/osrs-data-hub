@@ -62,6 +62,8 @@ export const events = pgTable(
     uniqueIndex('events_dedupe_uidx').on(t.accountId, t.pluginEventId, t.subIndex),
     uniqueIndex('events_seq_uidx').on(t.seq),
     index('events_account_occurred_idx').on(t.accountId, t.occurredAt.desc()),
+    // Per-account feeds page by seq (newest first).
+    index('events_account_seq_idx').on(t.accountId, t.seq.desc()),
     index('events_type_occurred_idx').on(t.type, t.occurredAt.desc()),
   ],
 );
