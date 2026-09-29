@@ -38,10 +38,10 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { requireAdmin } from '@/lib/session';
+import { adminMetadata, requireAdmin } from '@/lib/session';
 
-export function generateMetadata(): Metadata {
-  return { title: `Ingest health · Admin · ${getConfig().hubName}` };
+export function generateMetadata(): Promise<Metadata> {
+  return adminMetadata('Ingest health');
 }
 
 function percent(part: number, whole: number): string {

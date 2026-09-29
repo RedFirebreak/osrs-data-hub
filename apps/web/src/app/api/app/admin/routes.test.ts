@@ -98,12 +98,24 @@ function decommissionCall(body: unknown): Caller {
     );
 }
 
-function rawPayloadCall(id: string, receivedAt: string | null): Caller {
+/**
+ * The viewer's GET. Headers as a browser sends them: `Origin` of the hub by default (as any
+ * same-origin request may carry), or exactly `headers` (then no Origin unless given).
+ */
+function rawPayloadCall(
+  id: string,
+  receivedAt: string | null,
+  headers?: Record<string, string>,
+): Caller {
   const qs = receivedAt === null ? '' : `?receivedAt=${encodeURIComponent(receivedAt)}`;
   return (cookie) =>
-    getRawPayload(ctx.request(`/api/app/admin/raw-payloads/${id}${qs}`, { cookie }), {
-      params: Promise.resolve({ id }),
-    });
+    getRawPayload(
+      ctx.request(`/api/app/admin/raw-payloads/${id}${qs}`, {
+        cookie,
+        ...(headers ? { headers, sameOrigin: false } : {}),
+      }),
+      { params: Promise.resolve({ id }) },
+    );
 }
 
 function auditLogCall(query = ''): Caller {
@@ -330,6 +342,34 @@ describe('GET /api/app/admin/raw-payloads/[id]', () => {
       mutation: false,
     });
     expect(await views()).toBe(before);
+  });
+
+  it('requires the same origin before reading or auditing anything (D-80)', async () => {
+    const views = async () =>
+      (await ctx.t.db.select().from(auditLog).where(eq(auditLog.targetId, payload.id))).length;
+    const iso = payload.receivedAt.toISOString();
+    const before = await views();
+    // A foreign page with the admin's cookie: a fetch or form (Origin), or an <img>/link (no Origin,
+    // Sec-Fetch-Site cross-site); and a request with neither header.
+    const foreign: Record<string, string>[] = [
+      { origin: 'https://evil.test', 'sec-fetch-site': 'cross-site' },
+      { 'sec-fetch-site': 'cross-site' },
+      { 'sec-fetch-site': 'same-site' },
+      {},
+    ];
+    for (const headers of foreign) {
+      const res = await rawPayloadCall(payload.id, iso, headers)(adminCookie);
+      expect(res.status, JSON.stringify(headers)).toBe(403);
+      expect(await errorCode(res)).toBe('bad_origin');
+    }
+    expect(await views()).toBe(before);
+
+    // The viewer's own same-origin fetch: no Origin on a GET, Sec-Fetch-Site same-origin.
+    const res = await rawPayloadCall(payload.id, iso, { 'sec-fetch-site': 'same-origin' })(
+      adminCookie,
+    );
+    expect(res.status).toBe(200);
+    expect(await views()).toBe(before + 1);
   });
 });
 

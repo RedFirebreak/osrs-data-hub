@@ -54,6 +54,7 @@ export default async function ApiKeysPage() {
     nameMax: API_KEY_NAME_MAX,
     atLimit,
     apiBase: `${getConfig().appOrigin}/api/v1`,
+    listHeadingId: headingIdOf(ACTIVE_KEYS_TITLE),
   };
 
   return (
@@ -98,7 +99,7 @@ export default async function ApiKeysPage() {
       ) : (
         <>
           <KeySection
-            title="Active keys"
+            title={ACTIVE_KEYS_TITLE}
             count={`${active.length} of ${MAX_ACTIVE_KEYS}`}
             keys={active}
             now={now}
@@ -125,6 +126,13 @@ export default async function ApiKeysPage() {
   );
 }
 
+const ACTIVE_KEYS_TITLE = 'Active keys';
+
+/** A section heading's id, from its title ("Active keys" → "active-keys"). */
+function headingIdOf(title: string): string {
+  return title.toLowerCase().replace(/\s+/g, '-');
+}
+
 function KeySection({
   title,
   count,
@@ -142,7 +150,7 @@ function KeySection({
   empty?: string;
   note?: string;
 }) {
-  const headingId = title.toLowerCase().replace(/\s+/g, '-');
+  const headingId = headingIdOf(title);
   return (
     <section aria-labelledby={headingId} className="flex flex-col gap-3">
       <h2 id={headingId} className="text-lg font-semibold">

@@ -567,6 +567,48 @@ describe('LiveHub subscriptions', () => {
     expect(await gauge(metrics)).toBe(0);
   });
 
+  it('counts open streams per user; the count falls when a stream ends for any reason (D-80)', async () => {
+    newHub();
+    const offs = [0, 1, 2].map(() => hub.subscribe(fakeSubscriber(member)));
+    hub.subscribe(fakeSubscriber(owner));
+    expect(hub.streamsOf(member.userId)).toBe(3);
+    expect(hub.streamsOf(owner.userId)).toBe(1);
+    expect(hub.streamsOf('nobody')).toBe(0);
+
+    // Unsubscribed by the route (client gone, session over, shutdown); idempotent.
+    offs[0]!();
+    offs[0]!();
+    expect(hub.streamsOf(member.userId)).toBe(2);
+
+    // Dropped by the hub: a send that fails…
+    const bad: LiveSubscriber = {
+      ...fakeSubscriber(member),
+      send() {
+        throw new Error('stream closed');
+      },
+    };
+    const offBad = hub.subscribe(bad);
+    expect(hub.streamsOf(member.userId)).toBe(3);
+    hub.onReconnect();
+    expect(hub.streamsOf(member.userId)).toBe(2);
+    offBad(); // the route's own cleanup afterwards changes nothing
+    expect(hub.streamsOf(member.userId)).toBe(2);
+
+    // …and a user who lost access (offboarded) before the next fan-out.
+    const leaver = await seedUser(t.db, { name: 'Leaving Lea' });
+    hub.subscribe(fakeSubscriber(leaver));
+    hub.subscribe(fakeSubscriber(leaver));
+    expect(hub.streamsOf(leaver.userId)).toBe(2);
+    await t.db.update(users).set({ status: 'grace' }).where(eq(users.id, leaver.userId));
+    await hub.onState({ accountId: zezima.id, deviceId: null });
+    expect(hub.streamsOf(leaver.userId)).toBe(0);
+
+    offs[1]!();
+    offs[2]!();
+    expect(hub.streamsOf(member.userId)).toBe(0);
+    expect(hub.size()).toBe(1);
+  });
+
   it('drops a throwing subscriber (and closes it) without affecting the others', async () => {
     const { logger, lines } = captureLogger();
     newHub(logger);

@@ -12,6 +12,12 @@
  * browser's clock only relative to when the code arrived, so a skewed PC clock can't expire a code
  * early.
  *
+ * A reload doesn't start over: the URL keeps the code's id (`/onboarding?code=<id>`, resumeCodeIdOf),
+ * and a wizard opened with one looks it up (GET /api/app/pairing-codes/[id]) and continues with it
+ * while the hub still accepts it (resumeResult): the same code on step 2, or step 3 for the device a
+ * consumed code created. Only an expired code is replaced by a new one: the hub keeps at most three
+ * active codes per user, and every code is one more the plugin could be typing.
+ *
  * Only `import type` from @hub/server: this module is bundled for the browser (NEXT-12).
  */
 import type { DeviceFirstData, DeviceMessage, PairingMessage } from '@hub/server';
@@ -88,6 +94,8 @@ export interface WizardState {
   firstData: DeviceFirstData | null;
   /** 'device' messages that arrived before the wizard knew its device id, by device id. */
   pendingDevices: Readonly<Record<string, DeviceFirstData>>;
+  /** The code id from the URL while it is being looked up after a reload (resumeResult); else null. */
+  resuming: string | null;
 }
 
 export const INITIAL_WIZARD_STATE: WizardState = {
@@ -106,6 +114,7 @@ export const INITIAL_WIZARD_STATE: WizardState = {
   expiredByServer: false,
   firstData: null,
   pendingDevices: {},
+  resuming: null,
 };
 
 /** The state of a code as GET /api/app/pairing-codes/[id] reports it (parsed). */
@@ -127,7 +136,9 @@ export type WizardAction =
   | { type: 'submitted'; at: number }
   | { type: 'pairing'; message: PairingMessage; at: number }
   | { type: 'device'; message: DeviceMessage }
-  | { type: 'polled'; status: PolledCodeStatus; at: number };
+  | { type: 'polled'; status: PolledCodeStatus; at: number }
+  /** A reloaded wizard found its code (resumeResult 'resume'): shown again, or paired already. */
+  | { type: 'resumed'; code: WizardCode; status: PolledCodeStatus; at: number };
 
 function firstDataOf(message: DeviceMessage): DeviceFirstData {
   return { account: message.account, role: message.role, ownerName: message.ownerName };
@@ -163,6 +174,7 @@ export function wizardReducer(state: WizardState, action: WizardAction): WizardS
     case 'codeCreated':
       return {
         ...state,
+        resuming: null,
         code: action.code,
         codeRequest: 'idle',
         codeError: null,
@@ -177,7 +189,7 @@ export function wizardReducer(state: WizardState, action: WizardAction): WizardS
         expiredByServer: false,
       };
     case 'codeFailed':
-      return { ...state, codeRequest: 'failed', codeError: action.message };
+      return { ...state, resuming: null, codeRequest: 'failed', codeError: action.message };
     case 'submitted':
       return { ...state, submittedAt: action.at };
     case 'pairing': {
@@ -232,6 +244,15 @@ export function wizardReducer(state: WizardState, action: WizardAction): WizardS
             };
       }
       return next;
+    }
+    case 'resumed': {
+      // As if this wizard had just created the code, then polled it: an active code is shown on
+      // step 2 (with any outdated attempt the hub saw), a consumed one moves on to step 3.
+      const shown = wizardReducer(
+        { ...state, step: 2, resuming: null },
+        { type: 'codeCreated', code: action.code },
+      );
+      return wizardReducer(shown, { type: 'polled', status: action.status, at: action.at });
     }
   }
 }
@@ -429,4 +450,104 @@ export function apiErrorMessage(body: unknown, fallback: string): string {
     return body.error.message;
   }
   return fallback;
+}
+
+/** The query parameter that carries the wizard's code across a reload: `/onboarding?code=<id>`. */
+export const RESUME_PARAM = 'code';
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** The code id from the page's search params when it can be one (a uuid), else null. */
+export function parseResumeParam(value: string | string[] | undefined): string | null {
+  const first = Array.isArray(value) ? value[0] : value;
+  return typeof first === 'string' && UUID_RE.test(first) ? first.toLowerCase() : null;
+}
+
+/**
+ * The wizard's first state: a fresh wizard on step 1, or, opened with a code id in the URL, step 2
+ * "loading" until the lookup decides (resumeResult), so a reload never flashes step 1.
+ */
+export function initialWizardState(resumeCodeId: string | null): WizardState {
+  if (resumeCodeId === null) return INITIAL_WIZARD_STATE;
+  return { ...INITIAL_WIZARD_STATE, step: 2, codeRequest: 'loading', resuming: resumeCodeId };
+}
+
+/**
+ * The code id the URL should carry for this state, so a reload continues with it: the one being
+ * looked up, the consumed one (steps 3 and 4), else the newest one; null for a wizard without a code
+ * (a fresh start, "Add another device").
+ */
+export function resumeCodeIdOf(state: WizardState): string | null {
+  return state.resuming ?? state.pairedCodeId ?? state.code?.id ?? null;
+}
+
+/**
+ * `href` with RESUME_PARAM set to `codeId` (removed for null), or null when it already is: the
+ * wizard then calls history.replaceState, which Next.js keeps in sync with its router without a
+ * navigation (so the wizard's state survives).
+ */
+export function withResumeParam(href: string, codeId: string | null): string | null {
+  const url = new URL(href);
+  if (url.searchParams.get(RESUME_PARAM) === codeId) return null;
+  if (codeId === null) url.searchParams.delete(RESUME_PARAM);
+  else url.searchParams.set(RESUME_PARAM, codeId);
+  return url.href;
+}
+
+/** What a reloaded wizard does with the code in its URL (see resumeResult). */
+export type ResumeResult =
+  /** Show it again (active), or go on to step 3 for its device (consumed). */
+  | { kind: 'resume'; code: WizardCode; status: PolledCodeStatus }
+  /** Create a new code on step 2 (expired, or the hub couldn't answer). */
+  | { kind: 'fresh' }
+  /** Start over on step 1 (not one of this user's codes). */
+  | { kind: 'restart' }
+  /** The session is gone. */
+  | { kind: 'signedOut' };
+
+/**
+ * Decides how a reloaded wizard continues from GET /api/app/pairing-codes/[id]:
+ * - active → the same code again on step 2, with the time it has left;
+ * - consumed → step 3 for the device it created (with the first data when the hub has it), no new
+ *   code;
+ * - expired, less than a second left, or no usable answer (5xx, a malformed body) → a fresh code;
+ * - 404 (unknown, another user's code) → step 1, as if the wizard had just been opened;
+ * - 401 → signed out.
+ * The time left is taken on the server's clock (`serverDate`: the response's Date header; the
+ * browser's clock without one) and moved onto the browser's clock at `receivedAt`, like
+ * parseCreatedCode, so a skewed PC clock doesn't matter; never more than the code's lifetime.
+ */
+export function resumeResult(
+  res: { status: number; body: unknown; serverDate: string | null },
+  opts: { receivedAt: number; baseUrl: string; ttlSeconds: number },
+): ResumeResult {
+  if (res.status === 401) return { kind: 'signedOut' };
+  if (res.status === 404) return { kind: 'restart' };
+  const status = res.status === 200 ? parsePolledStatus(res.body) : null;
+  const raw = isRecord(res.body) && isRecord(res.body.code) ? res.body.code : null;
+  const digits = raw?.code;
+  const expiresAt = typeof raw?.expiresAt === 'string' ? Date.parse(raw.expiresAt) : Number.NaN;
+  if (
+    !status ||
+    typeof digits !== 'string' ||
+    !CODE_RE.test(digits) ||
+    !Number.isFinite(expiresAt)
+  ) {
+    return { kind: 'fresh' };
+  }
+  const lifetimeMs = opts.ttlSeconds * 1000;
+  const serverNow = res.serverDate === null ? Number.NaN : Date.parse(res.serverDate);
+  const msLeft = expiresAt - (Number.isFinite(serverNow) ? serverNow : opts.receivedAt);
+  const code: WizardCode = {
+    id: status.codeId,
+    code: digits,
+    baseUrl: opts.baseUrl,
+    expiresAtMs: opts.receivedAt + Math.min(lifetimeMs, Math.max(0, msLeft)),
+    lifetimeMs,
+  };
+  if (status.status === 'consumed' && status.deviceId !== null) {
+    return { kind: 'resume', code, status };
+  }
+  if (status.status === 'active' && msLeft >= 1_000) return { kind: 'resume', code, status };
+  return { kind: 'fresh' };
 }

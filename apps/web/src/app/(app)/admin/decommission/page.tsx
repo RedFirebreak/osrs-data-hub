@@ -13,10 +13,10 @@ import { AdminSectionHeader } from '@/components/admin/admin-section';
 import { DecommissionSwitch } from '@/components/admin/decommission-switch';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { requireAdmin } from '@/lib/session';
+import { adminMetadata, requireAdmin } from '@/lib/session';
 
-export function generateMetadata(): Metadata {
-  return { title: `Decommission · Admin · ${getConfig().hubName}` };
+export function generateMetadata(): Promise<Metadata> {
+  return adminMetadata('Decommission');
 }
 
 export default async function AdminDecommissionPage() {

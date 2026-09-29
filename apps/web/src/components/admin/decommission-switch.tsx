@@ -2,11 +2,13 @@
 /**
  * The decommission switch (handoff §3.2, §12, D-19): turning it on needs the hub name typed into a
  * confirmation dialog (the route checks the same text); turning it off needs a plain confirmation.
- * PUT /api/app/admin/decommission, then the page refreshes to show the new state.
+ * PUT /api/app/admin/decommission, then the page refreshes to show the new state. The dialog has no
+ * Trigger (the switch opens it), so Radix can't return the focus by itself: it goes back to the
+ * switch on every close.
  */
 import { LoaderCircleIcon } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useId, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
@@ -20,6 +22,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { moveFocus } from '@/lib/focus';
 import { DECOMMISSION_API_PATH, decommissionConfirmMatches } from './admin-model';
 import { useAdminRequest } from './use-admin-request';
 
@@ -34,6 +37,7 @@ export function DecommissionSwitch({ decommissioned, hubName }: DecommissionSwit
   const inputId = useId();
   const [open, setOpen] = useState(false);
   const [typed, setTyped] = useState('');
+  const switchRef = useRef<HTMLButtonElement>(null);
   const { pending, error, setError, send } = useAdminRequest();
   const turningOn = !decommissioned;
   const confirmed = !turningOn || decommissionConfirmMatches(typed, hubName);
@@ -65,6 +69,7 @@ export function DecommissionSwitch({ decommissioned, hubName }: DecommissionSwit
     <>
       <div className="flex items-center gap-3">
         <Switch
+          ref={switchRef}
           id={switchId}
           checked={decommissioned}
           onCheckedChange={() => {
@@ -86,7 +91,12 @@ export function DecommissionSwitch({ decommissioned, hubName }: DecommissionSwit
           setOpen(next);
         }}
       >
-        <DialogContent className="sm:max-w-md">
+        <DialogContent
+          className="sm:max-w-md"
+          onCloseAutoFocus={(event) => {
+            if (moveFocus(switchRef.current)) event.preventDefault();
+          }}
+        >
           <form
             className="flex flex-col gap-4"
             onSubmit={(e) => {

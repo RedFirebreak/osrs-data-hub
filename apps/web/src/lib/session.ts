@@ -14,9 +14,10 @@
  * sign-in. Page reads therefore pass disableRefresh; requireApiUser renews, and Next adds the cookie to
  * that route's response (every signed-in page opens /api/live/stream, so active users are renewed).
  */
-import type { Viewer } from '@hub/core';
+import { getConfig, type Viewer } from '@hub/core';
 import { getDb } from '@hub/db';
 import { loadViewer } from '@hub/server';
+import type { Metadata } from 'next';
 import { headers } from 'next/headers';
 import { notFound, redirect, unstable_rethrow } from 'next/navigation';
 import { cache } from 'react';
@@ -117,6 +118,19 @@ export async function requireUser(): Promise<CurrentUser> {
 }
 
 /** For admin pages: requireUser, then notFound() for non-admins (admin pages don't admit they exist). */
+/**
+ * The <title> of an admin page: `<section> · Admin · <hub>` for an active admin; for everyone else the
+ * title of the 404 they get, so the tab doesn't admit the page exists (requireAdmin answers 404).
+ */
+export async function adminMetadata(section: string | null): Promise<Metadata> {
+  const hubName = getConfig().hubName;
+  const current = await getViewer();
+  if (current?.viewer.status !== 'active' || !current.viewer.isAdmin) {
+    return { title: `Page not found · ${hubName}` };
+  }
+  return { title: section ? `${section} · Admin · ${hubName}` : `Admin · ${hubName}` };
+}
+
 export async function requireAdmin(): Promise<CurrentUser> {
   const current = await requireUser();
   if (!current.viewer.isAdmin) notFound();

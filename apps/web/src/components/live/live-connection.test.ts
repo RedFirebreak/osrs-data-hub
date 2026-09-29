@@ -172,6 +172,49 @@ describe('LiveConnection stream', () => {
     expect(sources).toHaveLength(4);
   });
 
+  it('a stream the hub keeps refusing (429, too many streams: D-80) is tried at most once a minute, while polling carries the events', async () => {
+    // Every poll after the first brings a new event.
+    let polls = 0;
+    conn.stop();
+    conn = new LiveConnection({
+      onState: (s) => states.push(s),
+      onMessage: (type, data) => received.push({ type, data }),
+      createEventSource: (url) => {
+        const es = new FakeEventSource(url);
+        sources.push(es);
+        return es;
+      },
+      fetchFn: async (input) => {
+        polls += 1;
+        const events = String(input).includes('after=')
+          ? [{ event: feedEvent({ id: `e${polls}`, seq: 100 + polls }), toast: true }]
+          : [];
+        return respond(200, { events, cursor: 100 + polls });
+      },
+    });
+    conn.start();
+    // EventSource can't read the status or Retry-After: any non-200 answer closes it for good.
+    const refuse = () => latest().fail(true);
+    refuse();
+    const opened: number[] = [];
+    for (let minute = 0; minute < 10; minute++) {
+      const before = sources.length;
+      for (let s = 0; s < 60; s++) {
+        await vi.advanceTimersByTimeAsync(1_000);
+        if (latest().readyState !== EVENT_SOURCE_CLOSED) refuse();
+      }
+      opened.push(sources.length - before);
+    }
+    // 5 s, 10 s, 30 s, then every 60 s: never more than one attempt a minute once backed off.
+    expect(opened.slice(0, 2).reduce((a, b) => a + b, 0)).toBeLessThanOrEqual(4);
+    expect(opened.slice(2).every((n) => n <= 1)).toBe(true);
+    expect(sources).toHaveLength(1 + opened.reduce((a, b) => a + b, 0));
+    expect(states.at(-1)).toBe('polling');
+    // Polling every 10 s delivered meanwhile (the first poll only learns the cursor).
+    expect(polls).toBe(60);
+    expect(eventIds()).toHaveLength(59);
+  });
+
   it("leaves the browser's own retries alone but reports polling meanwhile", async () => {
     conn.start();
     latest().open();

@@ -12,8 +12,8 @@
  *     });
  *   }
  *
- * handleApi turns thrown ApiError/SharingError/AdminError/ZodError (and the public API's
- * ServerApiError/ApiKeyError from @hub/server) into JSON 4xx `{ error: { code, message } }`, transient
+ * handleApi turns thrown ApiError/SharingError/AdminError/SelfDeleteError/ZodError (and the public
+ * API's ServerApiError/ApiKeyError from @hub/server) into JSON 4xx `{ error: { code, message } }`, transient
  * database errors into 503 + Retry-After, and anything else into a 500 that leaks nothing. Absolute URLs are never built from request.url (NEXT-2): use
  * getConfig().appOrigin.
  */
@@ -23,6 +23,7 @@ import {
   AdminError,
   ApiKeyError,
   ApiError as ServerApiError,
+  SelfDeleteError,
   SharingError,
   getLogger,
   type PluginResponse,
@@ -188,7 +189,8 @@ const TYPED_ERROR_STATUS = { not_found: 404, forbidden: 403, invalid: 400 } as c
 
 /**
  * Runs a route's body and maps what it throws to JSON:
- * - ApiError → its status; SharingError/AdminError → 404/403/400 by code (their messages are safe);
+ * - ApiError → its status; SharingError/AdminError/SelfDeleteError → 404/403/400 by code (their
+ *   messages are safe);
  * - the public API's errors from @hub/server (imported as ServerApiError, its name clashes with ours):
  *   `invalid` → 400 `invalid_request`, `not_found` → 404 `not_found` (an account named in a list
  *   parameter that the key can't read, answered like an unknown one, D-70); ApiKeyError `invalid` →
@@ -217,7 +219,7 @@ export function errorResponse(err: unknown): Response {
   if (err instanceof ApiError) {
     return apiErrorJson(err.status, err.code, err.message, err.headers, err.details);
   }
-  if (err instanceof SharingError || err instanceof AdminError) {
+  if (err instanceof SharingError || err instanceof AdminError || err instanceof SelfDeleteError) {
     return apiErrorJson(TYPED_ERROR_STATUS[err.code], err.code, err.message);
   }
   if (err instanceof ServerApiError) {

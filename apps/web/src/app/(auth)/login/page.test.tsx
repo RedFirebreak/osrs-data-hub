@@ -82,4 +82,29 @@ describe('login page', () => {
     expect(odd).not.toContain('<script');
     expect(odd).not.toContain('evil');
   });
+
+  it('says when the data goes after "Delete my data", and that signing in cancels it (D-78)', async () => {
+    const html = await render({ deleted: '2026-10-06T14:05:09.123Z' });
+    expect(html).toContain('Deletion scheduled');
+    expect(html).toContain(
+      'Your data will be deleted on <time dateTime="2026-10-06T14:05:09.123Z">6 October 2026, 14:05 UTC</time>.',
+    );
+    expect(html).toContain('Sign in again before then to cancel.');
+    expect(html).toContain('Sign in with Discord');
+    // An informational notice, not an error.
+    expect(html).toContain('role="status"');
+    expect(html).not.toContain('role="alert"');
+  });
+
+  it('shows the notice without a date it cannot parse, and never the raw parameter', async () => {
+    const odd = await render({ deleted: '<img src=x onerror=alert(1)>' });
+    expect(odd).toContain('Your data is scheduled for deletion.');
+    expect(odd).not.toContain('<img');
+    expect(odd).not.toContain('&lt;img');
+    expect(odd).not.toContain('onerror');
+    const rolled = await render({ deleted: '2026-02-30' });
+    expect(rolled).toContain('Your data is scheduled for deletion.');
+    expect(rolled).not.toContain('2026-02-30');
+    expect(rolled).not.toContain('March');
+  });
 });

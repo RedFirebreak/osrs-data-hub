@@ -60,4 +60,16 @@ describe('privacy page', () => {
     expect(text).not.toContain('everything is restored');
     expect(text).toMatch(/pair(ed)? again/);
   });
+
+  it('describes the download and the 7-day delete that Settings offers (D-78, D-79)', async () => {
+    const text = await render();
+    expect(text).not.toMatch(/are coming|coming soon/i);
+    expect(text).toContain('Download my data');
+    expect(text).toMatch(/never their secrets/);
+    expect(text).toMatch(/raw plugin messages kept for 48 hours \(2 days\) for troubleshooting/);
+    expect(text).toContain('once every 10 minutes');
+    expect(text).toContain('Delete my data');
+    expect(text).toContain('7 days to change your mind');
+    expect(text).toMatch(/Signing in again before then cancels it/);
+  });
 });

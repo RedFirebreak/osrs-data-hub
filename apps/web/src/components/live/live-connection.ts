@@ -44,8 +44,10 @@ export const LIVE_POLL_URL = '/api/live/events';
 /** Handoff §11: poll every 10 s while the stream is down. */
 export const LIVE_POLL_INTERVAL_MS = 10_000;
 /**
- * Delays before reopening a stream the browser gave up on (a non-200 answer such as 401 or 503; plain
- * network errors are retried by the browser itself after the server's `retry: 5000`).
+ * Delays before reopening a stream the browser gave up on (a non-200 answer such as 401, 503 or the
+ * 429 for a user's sixth stream, D-80: EventSource can read neither the status nor Retry-After; plain
+ * network errors are retried by the browser itself after the server's `retry: 5000`). Polling carries
+ * the events meanwhile, so the last delay repeats: at most one attempt a minute.
  */
 export const LIVE_RECONNECT_DELAYS_MS: readonly number[] = [5_000, 10_000, 30_000, 60_000];
 

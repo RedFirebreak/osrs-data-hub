@@ -39,19 +39,22 @@ tunes for, and `TS_TUNE_MAX_CONNS=100` keeps enough connections for the web, wor
 
 ## 3. Reverse proxy
 
-Terminate TLS in the proxy you already run and forward to `127.0.0.1:3000`. Four requirements:
+Terminate TLS in the proxy you already run and forward to `127.0.0.1:3000`. Five requirements:
 
 1. **Don't buffer `text/event-stream`.** The live stream (`/api/live/stream`) sends
    `X-Accel-Buffering: no`, which nginx honours; Caddy and Traefik stream by default.
 2. **Forward the host.** Keep the original `Host` or set `X-Forwarded-Host`, and append the client address
    to `X-Forwarded-For`. `TRUST_PROXY_HOPS` (default 1) is the number of proxies whose
    `X-Forwarded-For` entries the hub trusts for rate limits.
-3. **Leave `/api/v1/*` to the hub.** Don't add CORS or caching headers in the proxy: the hub sets
+3. **Serve the hub over HTTPS** (or `localhost`). Browsers send `Sec-Fetch-Site` only to secure
+   origins, and some same-origin checks rely on it: on plain `http://<LAN address>` the export and
+   the raw-payload viewer answer 403.
+4. **Leave `/api/v1/*` to the hub.** Don't add CORS or caching headers in the proxy: the hub sets
    `Access-Control-Allow-Origin: *`, `ETag` and `Cache-Control` itself. `TRUST_PROXY_HOPS` also keys
    the API's failed-authentication limit (30 per minute per client IP, D-72): when it is wrong, every
    client appears as the proxy's address, and one client with a bad key locks every API client out
    for about a minute.
-4. **Never redirect `/api/osrs-data/*`.** The plugin turns a 301/302 into a body-less GET and doesn't
+5. **Never redirect `/api/osrs-data/*`.** The plugin turns a 301/302 into a body-less GET and doesn't
    follow 307/308, so data is lost silently (PLUGIN-2). Redirect http → https for the UI only, or tell
    players to use the `https://` URL exactly as the wizard shows it.
 
@@ -134,6 +137,9 @@ a range whose raw data retention already dropped erases the aggregated history (
   sections/events, latency, plugin versions, pairing attempts, SSE connections and Discord verification
   failures.
 - Logs are JSON on stdout (pino). They never contain tokens, request bodies or coordinates.
+- A user who ran **Delete my data** shows in Admin → Users as in grace with reason `self_delete` for
+  7 days; an admin restore undoes it, as signing in does (D-78). The export limit (one per user per
+  10 minutes) and the live-stream limit are kept in the web process's memory and reset on restart.
 
 ## 8. Decommissioning
 

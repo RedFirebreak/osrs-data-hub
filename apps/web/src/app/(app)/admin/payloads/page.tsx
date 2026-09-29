@@ -35,10 +35,10 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { requireAdmin } from '@/lib/session';
+import { adminMetadata, requireAdmin } from '@/lib/session';
 
-export function generateMetadata(): Metadata {
-  return { title: `Raw payloads · Admin · ${getConfig().hubName}` };
+export function generateMetadata(): Promise<Metadata> {
+  return adminMetadata('Raw payloads');
 }
 
 export default async function AdminPayloadsPage({ searchParams }: PageProps<'/admin/payloads'>) {

@@ -220,7 +220,9 @@ Auth session on each one (a stream whose session is gone ends; the browser's rec
 and sends `X-Accel-Buffering: no` and `Cache-Control: no-cache, no-transform`. A reconnect carrying
 `Last-Event-ID` (or `?lastEventId=`) first replays the viewer's events of the last 5 minutes after that
 seq, at most 200, then a `resync` if it was cut off (D-65); live messages arriving meanwhile are held
-back so seqs stay ascending. A first connection never replays, since that would toast old events.
+back so seqs stay ascending. A first connection never replays, since that would toast old events. A user holds at most 5 streams per process (`LIVE_MAX_STREAMS_PER_USER`); the next answers 429
+`rate_limited` + `Retry-After: 30`, and the browser falls back to polling and reopens at most once a
+minute (D-80).
 
 `GET /api/live/events?after=<seq>` is the polling fallback. Without `after`, it answers no events and
 the current *settled* cursor: the newest seq below any row inserted in the last 10 s, since `seq` is
@@ -263,16 +265,16 @@ menu (`next-themes`). Every page works at phone width.
 
 | Page | What it shows |
 |---|---|
-| `/login` | Discord sign-in, with a message for each refusal (`not_guild_member`, `missing_role`, `discord_unavailable`, `access_revoked`, a cancelled consent); a user in grace sees it too. |
+| `/login` | Discord sign-in, with a message for each refusal (`not_guild_member`, `missing_role`, `discord_unavailable`, `access_revoked`, a cancelled consent); a user in grace sees it too. With `?deleted=<date>` (after Delete my data) it says when the data goes (UTC) and that signing in again cancels it. |
 | `/` (dashboard) | "Online now" (live), a card per own account (presence, total level, overall XP, gains today and 7 days, the last five events), and an empty state that points at the wizard. |
-| `/onboarding` | The pairing wizard (handoff §6.3): Install → Pair (a 5-digit code and the base URL from `APP_URL`) → First data → Done. Progress arrives as live `pairing` and `device` messages, with a poll of every code the plugin may still use (every 3 s while the stream is down, every 15 s as a safety net). An outdated plugin is named with its version, since older plugins don't show the hub's error text. |
+| `/onboarding` | The pairing wizard (handoff §6.3): Install → Pair (a 5-digit code and the base URL from `APP_URL`) → First data → Done. Progress arrives as live `pairing` and `device` messages, with a poll of every code the plugin may still use (every 3 s while the stream is down, every 15 s as a safety net). An outdated plugin is named with its version, since older plugins don't show the hub's error text. A reload resumes the code kept in `?code=<id>`: the same code while it is active, step 3 for a consumed one, a new code only when it expired. |
 | `/devices` | Paired devices: label (renamable), plugin version, outdated warning, last seen, accounts; revoke. |
 | `/accounts/[publicId]` | Header (type, live presence, owner, previous names), skills table (real level with the virtual one beside it, D-44; gains today/7/30/365 days), XP chart, sessions and playtime per local day, events timeline (type filters, "load more", live), vitals, live location as text, gear by slot with its change log, the inventory, wealth per day, and the sharing panel (audiences, grants, block/unblock/remove, transfer, claim; D-52). |
 | `/guild` | Members with their visible accounts and live online dots, the activity feed, gains leaderboards per period and skill. |
-| `/settings` | Toast filter (types, minimum loot value) and time zone. |
+| `/settings` | Toast filter (types, minimum loot value), time zone, **Download my data** (a link to `GET /api/app/export`, D-79) and **Delete my data** (type `delete` to confirm; `POST /api/app/me/delete`, D-78). |
 | `/api-keys` | The user's API keys (name, `ohub_<prefix>_…`, categories, scope, created, last used, expiry, status) with Revoke, and "Create key" (categories, every visible account or picked ones, expiry; the key shown once with Copy). D-69, D-76. |
 | `/docs/api` | Public: the interactive API reference (Scalar from jsDelivr at a pinned version with SRI) over `/api/v1/openapi.json` (D-75). |
-| `/privacy` | Public: what is stored and for how long (from the configuration), the sharing defaults, what admins can see, what returning to the guild restores. |
+| `/privacy` | Public: what is stored and for how long (from the configuration), the sharing defaults, what admins can see, what returning to the guild restores. What the export holds and leaves out, and the 7-day undo of Delete my data. |
 | `/admin/*` | Users (offboard, restore), devices (revoke), ingest health (rates, rejections since start), raw payloads (filters and an audited viewer), audit log, configuration (secrets redacted), decommission switch. |
 
 Rules every page and route follows:
@@ -282,7 +284,13 @@ Rules every page and route follows:
   `requireAdmin()`, which answers 404 to everyone else. An account the viewer may not see, an unknown
   one and an id that can't be one (checked before any query, since Postgres refuses NUL, DB-1) all
   answer the same 404. A section the viewer may not see isn't rendered at all; one the plugin didn't
-  send says "Not shared" (D-4). Stamps of viewers without `activity` are day-only (D-50).
+  send says "Not shared" (D-4). Stamps of viewers without `activity` are day-only (D-50). The not-found
+  check comes before anything streams: no segment `loading.tsx` above a page that can call
+  `notFound()`; its slow parts render in `<Suspense>` after the check, so the answer is a real 404
+  (NEXT-14).
+- **Focus.** When a dialog or menu closes after an action that removes, disables or re-renders its
+  trigger, focus moves to a stable element, normally the heading of the section the trigger was in
+  (`lib/focus.ts`, `useFocusReturn`); a dialog without a trigger returns focus itself.
 - **Data.** Pages and routes read and write through `@hub/server` only (with `getDb()` handed in);
   client components never value-import `@hub/server` or `@hub/db`, and `@hub/core` is side-effect free
   so a client import of one helper doesn't ship its Node-only modules (D-67, NEXT-12).
@@ -322,7 +330,7 @@ defaults, and [`OPERATIONS.md`](OPERATIONS.md) for deploys, backups and the reve
 | M1 Ingest + onboarding | login + guild gate, pairing, ingest, wizard, devices, dashboard, toasts, default sharing | done, with the wizard e2e test |
 | M2 History & sharing | charts, aggregates/retention, sessions, equipment, wealth, locations, sharing UI, guild page, re-verification/offboarding, admin basics | done; the 30-day location trail is stored and served (`/api/app/accounts/[id]/locations`) but not drawn |
 | M3 Public API | API keys, `/api/v1/*`, OpenAPI, cursor feed, `/snapshot` | done: keys, key access and a read model per endpoint (`packages/server/src/api/`); every `/api/v1` endpoint of handoff §13 behind one bearer-key wrapper, snake_case JSON through typed mappers (D-77), CORS, OpenAPI 3.1 at `/api/v1/openapi.json`, the Scalar reference at `/docs/api`, the API keys page; consumer guide in [API.md](API.md) |
-| M4 Hardening | metrics dashboards, verified restores, export/delete, leaderboards, decommission switch | partly: gains leaderboards (guild page), the decommission switch (D-56) and `/metrics` are built; dashboards, a verified restore, "download my data" and "delete my data" are not |
+| M4 Hardening | metrics dashboards, verified restores, export/delete, leaderboards, decommission switch | partly: gains leaderboards (guild page), the decommission switch (D-56), `/metrics`, download my data (D-79) and delete my data (D-78) are built; dashboards and a verified restore are not |
 
 ## Decision log
 
@@ -365,7 +373,7 @@ Decisions are permanent IDs; a reversed decision is marked superseded, never del
 | D-32 | `pg_notify` is called **inside** the ingest/pairing transaction. | Delivered on commit only, never on rollback; nothing can be announced that wasn't stored. | Build (verified live) |
 | D-33 | A stale snapshot refreshes presence (`last_seen`, `last_device_id`) but does not regress `game_state`. | Staleness means "older than what we have"; its game state is older information too. | Build |
 | D-34 | *(breaker clause superseded by D-62)* Discord: **fail closed at sign-in** (no verdict → no session), **fail open for re-verification**; only 404 + code **10007** offboards, with a circuit breaker (> 20 % not-member in a batch → offboard nobody, alert). | A bot that isn't in the guild also gets 404 (code 10004), which would offboard everyone (DISCORD-1). | Build |
-| D-35 | `users.offboard_reason` (`left_guild`, `lost_role`, `admin`, `self_delete`). Logging in again restores membership-reason offboardings; **admin offboarding is not undone by logging in**. | The handoff's "coming back within the grace period" is about membership; an admin decision must stick. | Build |
+| D-35 | `users.offboard_reason` (`left_guild`, `lost_role`, `admin`, `self_delete`). Logging in again restores every offboarding except an admin's (the membership reasons, and `self_delete`, where it is the undo of D-78); **admin offboarding is not undone by logging in**. | The handoff's "coming back within the grace period" is about membership; an admin decision must stick. | Build |
 | D-36 | App mutations (pairing codes, devices, settings, sharing) use **route handlers with an Origin check**, not Server Actions. | Server Actions fail with 500 when the reverse proxy rewrites `Host` (NEXT-5); route handlers are also easy to test. | Build |
 | D-37 | Every process-wide singleton (DB pool, auth, logger, metrics, rate limiters, the LISTEN client and SSE hub) lives on `globalThis`. | Next runs route handlers and RSC in separate module instances (NEXT-3). | Build |
 | D-38 | `GET` on the plugin endpoints answers `400 {"error": …}` explaining that the URL must be exactly the `https://` one from the wizard; the endpoints never redirect. | A redirect turns the plugin's POST into a body-less GET or is not followed at all; data is lost silently (PLUGIN-2). | Build (plugin source) |

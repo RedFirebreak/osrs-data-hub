@@ -191,6 +191,8 @@ test('screenshots of every page', { tag: '@screenshots' }, async ({ browser, req
     await shoot(page, 'login');
     await visit(page, '/login?error=not_guild_member');
     await shoot(page, 'login-not-member');
+    await visit(page, '/login?deleted=2026-10-06T12:00:00.000Z');
+    await shoot(page, 'login-deleted');
     await visit(page, '/privacy');
     await shoot(page, 'privacy-signed-out');
     await context.close();
@@ -343,6 +345,13 @@ test('screenshots of every page', { tag: '@screenshots' }, async ({ browser, req
     await shoot(alice.page, 'guild', { waitMs: 300 });
     await visit(alice.page, '/settings');
     await shoot(alice.page, 'settings');
+    await alice.page.getByRole('button', { name: 'Delete my data' }).click();
+    const dialog = alice.page.getByRole('alertdialog');
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('textbox').fill('delete');
+    await shoot(alice.page, 'settings-delete-dialog', { fullPage: false });
+    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    await expect(dialog).toBeHidden();
     await visit(alice.page, '/privacy');
     await shoot(alice.page, 'privacy');
     // carol's dashboard: her account, and alice's in "Online now".

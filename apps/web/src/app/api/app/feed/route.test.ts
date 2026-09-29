@@ -153,26 +153,57 @@ describe('GET /api/app/feed', () => {
 });
 
 describe('GET /api/app/members', () => {
+  let owner: { userId: string; cookie: string };
+
+  beforeAll(async () => {
+    owner = await signedIn({ name: 'Mid Viewer' });
+    await seed.account({ owner: owner.userId, name: 'Owned' });
+  });
+
+  async function members(cookie?: string): Promise<Response> {
+    return getMembers(ctx.request('/api/app/members', { cookie }));
+  }
+
   it('401 without a session', async () => {
-    const res = await getMembers(ctx.request('/api/app/members'));
-    expect(res.status).toBe(401);
+    expect((await members()).status).toBe(401);
+  });
+
+  it('403 forbidden unless the viewer can manage the sharing of an account (D-80)', async () => {
+    // A plain member, and a contributor of an account someone else owns: they see the sharing
+    // panel of that account, but read-only, without the grant picker.
+    const plain = await signedIn();
+    const contributor = await signedIn();
+    await seed.account({ owner: owner.userId, contributors: [contributor.userId] });
+    for (const viewer of [plain, contributor]) {
+      const res = await members(viewer.cookie);
+      expect(res.status).toBe(403);
+      expect(((await res.json()) as ErrorBody).error.code).toBe('forbidden');
+    }
+    // The owner of an account that is hidden (an owner in grace can't sign in; no override) can't.
+    const hiddenOwner = await signedIn();
+    await seed.account({ owner: hiddenOwner.userId, status: 'hidden' });
+    expect((await members(hiddenOwner.cookie)).status).toBe(403);
+  });
+
+  it('an admin gets the list through the admin override, without owning an account', async () => {
+    const admin = await signedIn({ isAdmin: true });
+    expect((await members(admin.cookie)).status).toBe(200);
   });
 
   it('lists active members by name, without members in grace', async () => {
-    const viewer = await signedIn({ name: 'Mid Viewer' });
     await ctx.seedUser({ name: 'aardvark' });
     await ctx.seedUser({ name: 'Zulu' });
     await ctx.seedUser({ name: 'Gone', status: 'grace' });
-    const res = await getMembers(ctx.request('/api/app/members', { cookie: viewer.cookie }));
+    const res = await members(owner.cookie);
     expect(res.status).toBe(200);
     expect(res.headers.get('cache-control')).toBe('no-store');
-    const { members } = (await res.json()) as { members: ActiveMember[] };
-    const names = members.map((m) => m.name);
+    const { members: list } = (await res.json()) as { members: ActiveMember[] };
+    const names = list.map((m) => m.name);
     expect(names).not.toContain('Gone');
     // By name, case-insensitively.
     const order = ['aardvark', 'Mid Viewer', 'Zulu'].map((n) => names.indexOf(n));
     expect(order.every((i) => i >= 0)).toBe(true);
     expect(order).toEqual([...order].sort((a, b) => a - b));
-    expect(Object.keys(members[0] ?? {}).sort()).toEqual(['image', 'name', 'userId']);
+    expect(Object.keys(list[0] ?? {}).sort()).toEqual(['image', 'name', 'userId']);
   });
 });

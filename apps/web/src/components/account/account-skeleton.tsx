@@ -1,4 +1,8 @@
-/** The account page while the server renders it: the header and the section grid as skeletons. */
+/**
+ * The account page while its data loads: the header and the section grid as skeletons. The page shows
+ * it in a <Suspense> after its visibility check, not as the segment's loading.tsx, so an unknown or
+ * invisible account still answers 404 (NEXT-14).
+ */
 import { Skeleton } from '@/components/ui/skeleton';
 
 function CardSkeleton({ rows, chart = false }: { rows: number; chart?: boolean }) {
@@ -13,7 +17,7 @@ function CardSkeleton({ rows, chart = false }: { rows: number; chart?: boolean }
   );
 }
 
-export default function AccountLoading() {
+export function AccountSkeleton() {
   return (
     <div className="flex flex-col gap-6" role="status" aria-label="Loading the account">
       <div className="flex flex-col gap-3">

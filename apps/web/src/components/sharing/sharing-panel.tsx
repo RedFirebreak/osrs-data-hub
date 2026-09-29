@@ -9,6 +9,13 @@
  * - "Claim ownership" for a player of an account that has no owner.
  * Every change is one PATCH /api/app/accounts/[publicId]/sharing (D-36); the panel shows the
  * settings the server returns. A change of owner refreshes the page (the viewer's rights change).
+ *
+ * Focus (lib/focus.ts): the controls are disabled while a change runs, and some go away with it, so
+ * the browser drops the focus to <body>. A control that stays (an audience select, "Add person", a
+ * player's menu after unblocking) gets it back once the change settled; after a confirmed dialog it
+ * goes to the heading of the section concerned (Players; for a new owner the Sharing card's, as the
+ * panel remounts), and after Cancel back to the control that opened the dialog, which Radix can't do
+ * here: the dialog has no Trigger.
  */
 import type { Audience, Category } from '@hub/core';
 import type { ActiveMember, SharingContributor, SharingSettings } from '@hub/server';
@@ -22,7 +29,7 @@ import {
   XIcon,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import type { SharingChange } from '@/app/api/app/accounts/sharing-change';
 import { UserAvatar } from '@/components/account/user-avatar';
@@ -54,6 +61,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { focusIsLost, headingOfSection, moveFocus, useFocusReturn } from '@/lib/focus';
 import { GrantPicker } from './grant-picker';
 import {
   AUDIENCE_OPTIONS,
@@ -105,6 +113,27 @@ export function SharingPanel({
   const [confirm, setConfirm] = useState<Confirm | null>(null);
   const [members, setMembers] = useState<ActiveMember[] | null>(null);
   const canManage = settings.canManage;
+  const rootRef = useRef<HTMLDivElement>(null);
+  const playersHeadingRef = useRef<HTMLHeadingElement>(null);
+  const claimRef = useRef<HTMLButtonElement>(null);
+  const dialogFocus = useFocusReturn();
+  /** Id of the control that gets the focus back once the running change settled (effect below). */
+  const refocusId = useRef<string | null>(null);
+
+  /** The trigger of a player's menu (it stays when they are blocked or unblocked). */
+  const manageId = (userId: string) => `${id}-manage-${userId}`;
+
+  /** The Sharing card's heading, outside the panel: it stays when a new owner remounts the panel. */
+  const cardHeading = () => headingOfSection(rootRef.current);
+
+  // The change settled and the controls are enabled again: if the focus fell to <body> meanwhile,
+  // back to the control the change came from (or the card's heading when it went away).
+  useEffect(() => {
+    if (pending || refocusId.current === null) return;
+    const target = refocusId.current;
+    refocusId.current = null;
+    if (focusIsLost()) moveFocus(document.getElementById(target), cardHeading);
+  }, [pending]);
 
   /** Loads the grant picker's members; false (after a toast) when that failed. */
   async function loadMembers(): Promise<boolean> {
@@ -122,7 +151,16 @@ export function SharingPanel({
     return false;
   }
 
-  async function apply(change: SharingChange, names: { category?: string; user?: string } = {}) {
+  /**
+   * Sends one change. `refocus`: id of the control to give the focus back to afterwards, when the
+   * focus was lost while the change ran (see the effect above).
+   */
+  async function apply(
+    change: SharingChange,
+    names: { category?: string; user?: string } = {},
+    refocus?: string,
+  ) {
+    refocusId.current = refocus ?? null;
     setPending(true);
     try {
       const res = await fetch(`/api/app/accounts/${encodeURIComponent(publicId)}/sharing`, {
@@ -149,7 +187,18 @@ export function SharingPanel({
     }
   }
 
+  /** Opens a confirmation; Cancel returns the focus to `opener` (the dialog has no Trigger). */
+  function openConfirm(c: Confirm, opener: () => HTMLElement | null): void {
+    dialogFocus.set(opener, cardHeading);
+    setConfirm(c);
+  }
+
   function runConfirmed(c: Confirm): void {
+    // A new owner remounts the panel (its key changes), taking the Players heading with it.
+    dialogFocus.set(
+      c.kind === 'claim' || c.kind === 'transfer' ? null : playersHeadingRef.current,
+      cardHeading,
+    );
     setConfirm(null);
     if (c.kind === 'claim') void apply({ action: 'claim' });
     else if (c.kind === 'transfer') {
@@ -161,7 +210,7 @@ export function SharingPanel({
 
   const canClaim = !hasOwner && relation === 'contributor';
   return (
-    <div className="flex flex-col gap-6">
+    <div ref={rootRef} className="flex flex-col gap-6">
       {!canManage && (
         <p className="flex items-start gap-2 text-sm text-muted-foreground">
           <LockIcon aria-hidden className="mt-0.5 size-4 shrink-0" />
@@ -179,7 +228,12 @@ export function SharingPanel({
               Its owner is gone. As one of its players you can become the owner and decide who sees
               what.
             </span>
-            <Button size="sm" disabled={pending} onClick={() => setConfirm({ kind: 'claim' })}>
+            <Button
+              ref={claimRef}
+              size="sm"
+              disabled={pending}
+              onClick={() => openConfirm({ kind: 'claim' }, () => claimRef.current)}
+            >
               Claim ownership
             </Button>
           </AlertDescription>
@@ -224,6 +278,7 @@ export function SharingPanel({
                             audience: value as Audience,
                           },
                           { category: label },
+                          selectId,
                         )
                       }
                     >
@@ -266,6 +321,8 @@ export function SharingPanel({
                               void apply(
                                 { action: 'revoke', category: c.category, userId: g.userId },
                                 { category: label, user: g.name },
+                                // This badge goes away: "Add person" of the same category.
+                                `${selectId}-add`,
                               )
                             }
                             className="rounded-full p-0.5 hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none"
@@ -278,6 +335,7 @@ export function SharingPanel({
                     ))}
                     {canManage && (
                       <GrantPicker
+                        triggerId={`${selectId}-add`}
                         category={c.category}
                         categoryLabel={label}
                         settings={settings}
@@ -288,6 +346,7 @@ export function SharingPanel({
                           void apply(
                             { action: 'grant', category: c.category, userId: m.userId },
                             { category: label, user: m.name },
+                            `${selectId}-add`,
                           )
                         }
                       />
@@ -307,7 +366,7 @@ export function SharingPanel({
       </section>
 
       <section aria-labelledby={`${id}-players`} className="flex flex-col gap-2">
-        <h3 id={`${id}-players`} className="text-sm font-semibold">
+        <h3 ref={playersHeadingRef} id={`${id}-players`} className="text-sm font-semibold">
           Players
         </h3>
         <p className="text-xs text-muted-foreground">
@@ -338,14 +397,31 @@ export function SharingPanel({
                 </div>
                 {canManage && c.role !== 'owner' && (
                   <PlayerMenu
+                    triggerId={manageId(c.userId)}
                     player={c}
                     disabled={pending}
-                    onTransfer={() => setConfirm({ kind: 'transfer', user: c })}
-                    onBlock={() => setConfirm({ kind: 'block', user: c })}
-                    onUnblock={() =>
-                      void apply({ action: 'unblock', userId: c.userId }, { user: c.name })
+                    onTransfer={() =>
+                      openConfirm({ kind: 'transfer', user: c }, () =>
+                        document.getElementById(manageId(c.userId)),
+                      )
                     }
-                    onRemove={() => setConfirm({ kind: 'remove', user: c })}
+                    onBlock={() =>
+                      openConfirm({ kind: 'block', user: c }, () =>
+                        document.getElementById(manageId(c.userId)),
+                      )
+                    }
+                    onUnblock={() =>
+                      void apply(
+                        { action: 'unblock', userId: c.userId },
+                        { user: c.name },
+                        manageId(c.userId),
+                      )
+                    }
+                    onRemove={() =>
+                      openConfirm({ kind: 'remove', user: c }, () =>
+                        document.getElementById(manageId(c.userId)),
+                      )
+                    }
                   />
                 )}
               </li>
@@ -361,7 +437,7 @@ export function SharingPanel({
       </section>
 
       <AlertDialog open={confirm !== null} onOpenChange={(open) => !open && setConfirm(null)}>
-        <AlertDialogContent>
+        <AlertDialogContent onCloseAutoFocus={dialogFocus.onCloseAutoFocus}>
           {confirm && (
             <ConfirmText
               confirm={confirm}
@@ -389,6 +465,7 @@ export function SharingPanel({
 }
 
 function PlayerMenu({
+  triggerId,
   player,
   disabled,
   onTransfer,
@@ -396,6 +473,7 @@ function PlayerMenu({
   onUnblock,
   onRemove,
 }: {
+  triggerId: string;
   player: SharingContributor;
   disabled: boolean;
   onTransfer: () => void;
@@ -407,6 +485,7 @@ function PlayerMenu({
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button
+          id={triggerId}
           variant="ghost"
           size="icon-sm"
           disabled={disabled}

@@ -3,7 +3,8 @@
  * A device's name with inline rename (handoff §6.3): the name as the card's h3 with a "Rename"
  * button; editing shows an input (Enter saves, Escape cancels) that PATCHes
  * /api/app/devices/[id]. The label the server stored (trimmed, ≤ 64 characters, empty → no label) is
- * shown at once, and the page is refreshed. Focus returns to the Rename button afterwards.
+ * shown at once, and the page is refreshed. Focus returns to the Rename button afterwards, and to
+ * the input when saving failed (the input is disabled while saving, which drops the focus).
  */
 import { CheckIcon, LoaderCircleIcon, PencilIcon, XIcon } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -44,10 +45,12 @@ export function DeviceLabelEditor({ deviceId, label, className }: DeviceLabelEdi
   const name = deviceName(current);
 
   useEffect(() => {
+    // After the input is enabled again: a disabled element can't take the focus.
+    if (saving) return;
     if (refocus.current === 'input') inputRef.current?.select();
     if (refocus.current === 'rename') renameRef.current?.focus();
     refocus.current = null;
-  }, [editing]);
+  }, [editing, saving]);
 
   function startEditing(): void {
     setValue(current ?? '');
@@ -90,9 +93,11 @@ export function DeviceLabelEditor({ deviceId, label, className }: DeviceLabelEdi
         return;
       }
       setError(deviceFailureMessage(res.status, body, 'rename'));
+      refocus.current = 'input';
       if (res.status === 401) router.refresh();
     } catch {
       setError("Couldn't reach the hub. Check your connection and try again.");
+      refocus.current = 'input';
     } finally {
       setSaving(false);
     }

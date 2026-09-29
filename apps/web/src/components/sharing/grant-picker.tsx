@@ -27,6 +27,8 @@ export interface GrantPickerProps {
   loadMembers: () => Promise<boolean>;
   onGrant: (member: ActiveMember) => void;
   disabled?: boolean;
+  /** The "Add person" button's id (the panel gives it the focus back after a change). */
+  triggerId?: string;
 }
 
 export function GrantPicker({
@@ -37,6 +39,7 @@ export function GrantPicker({
   loadMembers,
   onGrant,
   disabled,
+  triggerId,
 }: GrantPickerProps) {
   const id = useId();
   const [open, setOpen] = useState(false);
@@ -62,7 +65,7 @@ export function GrantPicker({
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>
-        <Button variant="outline" size="sm" disabled={disabled}>
+        <Button id={triggerId} variant="outline" size="sm" disabled={disabled}>
           <UserPlusIcon aria-hidden data-icon="inline-start" />
           Add person
         </Button>

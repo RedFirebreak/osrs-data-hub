@@ -36,6 +36,8 @@ export interface PairStepProps {
   code: WizardCode | null;
   codeRequest: 'idle' | 'loading' | 'failed';
   codeError: string | null;
+  /** The code in the URL is being looked up after a reload (loading, but not creating one). */
+  resuming?: boolean;
   /** Milliseconds left on the code; null before the browser clock runs (hydration). */
   msLeft: number | null;
   expired: boolean;
@@ -70,6 +72,7 @@ export function PairStep(props: PairStepProps) {
     code,
     codeRequest,
     codeError,
+    resuming = false,
     msLeft,
     expired,
     connected,
@@ -155,7 +158,9 @@ export function PairStep(props: PairStepProps) {
           </div>
           <span className="sr-only">
             {loading
-              ? 'Creating a code.'
+              ? resuming
+                ? 'Loading your code.'
+                : 'Creating a code.'
               : code
                 ? `Code: ${spellDigits(code.code)}${expired ? ' (expired)' : ''}`
                 : 'No code yet.'}
@@ -180,7 +185,9 @@ export function PairStep(props: PairStepProps) {
         </div>
         <p className="flex h-5 items-center gap-1.5 text-sm">
           {loading ? (
-            <span className="text-muted-foreground">Creating a code…</span>
+            <span className="text-muted-foreground">
+              {resuming ? 'Loading your code…' : 'Creating a code…'}
+            </span>
           ) : expired ? (
             <span className="font-medium text-destructive">Code expired</span>
           ) : code ? (

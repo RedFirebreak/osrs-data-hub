@@ -10,10 +10,10 @@ import type { Metadata } from 'next';
 import { AUDIT_PAGE_SIZE } from '@/components/admin/admin-model';
 import { AdminSectionHeader } from '@/components/admin/admin-section';
 import { AuditLogList, type AuditEntryJson } from '@/components/admin/audit-log-list';
-import { requireAdmin } from '@/lib/session';
+import { adminMetadata, requireAdmin } from '@/lib/session';
 
-export function generateMetadata(): Metadata {
-  return { title: `Audit log · Admin · ${getConfig().hubName}` };
+export function generateMetadata(): Promise<Metadata> {
+  return adminMetadata('Audit log');
 }
 
 export default async function AdminAuditPage() {

@@ -7,7 +7,7 @@ import { session } from '@hub/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getAuth } from './auth';
-import { getViewer, requireAdmin, requireApiUser, requireUser } from './session';
+import { adminMetadata, getViewer, requireAdmin, requireApiUser, requireUser } from './session';
 import { withTestDb, type WebTestContext } from './test-utils';
 
 const page = vi.hoisted(() => ({ headers: new Headers() }));
@@ -80,6 +80,16 @@ describe('page session helpers', () => {
     expect(await outcome(requireAdmin)).toBe('not-found');
     const adminId = await signedInPage({ isAdmin: true });
     expect((await requireAdmin()).user.id).toBe(adminId);
+  });
+
+  it("adminMetadata: the section's title for an admin, the 404's for everyone else", async () => {
+    page.headers = new Headers();
+    expect((await adminMetadata('Devices')).title).toMatch(/^Page not found · /);
+    await signedInPage();
+    expect((await adminMetadata('Devices')).title).toMatch(/^Page not found · /);
+    await signedInPage({ isAdmin: true });
+    expect((await adminMetadata('Devices')).title).toMatch(/^Devices · Admin · /);
+    expect((await adminMetadata(null)).title).toMatch(/^Admin · /);
   });
 
   it('never extends the session from a page render, where the cookie cannot be renewed', async () => {

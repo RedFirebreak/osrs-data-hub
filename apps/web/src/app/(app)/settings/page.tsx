@@ -1,17 +1,23 @@
 /**
  * Settings (handoff §12): the live toast filter and time zone (SettingsForm → PATCH
- * /api/app/settings), what decides which data reaches the hub at all (the plugin, D-4), and — in M4 —
- * deleting your data.
+ * /api/app/settings), what decides which data reaches the hub at all (the plugin, D-4), downloading
+ * your data (GET /api/app/export, D-79) and deleting it (POST /api/app/me/delete, D-78).
  */
 import { KNOWN_EVENT_TYPES, describeEvent, getConfig } from '@hub/core';
 import { getDb } from '@hub/db';
-import { MAX_TOAST_MIN_LOOT_VALUE, getUserSettings, supportedTimeZones } from '@hub/server';
-import { ArrowRightIcon, Trash2Icon } from 'lucide-react';
+import {
+  MAX_TOAST_MIN_LOOT_VALUE,
+  SELF_DELETE_UNDO_DAYS,
+  getUserSettings,
+  supportedTimeZones,
+} from '@hub/server';
+import { ArrowRightIcon } from 'lucide-react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { formatInZone } from '@/components/account/dates';
+import { DeleteDataCard } from '@/components/settings/delete-data-card';
+import { ExportDataCard } from '@/components/settings/export-data-card';
 import { PageHeader } from '@/components/shell/page-header';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { requireUser } from '@/lib/session';
 import { SettingsForm } from './settings-form';
@@ -36,12 +42,20 @@ function eventTypeOptions(): { value: string; label: string }[] {
   }));
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 export default async function SettingsPage() {
   const { user } = await requireUser();
   const settings = await getUserSettings(getDb().db, user.id);
+  // When "Delete my data" pressed now would delete everything (D-78), in the user's time zone.
+  const now = new Date();
+  const deleteOn = new Date(now.getTime() + SELF_DELETE_UNDO_DAYS * DAY_MS);
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
-      <PageHeader title="Settings" description="Live toasts, your time zone and your data." />
+      <PageHeader
+        title="Settings"
+        description="Live toasts, your time zone, and downloading or deleting your data."
+      />
       <SettingsForm
         initial={settings}
         eventTypes={eventTypeOptions()}
@@ -82,27 +96,18 @@ export default async function SettingsPage() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex flex-wrap items-center gap-2">
-            <h2>Delete my data</h2>
-            <Badge variant="secondary">Coming soon</Badge>
-          </CardTitle>
-          <CardDescription>
-            Removes your account from the hub, revokes your devices and deletes the data of accounts
-            nobody else plays, with a 7-day undo window. Until it is available, ask an admin.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Button variant="destructive" disabled aria-describedby="delete-coming-soon">
-            <Trash2Icon aria-hidden data-icon="inline-start" />
-            Delete my data
-          </Button>
-          <p id="delete-coming-soon" className="sr-only">
-            Not available yet.
-          </p>
-        </CardContent>
-      </Card>
+      <ExportDataCard />
+      <DeleteDataCard
+        undoDays={SELF_DELETE_UNDO_DAYS}
+        deleteOnLabel={
+          formatInZone(deleteOn, settings.timezone, {
+            day: 'numeric',
+            month: 'long',
+            year: 'numeric',
+          }) ?? deleteOn.toISOString().slice(0, 10)
+        }
+        deleteOnIso={deleteOn.toISOString()}
+      />
     </div>
   );
 }

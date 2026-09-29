@@ -70,8 +70,19 @@ export interface LiveHubDeps {
   now?: () => Date;
 }
 
+/**
+ * Open live streams one user may hold in this web process (D-80): the stream route answers the next
+ * one 429 without subscribing it. Bounds what one user (or a runaway script with their cookie) can
+ * hold of the process (D-5); a person rarely has more than a few tabs open.
+ */
+export const LIVE_MAX_STREAMS_PER_USER = 5;
+/** Retry-After of that 429, whole seconds (PLUGIN-5 style): a slot frees when another stream ends. */
+export const LIVE_STREAMS_RETRY_AFTER_SECONDS = 30;
+
 interface Entry {
   sub: LiveSubscriber;
+  /** sub.viewer.userId at subscribe time: the key of the per-user count (streamsOf). */
+  userId: string;
   active: boolean;
   /** sub.viewer, refreshed from the users table before each fan-out (refreshViewers). */
   viewer: Viewer;
@@ -79,6 +90,8 @@ interface Entry {
 
 export class LiveHub {
   private readonly entries = new Set<Entry>();
+  /** Active entries per user id (streamsOf); a user without streams has no key. */
+  private readonly perUser = new Map<string, number>();
   private readonly db: Db;
   private readonly logger: Logger;
   private readonly metrics: HubMetrics;
@@ -95,18 +108,30 @@ export class LiveHub {
 
   /**
    * Adds a stream; returns its unsubscribe function (idempotent). Subscribing the same object twice
-   * gives two independent subscriptions. Keeps the `hub_sse_connections` gauge equal to size().
+   * gives two independent subscriptions. Keeps the `hub_sse_connections` gauge equal to size(), and
+   * streamsOf(user) equal to that user's subscriptions. No limit is applied here: the route checks
+   * streamsOf against LIVE_MAX_STREAMS_PER_USER first, in the same synchronous turn.
    */
   subscribe(sub: LiveSubscriber): () => void {
     const { userId, status, isAdmin } = sub.viewer;
-    const entry: Entry = { sub, active: true, viewer: { userId, status, isAdmin } };
+    const entry: Entry = { sub, userId, active: true, viewer: { userId, status, isAdmin } };
     this.entries.add(entry);
+    this.perUser.set(userId, (this.perUser.get(userId) ?? 0) + 1);
     this.updateGauge();
     return () => this.remove(entry);
   }
 
   size(): number {
     return this.entries.size;
+  }
+
+  /**
+   * Streams of this user subscribed right now (D-80). Falls as soon as one ends for any reason:
+   * unsubscribed by the route (client gone, session over, server shutting down) or dropped by the hub
+   * (send failed, user no longer active).
+   */
+  streamsOf(userId: string): number {
+    return this.perUser.get(userId) ?? 0;
   }
 
   /**
@@ -291,6 +316,9 @@ export class LiveHub {
     if (!entry.active) return;
     entry.active = false;
     this.entries.delete(entry);
+    const left = (this.perUser.get(entry.userId) ?? 1) - 1;
+    if (left > 0) this.perUser.set(entry.userId, left);
+    else this.perUser.delete(entry.userId);
     this.updateGauge();
   }
 

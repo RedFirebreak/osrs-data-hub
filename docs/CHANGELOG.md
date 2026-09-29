@@ -21,6 +21,29 @@ switch). Status per milestone: [ARCHITECTURE.md §14](ARCHITECTURE.md#14-milesto
 - A `readBodyCapped` test no longer depends on how far Node's streams read ahead (Node 24 reads
   one chunk more than Node 22).
 
+### M4 (part) — data rights, and fixes from review
+
+- **Delete my data** (Settings, D-78): the offboarding pipeline with reason `self_delete` and a fixed
+  7-day grace. Devices, API keys and sessions are revoked at once; owned accounts pass to the
+  longest-linked active contributor or are hidden; the grace expiry hard-deletes after 7 days.
+  Signing in again within them is the undo. Confirmed by typing `delete`
+  (`POST /api/app/me/delete`); the login page then says when the data goes.
+- **Download my data** (Settings, D-79): `GET /api/app/export` streams one JSON document (snake_case,
+  `format`/`version`) with the profile, settings, devices, API keys, sign-in sessions, sharing, audit
+  entries (other people's ids replaced by `[redacted]`) and every account the user owns or plays on,
+  limited to the categories they can see today, with keyset-paginated histories. One export per user
+  per 10 minutes, same-origin, audited `user.exported`. The privacy page describes both, and the IP
+  addresses the hub stores.
+- Review limits (D-80): at most 5 live streams per user (429 + `Retry-After`, the browser polls
+  meanwhile); `/api/app/members` only for users who can manage sharing (403 otherwise); the
+  raw-payload viewer's audited GET requires the same origin.
+- Focus no longer falls to `<body>` after revoking a device or an API key, creating a key, sharing
+  changes, admin actions or the decommission switch (`lib/focus.ts`).
+- The pairing wizard resumes its code after a reload (`?code=<id>`) instead of starting over.
+- Unknown or invisible account pages answer a real 404 instead of 200 (NEXT-14).
+- D-35's wording now says what the code does: signing in restores every offboarding except an
+  admin's.
+
 ### M3 — public API
 
 - Decisions D-69 … D-77: key format and storage, access per request (creator ∩ categories ∩
@@ -53,7 +76,7 @@ switch). Status per milestone: [ARCHITECTURE.md §14](ARCHITECTURE.md#14-milesto
 - Archived the design handoff (draft 2) at `docs/design/HANDOFF-draft2.md` and recorded its settled
   decisions as D-1 … D-25; decisions taken while building are D-26 … D-67.
 - The gotcha registry (`docs/gotchas/`, `tools/check_gotchas.py`, the `gotcha` skill and the hook that
-  validates it after markdown edits): 78 traps across the plugin protocol, Next.js, Better Auth and
+  validates it after markdown edits): 79 traps across the plugin protocol, Next.js, Better Auth and
   Discord, Postgres/Drizzle/TimescaleDB, pg-boss, zod and the toolchain.
 - `docs/DEVELOPMENT.md` (first run, commands, tests and the database, e2e and screenshots, CI),
   `docs/OPERATIONS.md`, `docs/VERIFIED.md`, the project README and `packages/server/README.md`.

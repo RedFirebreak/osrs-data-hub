@@ -4,7 +4,9 @@
  * preselected: the user chooses), its account scope (every account the user can see, now and later,
  * or picked ones) and its expiry; POST /api/app/api-keys. On success the dialog shows the key once,
  * read-only with a Copy button and a clear warning, and can only be left with "Done", which reloads
- * the list (router.refresh()). The hub keeps only a hash: the key can't be shown again.
+ * the list (router.refresh()). The hub keeps only a hash: the key can't be shown again. The refresh
+ * can take the trigger away (the empty state's button, or the header's when the limit is reached), so
+ * after a creation the focus goes to the list's heading (`listHeadingId`) or the page's h1.
  *
  * Field errors from the server's 400 `details` are shown next to their fields; the user's accounts
  * come from the page (the same rule the server checks: what they can see right now, no admin
@@ -30,6 +32,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { mainHeading, useFocusReturn } from '@/lib/focus';
 import { cn } from '@/lib/utils';
 import {
   EXPIRY_OPTIONS,
@@ -59,6 +62,8 @@ export interface CreateApiKeyDialogProps {
   apiBase: string;
   /** Bigger trigger for the empty state. */
   size?: 'default' | 'lg';
+  /** Id of the heading of the list the new key shows up in: it gets the focus after "Done". */
+  listHeadingId?: string;
 }
 
 /** Show a filter above the account list from this many accounts on. */
@@ -79,6 +84,7 @@ export function CreateApiKeyDialog({
   atLimit,
   apiBase,
   size = 'default',
+  listHeadingId,
 }: CreateApiKeyDialogProps) {
   const id = useId();
   const router = useRouter();
@@ -89,6 +95,7 @@ export function CreateApiKeyDialog({
   const [pending, setPending] = useState(false);
   const [created, setCreated] = useState<{ key: string; name: string } | null>(null);
   const [filter, setFilter] = useState('');
+  const focusReturn = useFocusReturn();
 
   const shownAccounts = useMemo(() => {
     const q = filter.trim().toLowerCase();
@@ -127,7 +134,14 @@ export function CreateApiKeyDialog({
 
   function onOpenChange(next: boolean): void {
     if (pending) return;
-    if (!next && created) router.refresh();
+    if (!next && created) {
+      // Resolved when the dialog has closed: the list's heading may only exist after the refresh.
+      focusReturn.set(
+        () => (listHeadingId ? document.getElementById(listHeadingId) : null),
+        mainHeading,
+      );
+      router.refresh();
+    }
     if (!next) reset();
     setOpen(next);
   }
@@ -181,6 +195,7 @@ export function CreateApiKeyDialog({
       <DialogContent
         className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg"
         showCloseButton={!pending}
+        onCloseAutoFocus={focusReturn.onCloseAutoFocus}
         // Once the key is shown, only "Done" (or the close button) leaves: no accidental dismissal.
         onInteractOutside={(e) => {
           if (created || pending) e.preventDefault();

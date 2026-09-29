@@ -2,11 +2,13 @@
 /**
  * "Revoke" for one device, behind a confirmation dialog (handoff §6.3): DELETE /api/app/devices/[id].
  * The token stops working at once; the plugin disables the connection when its next send is answered
- * 401 (handoff §3.2). The dialog stays open (and says why) when the request fails.
+ * 401 (handoff §3.2). The dialog stays open (and says why) when the request fails. After a revoke the
+ * card moves to "Revoked devices", taking this button with it: the focus goes to the heading of the
+ * section it was in (useFocusReturn), not to <body>.
  */
 import { BanIcon, LoaderCircleIcon } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
   AlertDialog,
@@ -20,6 +22,7 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
+import { headingOfSection, mainHeading, useFocusReturn } from '@/lib/focus';
 import { deviceApiPath, deviceFailureMessage } from './device-model';
 
 export interface RevokeDeviceButtonProps {
@@ -33,6 +36,8 @@ export function RevokeDeviceButton({ deviceId, name }: RevokeDeviceButtonProps) 
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const focusReturn = useFocusReturn();
 
   async function revoke(): Promise<void> {
     setPending(true);
@@ -43,6 +48,7 @@ export function RevokeDeviceButton({ deviceId, name }: RevokeDeviceButtonProps) 
         credentials: 'same-origin',
       });
       if (res.ok) {
+        focusReturn.set(headingOfSection(triggerRef.current), mainHeading);
         setOpen(false);
         toast.success(`${name} revoked`, {
           description: 'The plugin disables this connection the next time it sends data.',
@@ -70,12 +76,12 @@ export function RevokeDeviceButton({ deviceId, name }: RevokeDeviceButtonProps) 
       }}
     >
       <AlertDialogTrigger asChild>
-        <Button type="button" variant="destructive" size="sm">
+        <Button ref={triggerRef} type="button" variant="destructive" size="sm">
           <BanIcon aria-hidden data-icon="inline-start" />
           Revoke<span className="sr-only"> {name}</span>
         </Button>
       </AlertDialogTrigger>
-      <AlertDialogContent>
+      <AlertDialogContent onCloseAutoFocus={focusReturn.onCloseAutoFocus}>
         <AlertDialogHeader>
           <AlertDialogTitle>Revoke {name}?</AlertDialogTitle>
           <AlertDialogDescription>

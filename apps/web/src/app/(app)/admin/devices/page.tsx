@@ -3,7 +3,6 @@
  * filters for outdated and revoked devices (`?show=`), and Revoke (reason 'admin'). Noisy devices
  * (payloads per hour) are on the ingest health page, which links back to a device's raw payloads.
  */
-import { getConfig } from '@hub/core';
 import { getDb } from '@hub/db';
 import { listAllDevices, type AdminDeviceRow } from '@hub/server';
 import { MonitorSmartphoneIcon } from 'lucide-react';
@@ -32,14 +31,14 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { requireAdmin } from '@/lib/session';
+import { adminMetadata, requireAdmin } from '@/lib/session';
 import { cn } from '@/lib/utils';
 
 /** Reported accounts listed per device before "+N more". */
 const ACCOUNTS_SHOWN = 3;
 
-export function generateMetadata(): Metadata {
-  return { title: `Devices · Admin · ${getConfig().hubName}` };
+export function generateMetadata(): Promise<Metadata> {
+  return adminMetadata('Devices');
 }
 
 export default async function AdminDevicesPage({ searchParams }: PageProps<'/admin/devices'>) {

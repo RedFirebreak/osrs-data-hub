@@ -2,9 +2,10 @@
  * Privacy (handoff §16, public): what is stored and for how long (the retention table of
  * ARCHITECTURE §8, with this deployment's values from getConfig()), who can see what (the sharing
  * categories and defaults, handoff §10), that the plugin decides what is sent (D-4), hosting in the
- * Netherlands (GDPR), and how to get data deleted.
+ * Netherlands (GDPR), and what "Download my data" (D-79) and "Delete my data" (D-78) do.
  */
 import { CATEGORIES, CATEGORY_LABELS, DEFAULT_AUDIENCE, getConfig, type Audience } from '@hub/core';
+import { SELF_DELETE_UNDO_DAYS } from '@hub/server';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { connection } from 'next/server';
@@ -157,12 +158,13 @@ export default async function PrivacyPage() {
               your email and doesn&apos;t keep your Discord login tokens.
             </li>
             <li>
-              Your devices: the name you give them, the plugin version and when they last sent data.
-              Their access token is stored only as a one-way hash.
+              Your devices: the name you give them, the plugin version, when and from which IP
+              address they last sent data. Their access token is stored only as a one-way hash.
             </li>
             <li>
               One cookie keeps you signed in; it expires about a week after you last used the hub.
-              There is no tracking or advertising.
+              For each sign-in the hub keeps the IP address and browser it came from until it
+              expires. There is no tracking or advertising.
             </li>
             <li>Your settings (toast filter, time zone).</li>
           </ul>
@@ -230,12 +232,34 @@ export default async function PrivacyPage() {
           </p>
         </Section>
 
+        <Section id="export" title="Getting a copy of your data">
+          <p>
+            <strong>Download my data</strong> in Settings gives you one JSON file with your profile
+            and settings, your devices and API keys (never their secrets), your sign-ins, the
+            sharing settings you made and the access others gave you, the audit log entries about
+            you, and every account you own or play on: its current state, XP history (5-minute
+            detail for as long as it is kept, daily before that), events, play sessions, equipment
+            changes, wealth per day and the location trail. It holds only what you can see in the
+            hub today, so a category an owner doesn&apos;t share with you isn&apos;t in it. It
+            leaves out the raw plugin messages kept for{' '}
+            {formatHours(config.rawPayloadRetentionHours)} for troubleshooting, and anything about
+            other members beyond the names the hub shows you. You can download it once every 10
+            minutes.
+          </p>
+        </Section>
+
         <Section id="delete" title="Getting your data deleted">
           <p>
-            A &quot;Delete my data&quot; button in Settings (with a 7-day undo) and a download of
-            your data are coming. Until then, ask an admin of {guild} to remove your data; they can
-            start the same deletion for you. Under the GDPR you can also ask what is stored about
-            you and have it corrected.
+            <strong>Delete my data</strong> in Settings works like leaving the guild, with{' '}
+            {formatDays(SELF_DELETE_UNDO_DAYS)} to change your mind: your devices and API keys stop
+            working at once and you are signed out, and accounts you own pass to the player who has
+            played them with you the longest, or are hidden. After{' '}
+            {formatDays(SELF_DELETE_UNDO_DAYS)} your user, devices and settings are deleted,
+            together with the data of accounts no other active member plays; accounts someone else
+            still plays keep their history, and the audit log entries about you no longer name you.
+            Signing in again before then cancels it; your devices have to be paired again. You can
+            also ask an admin of {guild} to remove you. Under the GDPR you can also ask what is
+            stored about you and have it corrected.
           </p>
         </Section>
       </main>

@@ -16,12 +16,13 @@ does the reads, the writes and the locking. The design is `docs/design/HANDOFF-d
 | `accounts/` | Read models (dashboard, account page, guild feed, history, XP periods) and the permission inputs (`loadViewer`, `loadAccountAccess`). |
 | `sharing/` | Audiences, grants, ownership transfer and claim, blocking and removing contributors. |
 | `live/` | The LISTEN client, the in-memory `LiveHub` fan-out to SSE streams, and the `Last-Event-ID` replay and polling fallback (`replayEvents`, `settledLiveCursor`). |
-| `offboarding/` | Offboarding, restore, grace expiry and the orphaned-account purge (handoff §14, D-61), and what a sign-in does to the user's row (`recordSignIn`, D-35). `accounts.ts` holds the ownership rules: choosing a successor, moving ownership, and the D-60 takeover of accounts hidden because their owner is in grace. |
+| `offboarding/` | Offboarding (and Delete my data, `deleteMyData`, D-78), restore, grace expiry and the orphaned-account purge (handoff §14, D-61), and what a sign-in does to the user's row (`recordSignIn`, D-35). `accounts.ts` holds the ownership rules: choosing a successor, moving ownership, and the D-60 takeover of accounts hidden because their owner is in grace. |
 | `jobs/` | The worker's jobs: closing stale play sessions, Discord re-verification with its two circuit breakers, and audit-log pruning. |
 | `discord/` | The Discord API client (member lookups with the bot token or the user's OAuth token, the current user) and the membership verdict. |
 | `settings/` | User settings and the decommission switch. |
 | `admin/` | Admin read models (users, ingest health, raw payloads, the audit log) and admin actions. |
 | `api/` | The public API v1 (M3): API keys (create, list, revoke, authenticate; D-69), key access on the shared loaders (D-70), one read model per `/api/v1` endpoint, the `/events` cursor feed (settled prefix, D-73) and `/snapshot` (D-74), and the in-memory rate limits (D-72). The web layer maps these camelCase shapes to snake_case (D-77). |
+| `export/` | Download my data (D-79): `exportUserData`, one JSON document streamed in pieces, with keyset-paginated histories. |
 | top-level files | `logger.ts` (pino, redaction; `HUB_SERVICE` names the process), `metrics.ts` (prom-client), `notify.ts` (`pg_notify` inside the writing transaction, D-32), `audit.ts`, `feed.ts` (event redaction for viewers), `health.ts` (`pingDatabase` for `/api/health`). |
 
 `src/index.ts` re-exports every directory. Tests run against a real database, one per test file
@@ -72,3 +73,7 @@ Facts about this package only. Traps of the shared layer are in `docs/gotchas/` 
 - **The `/events` feed uses the live replay's settle margin** (`LIVE_POLL_SETTLE_MS`, 10 s) against
   `inserted_at` (database clock), and bounds its scan with `seqFloor`, which compares `received_at`
   to the caller's `now`. Tests on a fake clock must settle their rows explicitly.
+- **The export holds no transaction** on purpose: a long download must not hold one open (it would
+  block the retention jobs' chunk drops). Its keyset cursors compare timestamps as text, so
+  microseconds aren't lost. It audits `user.exported` before its first piece, and replaces other
+  people's ids in the audit entries it exports with `[redacted]`.

@@ -17,6 +17,7 @@ Next.js 16 (route handlers, server actions, RSC, proxy.ts, instrumentation, base
 | [NEXT-11](#next-11) | `next build` fails at "Collecting page data" with `Failed to collect configuration for /<route>`, caused by `TypeError: The "path" argument must be of type string. Received undefined` at a `path.join(import.meta.dirname, …)` in a workspace package. |
 | [NEXT-12](#next-12) | The browser downloads a ~440 KB chunk containing `crypto-browserify`, and `next build` passes without a warning, after a `'use client'` component imports one small helper from a workspace package whose index also re-exports a module that imports `node:crypto`. |
 | [NEXT-13](#next-13) | Every request to a route handler that copies its request with `new Request(request, …)` (Better Auth's `/api/auth/*`, for one) answers 500 on Node 24, logging `TypeError: Cannot read private member #state from an object whose class did not declare it`, while the same code passes on Node 22 and in unit tests. |
+| [NEXT-14](#next-14) | An unknown id's page shows the not-found UI but answers HTTP 200, with `<meta name="robots" content="noindex">` in its HTML, while a `notFound()` from a layout answers 404. |
 
 ### NEXT-1
 **Changing `basePath` or an `APP_URL` path prefix at runtime has no effect: the app still answers on the prefix it was built with and 404s on the new one.**
@@ -161,3 +162,20 @@ version production uses: here only the Playwright job, which runs the real stand
 caught it.
 
 *Source: `SOURCE` (next 16.3.6 `app-route/module.js`: `request = proxyNextRequest(req, workStore)` → `new Proxy(request, nextRequestHandlers)`); `OBSERVED` (apps/web standalone server on Node 24.21, 2026-09-29: `POST /api/auth/sign-in/social` and `GET /api/auth/get-session` → 500 with the TypeError, fixed by copying from parts; a probe script: `new Request(new Proxy(req, …))` throws on Node 24.21 and works on 22.22)*
+
+### NEXT-14
+**An unknown id's page shows the not-found UI but answers HTTP 200, with `<meta name="robots" content="noindex">` in its HTML, while a `notFound()` from a layout answers 404.**
+A `loading.tsx` is a `<Suspense>` boundary around the segment's page, and a Suspense fallback is part
+of the response's first chunk: Next commits the status (200) and the headers to start streaming it,
+before the page below has run. A `notFound()` thrown in the page afterwards can only swap in the
+not-found UI inside the stream and inject the `noindex` tag; a `redirect()` becomes a client-side
+redirect. The same happens under any `<Suspense>` the page sits in. A layout of that segment renders
+outside its own `loading.tsx`, so a check there still sets the status (`requireAdmin()` in
+`admin/layout.tsx`: 404). Client navigations aren't affected (no status to get wrong), and unit tests
+that render the page with `renderToReadableStream` can't see it. Fix: do the existence or visibility
+check at the top of the page, with no `loading.tsx` in the segment (or above it) and before any
+`<Suspense>`; then render the slow parts inside `<Suspense>` with the old skeleton as fallback. Keep
+the check cheap: the shell waits for it. With `cacheComponents` every dynamic route streams a static
+shell first, and the docs send such checks to `proxy.ts` instead.
+
+*Source: `DOCS` (next/dist/docs 01-app/02-guides/streaming.md "The HTTP contract", 01-app/03-api-reference/03-file-conventions/loading.md "Status Codes"); `OBSERVED` (apps/web standalone build, Next 16.3.6, 2026-09-29: `/accounts/Nothing00000` answered 200 with "Account not found" while `/accounts/[publicId]/loading.tsx` existed; `/admin/*` for a non-admin answered 404)*

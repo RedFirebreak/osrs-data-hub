@@ -143,6 +143,27 @@ test('a member pairs RuneLite with the wizard and sees the account on the dashbo
     expect(box.x + box.width / 2).toBeGreaterThan(viewport.width / 2);
     expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);
   }
+
+  // The account page loaded directly answers 200 (an unknown one 404: see the devices test).
+  const accountHref = await accounts
+    .getByRole('link', { name: ZEZIMA })
+    .first()
+    .getAttribute('href');
+  expect(accountHref).toMatch(/^\/accounts\/[A-Za-z0-9]+$/);
+  const accountPage = await page.goto(accountHref ?? '/');
+  expect(accountPage?.status()).toBe(200);
+  await expect(page.getByRole('heading', { level: 1, name: ZEZIMA })).toBeVisible();
+
+  // alice is an admin: the raw payload viewer's audited GET is same-origin only (D-80), and the
+  // viewer's own fetch (Sec-Fetch-Site: same-origin, no Origin) gets through.
+  await page.goto('/admin/payloads');
+  await page
+    .getByRole('button', { name: /^View payload/ })
+    .first()
+    .click();
+  const payloadDialog = page.getByRole('dialog', { name: 'Raw payload' });
+  await expect(payloadDialog.getByRole('region', { name: 'Payload body' })).toBeVisible();
+  await expect(payloadDialog.getByRole('alert')).toHaveCount(0);
 });
 
 test('the devices page lists the paired device, and revoking it locks the plugin out', async ({
@@ -167,7 +188,15 @@ test('the devices page lists the paired device, and revoking it locks the plugin
   await page.getByRole('button', { name: 'Next: get a pairing code' }).click();
   const codeBox = page.getByTestId('pairing-code');
   await expect(codeBox).toHaveAttribute('data-code', /^[0-9]{5}$/);
-  const paired = await plugin.pair((await codeBox.getAttribute('data-code')) ?? '', '1.5');
+  const code = (await codeBox.getAttribute('data-code')) ?? '';
+
+  // A reload mid-pairing resumes the same code (kept in the URL) instead of starting over.
+  await expect(page).toHaveURL(/\/onboarding\?code=[0-9a-f-]{36}$/);
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Pair RuneLite with the hub' })).toBeVisible();
+  await expect(codeBox).toHaveAttribute('data-code', code);
+
+  const paired = await plugin.pair(code, '1.5');
   expect(paired.status()).toBe(200);
   const { token } = (await paired.json()) as { token: string };
   await expect(page.getByText('RuneLite connected')).toBeVisible();
@@ -199,8 +228,17 @@ test('the devices page lists the paired device, and revoking it locks the plugin
     revoked.getByTestId('device-card').filter({ has: page.getByRole('heading', { name: label }) }),
   ).toBeVisible();
   await expect(card).toBeHidden();
+  // The Revoke button left with the card: the focus went to the section's heading, not to <body>.
+  await expect(page.getByRole('heading', { level: 2, name: /^Connected devices/ })).toBeFocused();
+  expect(await page.evaluate(() => document.activeElement?.tagName)).not.toBe('BODY');
 
   // The plugin's next send is refused, which makes it disable the connection (handoff §3.2).
   const refused = await plugin.send(token, { ...idle, timestamp: Date.now() });
   expect(refused.status()).toBe(401);
+
+  // An account that doesn't exist (or isn't visible) answers a real 404, not a streamed "soft
+  // 404" with status 200 (NEXT-14).
+  const missing = await page.goto('/accounts/Nothing00000');
+  expect(missing?.status()).toBe(404);
+  await expect(page.getByRole('heading', { level: 1, name: 'Account not found' })).toBeVisible();
 });

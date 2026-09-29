@@ -6,6 +6,10 @@
  * behind skeletons. notFound() when the account doesn't exist or isn't visible to the viewer, so the
  * two can't be told apart.
  *
+ * The visibility check runs first, before anything streams, and the rest of the page loads inside a
+ * <Suspense> with the page skeleton: a segment loading.tsx would start the response as 200 before
+ * notFound(), leaving an unknown account a "soft 404" (NEXT-14).
+ *
  * Live: presence follows the LiveProvider (AccountPresence), new events are prepended to the timeline,
  * and the server-rendered numbers refresh every minute (AutoRefresh).
  */
@@ -27,6 +31,7 @@ import {
   getSharingSettings,
   getUserSettings,
   getWealthHistory,
+  loadVisibleAccount,
   type AccountPage,
 } from '@hub/server';
 import type { Metadata } from 'next';
@@ -34,6 +39,7 @@ import { notFound } from 'next/navigation';
 import { Suspense, cache } from 'react';
 import { isPublicIdShape } from '@/app/api/app/accounts/query';
 import { AccountHeader } from '@/components/account/account-header';
+import { AccountSkeleton } from '@/components/account/account-skeleton';
 import { ActivityContent } from '@/components/account/activity-section';
 import { EquipmentGrid, EquipmentLog } from '@/components/account/equipment-content';
 import { EventTimeline } from '@/components/account/event-timeline';
@@ -59,16 +65,23 @@ const ACTIVITY_DAYS = 30;
 /** Days of gear changes and wealth shown. */
 const HISTORY_DAYS = 90;
 
-/** The page's data, shared by generateMetadata and the page within one request. */
+/**
+ * The quick check before anything streams (NEXT-14): the account if the viewer may know it exists,
+ * else null. Shared by generateMetadata and the page within one request.
+ */
+const loadVisible = cache(async (publicId: string) => {
+  const { viewer } = await requireUser();
+  // An id that can't be one (`%00` decodes to a NUL, which Postgres refuses) is just not found.
+  return isPublicIdShape(publicId) ? loadVisibleAccount(getDb().db, viewer, publicId) : null;
+});
+
+/** The page's data (inside the Suspense boundary). */
 const loadAccount = cache(async (publicId: string) => {
   const { user, viewer } = await requireUser();
   const { db } = getDb();
   const { timezone } = await getUserSettings(db, user.id);
   const renderedAt = new Date();
-  // An id that can't be one (`%00` decodes to a NUL, which Postgres refuses) is just not found.
-  const page = isPublicIdShape(publicId)
-    ? await getAccountPage(db, viewer, publicId, { now: renderedAt, timezone })
-    : null;
+  const page = await getAccountPage(db, viewer, publicId, { now: renderedAt, timezone });
   return { viewer, timezone, renderedAt, page };
 });
 
@@ -76,13 +89,24 @@ export async function generateMetadata({
   params,
 }: PageProps<'/accounts/[publicId]'>): Promise<Metadata> {
   const { publicId } = await params;
-  const { page } = await loadAccount(publicId);
-  return { title: `${page?.account.name ?? 'Account'} · ${getConfig().hubName}` };
+  const visible = await loadVisible(publicId);
+  return { title: `${visible?.account.name ?? 'Account'} · ${getConfig().hubName}` };
 }
 
 export default async function AccountPageRoute({ params }: PageProps<'/accounts/[publicId]'>) {
   const { publicId } = await params;
+  // See NEXT-14: before any Suspense boundary, so the answer is a real 404.
+  if (!(await loadVisible(publicId))) notFound();
+  return (
+    <Suspense fallback={<AccountSkeleton />}>
+      <AccountContent publicId={publicId} />
+    </Suspense>
+  );
+}
+
+async function AccountContent({ publicId }: { publicId: string }) {
   const { viewer, timezone, renderedAt, page } = await loadAccount(publicId);
+  // Hidden since the check a moment ago (rare): the not-found UI, if no longer a 404 status.
   if (!page) notFound();
   const now = renderedAt.toISOString();
   // Without `activity` (presence hidden), skills, equipment and inventory carry only the day (D-50).

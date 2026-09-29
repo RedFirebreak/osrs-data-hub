@@ -12,10 +12,18 @@
  * messages that arrive during the replay are held back and sent after it, so seqs stay ascending.
  * A replay is at most REPLAY_DEFAULT_LIMIT events; one cut off there ends with 'resync', so the client
  * refetches instead of taking the live events that follow for "caught up".
+ *
+ * At most LIVE_MAX_STREAMS_PER_USER streams per user in this process (D-80): the next one answers
+ * 429 `rate_limited` with an integer Retry-After (PLUGIN-5 style) and is never subscribed. The
+ * browser's EventSource gives up on any non-200 answer; LiveConnection then polls and reopens with its
+ * backoff. A slot frees whenever a stream ends (cleanup below unsubscribes it; the hub drops streams
+ * whose sends fail or whose user is no longer active).
  */
 import { getDb } from '@hub/db';
 import {
+  LIVE_MAX_STREAMS_PER_USER,
   LIVE_REPLAY_MAX_AGE_MS,
+  LIVE_STREAMS_RETRY_AFTER_SECONDS,
   REPLAY_DEFAULT_LIMIT,
   SSE_HEARTBEAT,
   SSE_HEARTBEAT_MS,
@@ -27,7 +35,7 @@ import {
   replayEvents,
   sseHello,
 } from '@hub/server';
-import { handleApi } from '@/lib/http';
+import { ApiError, handleApi } from '@/lib/http';
 import { getApiUser, requireApiUser } from '@/lib/session';
 
 const SSE_HEADERS: Record<string, string> = {
@@ -57,6 +65,20 @@ export async function GET(request: Request): Promise<Response> {
     if (cookie !== null) sessionHeaders.set('cookie', cookie);
     const log = getLogger();
     const encoder = new TextEncoder();
+
+    // No await between this check and the subscribe in start() (ReadableStream runs start() inside
+    // its constructor), so two requests can't both take a user's last slot.
+    const hub = getLiveHub();
+    const open = hub.streamsOf(user.id);
+    if (open >= LIVE_MAX_STREAMS_PER_USER) {
+      log.info({ userId: user.id, open }, 'live: stream refused, too many open for this user');
+      throw new ApiError(
+        429,
+        'rate_limited',
+        `At most ${LIVE_MAX_STREAMS_PER_USER} live connections per person: close a tab, or wait.`,
+        { 'Retry-After': String(LIVE_STREAMS_RETRY_AFTER_SECONDS) },
+      );
+    }
 
     let cleanup = (): void => {};
     const stream = new ReadableStream<Uint8Array>(
@@ -153,7 +175,7 @@ export async function GET(request: Request): Promise<Response> {
           };
 
           write(sseHello());
-          unsubscribe = getLiveHub().subscribe({
+          unsubscribe = hub.subscribe({
             viewer,
             toast,
             send(chunk) {

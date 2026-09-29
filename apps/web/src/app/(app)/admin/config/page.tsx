@@ -10,10 +10,10 @@ import type { Metadata } from 'next';
 import { AdminSectionHeader } from '@/components/admin/admin-section';
 import { configSections, type ConfigValue } from '@/components/admin/config-view';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { requireAdmin } from '@/lib/session';
+import { adminMetadata, requireAdmin } from '@/lib/session';
 
-export function generateMetadata(): Metadata {
-  return { title: `Configuration · Admin · ${getConfig().hubName}` };
+export function generateMetadata(): Promise<Metadata> {
+  return adminMetadata('Configuration');
 }
 
 export default async function AdminConfigPage() {

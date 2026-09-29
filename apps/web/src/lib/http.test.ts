@@ -3,6 +3,7 @@ import {
   AdminError,
   ApiKeyError,
   ApiError as ServerApiError,
+  SelfDeleteError,
   SharingError,
   silentLogger,
 } from '@hub/server';
@@ -248,7 +249,7 @@ describe('handleApi', () => {
     expect(await body(res)).toEqual({ error: { code: 'conflict', message: 'Already done.' } });
   });
 
-  it('maps SharingError and AdminError codes to 404/403/400', async () => {
+  it('maps SharingError, AdminError and SelfDeleteError codes to 404/403/400', async () => {
     const cases = [
       [new SharingError('not_found'), 404],
       [new SharingError('forbidden', 'Not yours.'), 403],
@@ -256,6 +257,7 @@ describe('handleApi', () => {
       [new AdminError('forbidden'), 403],
       [new AdminError('not_found'), 404],
       [new AdminError('invalid', 'You cannot offboard yourself.'), 400],
+      [new SelfDeleteError('invalid', 'Type "delete" to confirm.'), 400],
     ] as const;
     for (const [err, status] of cases) {
       const res = await handleApi(() => Promise.reject(err));

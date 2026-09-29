@@ -25,11 +25,11 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { requireAdmin } from '@/lib/session';
+import { adminMetadata, requireAdmin } from '@/lib/session';
 import { cn } from '@/lib/utils';
 
-export function generateMetadata(): Metadata {
-  return { title: `Users · Admin · ${getConfig().hubName}` };
+export function generateMetadata(): Promise<Metadata> {
+  return adminMetadata('Users');
 }
 
 export default async function AdminUsersPage() {

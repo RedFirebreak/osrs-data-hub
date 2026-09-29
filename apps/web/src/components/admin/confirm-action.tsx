@@ -3,11 +3,13 @@
  * A button that runs one admin mutation behind a confirmation dialog (offboard, restore, revoke):
  * the dialog explains the consequences, stays open while the request runs and when it fails (with
  * the reason), and on success closes, calls `onDone` with the response body (for a toast) and
- * refreshes the server components so the table shows the new state.
+ * refreshes the server components so the table shows the new state. The refresh can take the button
+ * away (Restore turns into Offboard, a revoked device leaves the Active filter), so after a success
+ * the focus goes to the heading of the section the button was in (useFocusReturn), not to <body>.
  */
 import { LoaderCircleIcon } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -20,6 +22,7 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
+import { headingOfSection, mainHeading, useFocusReturn } from '@/lib/focus';
 import { useAdminRequest } from './use-admin-request';
 
 export interface ConfirmActionProps {
@@ -51,10 +54,13 @@ export function ConfirmAction({
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const { pending, error, setError, send } = useAdminRequest();
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const focusReturn = useFocusReturn();
 
   async function confirm(): Promise<void> {
     const body = await send(request.path, request, failure);
     if (body === null) return;
+    focusReturn.set(headingOfSection(triggerRef.current), mainHeading);
     setOpen(false);
     onDone?.(body);
     router.refresh();
@@ -70,12 +76,12 @@ export function ConfirmAction({
       }}
     >
       <AlertDialogTrigger asChild>
-        <Button type="button" variant={variant} size="sm">
+        <Button ref={triggerRef} type="button" variant={variant} size="sm">
           {children}
           {srSuffix && <span className="sr-only"> {srSuffix}</span>}
         </Button>
       </AlertDialogTrigger>
-      <AlertDialogContent>
+      <AlertDialogContent onCloseAutoFocus={focusReturn.onCloseAutoFocus}>
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>
           <AlertDialogDescription asChild>

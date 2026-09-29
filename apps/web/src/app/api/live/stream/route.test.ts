@@ -1,9 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { events, osrsAccounts, session } from '@hub/db';
+import { events, osrsAccounts, session, users } from '@hub/db';
 import {
   CHANNELS,
+  LIVE_MAX_STREAMS_PER_USER,
+  LIVE_STREAMS_RETRY_AFTER_SECONDS,
   REPLAY_DEFAULT_LIMIT,
   SSE_HEARTBEAT_MS,
   ensureLiveListener,
@@ -221,8 +223,72 @@ describe('GET /api/live/stream', () => {
     const { reader } = await openStream();
     await readUntil(reader, (t) => t.includes(': connected'));
     expect(getLiveHub().size()).toBe(1);
+    expect(getLiveHub().streamsOf(userId)).toBe(1);
     await reader.cancel();
     expect(getLiveHub().size()).toBe(0);
+    expect(getLiveHub().streamsOf(userId)).toBe(0);
+  });
+
+  describe(`at most ${LIVE_MAX_STREAMS_PER_USER} streams per user (D-80)`, () => {
+    /** Opens a stream as `userCookie`; the test's afterEach aborts it. */
+    async function streamAs(userCookie: string) {
+      const abort = new AbortController();
+      open.push(abort);
+      const res = await GET(
+        ctx.request('/api/live/stream', { cookie: userCookie, signal: abort.signal }),
+      );
+      return { res, abort };
+    }
+
+    it('answers the next one 429 rate_limited with an integer Retry-After, without subscribing it', async () => {
+      const heavy = await ctx.seedUser();
+      const heavyCookie = await ctx.signIn(heavy);
+      const streams = [];
+      for (let i = 0; i < LIVE_MAX_STREAMS_PER_USER; i++) {
+        const s = await streamAs(heavyCookie);
+        expect(s.res.status).toBe(200);
+        streams.push(s);
+      }
+      expect(getLiveHub().streamsOf(heavy)).toBe(LIVE_MAX_STREAMS_PER_USER);
+
+      const refused = await GET(ctx.request('/api/live/stream', { cookie: heavyCookie }));
+      expect(refused.status).toBe(429);
+      expect(refused.headers.get('retry-after')).toBe(String(LIVE_STREAMS_RETRY_AFTER_SECONDS));
+      expect(refused.headers.get('content-type')).toBe('application/json; charset=utf-8');
+      expect(((await refused.json()) as { error: { code: string } }).error.code).toBe(
+        'rate_limited',
+      );
+      expect(getLiveHub().streamsOf(heavy)).toBe(LIVE_MAX_STREAMS_PER_USER);
+      expect(getLiveHub().size()).toBe(LIVE_MAX_STREAMS_PER_USER);
+
+      // Other users are not affected.
+      const other = await openStream();
+      await readUntil(other.reader, (t) => t.includes(': connected'));
+      expect(getLiveHub().streamsOf(userId)).toBe(1);
+
+      // A tab closes: its slot is free again.
+      streams[0]!.abort.abort();
+      expect(getLiveHub().streamsOf(heavy)).toBe(LIVE_MAX_STREAMS_PER_USER - 1);
+      expect((await streamAs(heavyCookie)).res.status).toBe(200);
+      expect((await streamAs(heavyCookie)).res.status).toBe(429);
+    });
+
+    it('frees the slots of streams the hub drops because their user lost access', async () => {
+      const leaver = await ctx.seedUser();
+      const leaverCookie = await ctx.signIn(leaver);
+      const readers = [];
+      for (let i = 0; i < LIVE_MAX_STREAMS_PER_USER; i++) {
+        const { res } = await streamAs(leaverCookie);
+        readers.push(res.body!.getReader());
+      }
+      expect(getLiveHub().streamsOf(leaver)).toBe(LIVE_MAX_STREAMS_PER_USER);
+
+      // Offboarded by the worker: the next fan-out re-reads the users and ends these streams.
+      await ctx.t.db.update(users).set({ status: 'grace' }).where(eq(users.id, leaver));
+      await getLiveHub().onState({ accountId: 0, deviceId: null });
+      for (const reader of readers) await readToEnd(reader);
+      expect(getLiveHub().streamsOf(leaver)).toBe(0);
+    });
   });
 
   it('heartbeats every 25 s and closes once the session is gone', async () => {
@@ -264,5 +330,6 @@ describe('GET /api/live/stream', () => {
     beat();
     await readToEnd(reader);
     expect(getLiveHub().size()).toBe(0);
+    expect(getLiveHub().streamsOf(otherId)).toBe(0);
   });
 });

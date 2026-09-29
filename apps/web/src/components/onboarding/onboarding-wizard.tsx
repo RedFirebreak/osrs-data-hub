@@ -11,6 +11,10 @@
  *   open as a safety net (a message missed during a reconnect is not replayed). It polls every code
  *   it may still be paired with (codesToPoll), not only the one shown.
  * - Focus moves to the new step's heading on every step change.
+ * - A reload continues where it was: the URL carries the code's id (`?code=<id>`, kept current with
+ *   history.replaceState, which Next.js syncs without a navigation), and a wizard opened with one
+ *   looks it up once and resumes it (resumeResult): the same code while the hub still accepts it,
+ *   step 3 for the device of a consumed code, a new code only when it expired.
  *
  * Reachable any time as "Add device" (dashboard, devices page).
  */
@@ -24,7 +28,6 @@ import { InstallStep } from './install-step';
 import { PairStep } from './pair-step';
 import { useSecondClock } from './use-second-clock';
 import {
-  INITIAL_WIZARD_STATE,
   POLL_INTERVAL_CONNECTED_MS,
   POLL_INTERVAL_MS,
   apiErrorMessage,
@@ -32,13 +35,18 @@ import {
   asPairingMessage,
   codeMsLeft,
   codesToPoll,
+  initialWizardState,
   isCodeExpired,
   parseCreatedCode,
   parsePolledStatus,
+  resumeCodeIdOf,
+  resumeResult,
   showOutdatedAlert,
   showTroubleshooting,
   submitWaitSecondsLeft,
+  withResumeParam,
   wizardReducer,
+  type ResumeResult,
 } from './wizard-model';
 import { WizardProgress } from './wizard-progress';
 
@@ -47,16 +55,27 @@ export interface OnboardingWizardProps {
   ttlSeconds: number;
   /** MIN_PLUGIN_VERSION, e.g. "1.5". */
   minPluginVersion: string;
+  /** APP_URL's origin: the base URL of a code resumed after a reload (the lookup doesn't repeat it). */
+  baseUrl: string;
+  /** The code id in the URL (`?code=`, parseResumeParam) to resume, or null for a fresh wizard. */
+  resumeCodeId: string | null;
 }
 
-export function OnboardingWizard({ ttlSeconds, minPluginVersion }: OnboardingWizardProps) {
+export function OnboardingWizard({
+  ttlSeconds,
+  minPluginVersion,
+  baseUrl,
+  resumeCodeId,
+}: OnboardingWizardProps) {
   const router = useRouter();
   const { connected } = useLiveStatus();
-  const [state, dispatch] = useReducer(wizardReducer, INITIAL_WIZARD_STATE);
+  const [state, dispatch] = useReducer(wizardReducer, resumeCodeId, initialWizardState);
   const [label, setLabel] = useState('');
   const requestSeq = useRef(0);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const shownStep = useRef(state.step);
+  /** The lookup of the URL's code runs once (StrictMode runs mount effects twice in development). */
+  const resumeStarted = useRef(false);
 
   // The clock runs while a code may still be paired: its countdown, and which codes to poll (also
   // after going back to step 1).
@@ -122,6 +141,48 @@ export function OnboardingWizard({ ttlSeconds, minPluginVersion }: OnboardingWiz
       controller.abort();
     };
   }, [pollKey, pollMs]);
+
+  // A reload mid-pairing: look the URL's code up once and continue with it.
+  const resume = useEffectEvent(async (codeId: string): Promise<void> => {
+    let result: ResumeResult;
+    try {
+      const res = await fetch(`/api/app/pairing-codes/${encodeURIComponent(codeId)}`, {
+        credentials: 'same-origin',
+        cache: 'no-store',
+      });
+      const receivedAt = Date.now();
+      const body: unknown = await res.json().catch(() => null);
+      result = resumeResult(
+        { status: res.status, body, serverDate: res.headers.get('date') },
+        { receivedAt, baseUrl, ttlSeconds },
+      );
+    } catch {
+      result = { kind: 'fresh' }; // offline: creating a code says so, with "Try again"
+    }
+    if (result.kind === 'resume') {
+      dispatch({ type: 'resumed', code: result.code, status: result.status, at: Date.now() });
+    } else if (result.kind === 'fresh') {
+      void createCode();
+    } else if (result.kind === 'restart') {
+      dispatch({ type: 'reset' });
+    } else {
+      // Signed out elsewhere: the layout's requireUser() sends the browser to /login.
+      router.refresh();
+    }
+  });
+
+  useEffect(() => {
+    if (state.resuming === null || resumeStarted.current) return;
+    resumeStarted.current = true;
+    void resume(state.resuming);
+  }, [state.resuming]);
+
+  // Keep the URL on the wizard's code, so a reload resumes it instead of starting over.
+  const urlCodeId = resumeCodeIdOf(state);
+  useEffect(() => {
+    const next = withResumeParam(window.location.href, urlCodeId);
+    if (next !== null) window.history.replaceState(null, '', next);
+  }, [urlCodeId]);
 
   async function createCode(): Promise<void> {
     const seq = ++requestSeq.current;
@@ -197,6 +258,7 @@ export function OnboardingWizard({ ttlSeconds, minPluginVersion }: OnboardingWiz
               headingRef={headingRef}
               code={state.code}
               codeRequest={state.codeRequest}
+              resuming={state.resuming !== null}
               codeError={state.codeError}
               msLeft={now === null ? null : codeMsLeft(state, now)}
               expired={expired}

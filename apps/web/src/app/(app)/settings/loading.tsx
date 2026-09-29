@@ -12,7 +12,7 @@ export default function SettingsLoading() {
         <Skeleton className="h-8 w-40" />
         <Skeleton className="h-4 w-64" />
       </div>
-      {[0, 1, 2].map((i) => (
+      {[0, 1, 2, 3].map((i) => (
         <div key={i} className="flex flex-col gap-4 rounded-xl p-4 ring-1 ring-foreground/10">
           <Skeleton className="h-5 w-36" />
           <Skeleton className="h-4 w-full max-w-md" />
