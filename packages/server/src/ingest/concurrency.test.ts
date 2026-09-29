@@ -1,9 +1,10 @@
-import { accountLinks, events, osrsAccounts, playSessions, rawPayloads } from '@hub/db';
+import { accountLinks, devices, events, osrsAccounts, playSessions, rawPayloads } from '@hub/db';
 import { createTestDatabase, type TestDatabase } from '@hub/db/testing';
 import { and, eq, isNull } from 'drizzle-orm';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { CHANNELS } from '../notify';
+import { offboardUser } from '../offboarding';
 import { ACCOUNT_LOCK_CLASS } from './store';
 import { captureLogger, createHarness, newHash, wire, type Harness } from './test-support';
 
@@ -80,6 +81,41 @@ describe('two concurrent first payloads for a new account (DB-9)', () => {
     }
     expect(lines.filter((l) => l.msg === 'ingest: retrying')).toEqual([]);
   });
+
+  it('brand-new accounts arriving while chunks are created do not deadlock either', async () => {
+    // A new account's transaction used to INSERT osrs_accounts at its start and hold that lock to
+    // commit; a concurrent payload creating a chunk (ShareRowExclusiveLock on osrs_accounts) then
+    // deadlocked with it, and the retries collided again (~15 % of these payloads ended as 503).
+    // Then newcomers (XP chunk, then location chunk) still deadlocked with existing accounts
+    // (location chunk only) in about one run in five, until chunk creation was serialized (D-58).
+    const { logger, lines } = captureLogger();
+    const g = createHarness(t, { logger });
+    const existing = await Promise.all([1, 2, 3, 4].map(() => g.seedDevice()));
+    const hashes = existing.map(() => newHash());
+    await Promise.all(
+      existing.map((d, i) => g.send(d, wire('snapshot-normal', { hash: hashes[i] }))),
+    );
+    lines.length = 0;
+
+    const statuses: number[] = [];
+    for (let round = 1; round <= 6; round++) {
+      // Past the last round's xp_samples (7 d) and location_samples (1 d) chunks.
+      const at = 1_790_000_000_000 + 100 * 86_400_000 + round * 8 * 86_400_000;
+      const newcomers = await Promise.all([1, 2, 3, 4].map(() => g.seedDevice()));
+      const at1 = (hash: string) => {
+        const body = wire('snapshot-normal', { hash });
+        body.timestamp = at - 1_000;
+        return JSON.stringify(body);
+      };
+      const results = await Promise.all([
+        ...existing.map((d, i) => g.send(d, at1(hashes[i] ?? ''), { at })),
+        ...newcomers.map((d) => g.send(d, at1(newHash()), { at })),
+      ]);
+      statuses.push(...results.map((r) => r.status));
+    }
+    expect(statuses.filter((s) => s !== 200)).toEqual([]);
+    expect(lines.filter((l) => l.pgCode === '40P01')).toEqual([]);
+  }, 60_000);
 
   it('the same payload twice at once stores its events once', async () => {
     const device = await h.seedDevice();
@@ -161,6 +197,64 @@ describe('NOTIFY (D-32)', () => {
     ]);
   });
 
+  it('a shutdown without identity announces each account whose session it closed', async () => {
+    const device = await h.seedDevice();
+    const hash = newHash();
+    const snapshot = wire('snapshot-normal', { hash });
+    await h.send(device, snapshot);
+    await waitFor(1);
+    received.length = 0;
+
+    const res = await h.send(device, wire('logout-client-start-no-player'), {
+      at: (snapshot.timestamp as number) + 60_000,
+    });
+    expect(res.status).toBe(200);
+    await waitFor(1);
+
+    const [account] = await t.db
+      .select({ id: osrsAccounts.id })
+      .from(osrsAccounts)
+      .where(eq(osrsAccounts.accountHash, hash));
+    expect(received).toEqual([
+      { channel: CHANNELS.state, payload: { accountId: account?.id, deviceId: device.id } },
+    ]);
+  });
+
+  it('a first-login burst from one device reports first data exactly once', async () => {
+    // Login sends a snapshot plus HP/prayer StatChanged payloads in the same tick (PLUGIN-1).
+    const device = await h.seedDevice();
+    const hash = newHash();
+    const burst = [0, 1, 2, 3].map((i) => {
+      const body = wire('snapshot-normal', { hash });
+      body.timestamp = (body.timestamp as number) + i;
+      return JSON.stringify(body);
+    });
+    await new Promise((r) => setTimeout(r, 100));
+    received.length = 0;
+
+    const results = await Promise.all(
+      burst.map((b) => h.send(device, b, { at: 1_790_600_000_000 })),
+    );
+    expect(results.map((r) => r.status)).toEqual([200, 200, 200, 200]);
+    await waitFor(4);
+
+    const states = received.filter((r) => r.channel === CHANNELS.state);
+    expect(states).toHaveLength(4);
+    expect(
+      states.filter((s) => (s.payload as { firstDataForDevice?: boolean }).firstDataForDevice),
+    ).toHaveLength(1);
+    const accounts = await t.db
+      .select({ id: osrsAccounts.id })
+      .from(osrsAccounts)
+      .where(eq(osrsAccounts.accountHash, hash));
+    expect(accounts).toHaveLength(1);
+    const open = await t.db
+      .select({ id: playSessions.id })
+      .from(playSessions)
+      .where(and(eq(playSessions.accountId, accounts[0]?.id ?? -1), isNull(playSessions.endedAt)));
+    expect(open).toHaveLength(1);
+  });
+
   it('announces nothing for a rolled-back (blocked) payload', async () => {
     const owner = await h.seedDevice();
     const blocked = await h.seedDevice();
@@ -171,7 +265,7 @@ describe('NOTIFY (D-32)', () => {
       .update(accountLinks)
       .set({ blocked: true })
       .where(eq(accountLinks.userId, blocked.userId));
-    await waitFor(10);
+    await new Promise((r) => setTimeout(r, 200)); // let the notifications of the setup arrive
     received.length = 0;
 
     expect((await h.send(blocked, wire('event-loot', { hash, freshEventIds: true }))).status).toBe(
@@ -179,6 +273,54 @@ describe('NOTIFY (D-32)', () => {
     );
     await new Promise((r) => setTimeout(r, 200));
     expect(received).toEqual([]);
+  });
+});
+
+describe('a shutdown without identity next to an ingest of the same account', () => {
+  it('waits for the account lock instead of deadlocking on latest_state/play_sessions', async () => {
+    const device = await h.seedDevice();
+    const hash = newHash();
+    const snapshot = wire('snapshot-normal', { hash });
+    await h.send(device, snapshot);
+    const [account] = await t.db
+      .select({ id: osrsAccounts.id })
+      .from(osrsAccounts)
+      .where(eq(osrsAccounts.accountHash, hash));
+    const accountId = account?.id ?? -1;
+
+    // An ingest transaction as store.ts runs it: account lock, latest_state upsert, …, then the
+    // open session FOR UPDATE.
+    const ingest = new pg.Client({ connectionString: t.url });
+    await ingest.connect();
+    try {
+      await ingest.query('BEGIN');
+      await ingest.query('SELECT pg_advisory_xact_lock($1::int4, $2::int4)', [
+        ACCOUNT_LOCK_CLASS,
+        accountId,
+      ]);
+      await ingest.query('UPDATE latest_state SET tick_delay = tick_delay WHERE account_id = $1', [
+        accountId,
+      ]);
+
+      const closing = h.send(device, wire('logout-client-start-no-player'), {
+        at: (snapshot.timestamp as number) + 60_000,
+      });
+      await new Promise((r) => setTimeout(r, 300));
+      await ingest.query(
+        'SELECT id FROM play_sessions WHERE account_id = $1 AND ended_at IS NULL FOR UPDATE',
+        [accountId],
+      );
+      await ingest.query('COMMIT');
+
+      expect((await closing).status).toBe(200);
+      const [session] = await t.db
+        .select()
+        .from(playSessions)
+        .where(eq(playSessions.accountId, accountId));
+      expect(session?.endReason).toBe('logout');
+    } finally {
+      await ingest.end();
+    }
   });
 });
 
@@ -231,6 +373,127 @@ describe('transient failures (D-19, PLUGIN-4)', () => {
       expect(
         await t.db.select({ id: events.id }).from(events).where(eq(events.accountId, accountId)),
       ).toHaveLength(1);
+    } finally {
+      await holder.end();
+    }
+  });
+});
+
+/** Waits until `n` backends of the test database are waiting for a lock. */
+async function waitForLockWaiters(n: number): Promise<void> {
+  for (let i = 0; i < 200; i++) {
+    const result = await t.pool.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM pg_stat_activity
+       WHERE datname = current_database() AND wait_event_type = 'Lock'`,
+    );
+    if ((result.rows[0]?.n ?? 0) >= n) return;
+    await new Promise((r) => setTimeout(r, 10));
+  }
+  throw new Error(`fewer than ${n} backends waiting for a lock`);
+}
+
+async function accountByHash(hash: string) {
+  const [row] = await t.db.select().from(osrsAccounts).where(eq(osrsAccounts.accountHash, hash));
+  return row;
+}
+
+describe('a revoke or an offboarding while a payload is in flight', () => {
+  it('a device revoked while its payload waits for the account lock → 401, nothing stored', async () => {
+    const device = await h.seedDevice();
+    const hash = newHash();
+    await h.send(device, wire('snapshot-normal', { hash }));
+    const accountId = (await accountByHash(hash))?.id ?? -1;
+
+    const holder = new pg.Client({ connectionString: t.url });
+    await holder.connect();
+    try {
+      await holder.query('SELECT pg_advisory_lock($1::int4, $2::int4)', [
+        ACCOUNT_LOCK_CLASS,
+        accountId,
+      ]);
+      const pending = h.send(device, wire('event-loot', { hash, freshEventIds: true }));
+      await waitForLockWaiters(1);
+      await t.db
+        .update(devices)
+        .set({ revokedAt: new Date(), revokedReason: 'user' })
+        .where(eq(devices.id, device.id));
+      await holder.query('SELECT pg_advisory_unlock($1::int4, $2::int4)', [
+        ACCOUNT_LOCK_CLASS,
+        accountId,
+      ]);
+
+      expect((await pending).status).toBe(401);
+      expect(
+        await t.db.select({ id: events.id }).from(events).where(eq(events.accountId, accountId)),
+      ).toEqual([]);
+    } finally {
+      await holder.end();
+    }
+  });
+
+  it('an offboarding that commits first refuses the payload (401): no owner, no link', async () => {
+    const device = await h.seedDevice();
+    const hash = newHash();
+    // What offboardUser does first: lock the user row, set grace, revoke the devices.
+    const offboarding = new pg.Client({ connectionString: t.url });
+    await offboarding.connect();
+    try {
+      await offboarding.query('BEGIN');
+      await offboarding.query('SELECT id FROM users WHERE id = $1 FOR NO KEY UPDATE', [
+        device.userId,
+      ]);
+      const pending = h.send(device, wire('snapshot-normal', { hash }));
+      await waitForLockWaiters(1);
+      await offboarding.query(
+        `UPDATE users SET status = 'grace', grace_until = now() + interval '30 days' WHERE id = $1`,
+        [device.userId],
+      );
+      await offboarding.query(
+        `UPDATE devices SET revoked_at = now(), revoked_reason = 'offboarding' WHERE user_id = $1`,
+        [device.userId],
+      );
+      await offboarding.query('COMMIT');
+
+      expect((await pending).status).toBe(401);
+      // The account row is created before the transaction (TSDB-12); nothing else is.
+      const account = await accountByHash(hash);
+      expect(account?.ownerUserId).toBeNull();
+      expect(
+        await t.db
+          .select()
+          .from(accountLinks)
+          .where(eq(accountLinks.accountId, account?.id ?? -1)),
+      ).toEqual([]);
+    } finally {
+      await offboarding.end();
+    }
+  });
+
+  it('an offboarding that starts while a new account is being claimed waits, then hides it', async () => {
+    const device = await h.seedDevice();
+    const hash = newHash();
+    // Pause the payload after its user and account locks: hold its device row.
+    const holder = new pg.Client({ connectionString: t.url });
+    await holder.connect();
+    try {
+      await holder.query('BEGIN');
+      await holder.query('SELECT id FROM devices WHERE id = $1 FOR UPDATE', [device.id]);
+      const pending = h.send(device, wire('snapshot-normal', { hash }));
+      await waitForLockWaiters(1);
+      const offboarding = offboardUser(t.db, {
+        userId: device.userId,
+        reason: 'left_guild',
+        graceDays: 30,
+      });
+      await waitForLockWaiters(2);
+      await holder.query('COMMIT');
+
+      expect((await pending).status).toBe(200);
+      const result = await offboarding;
+      const account = await accountByHash(hash);
+      // The payload made the user owner; the offboarding saw that and hid the account (§14.3).
+      expect(result.hidden).toEqual([account?.id]);
+      expect(account).toMatchObject({ ownerUserId: device.userId, status: 'hidden' });
     } finally {
       await holder.end();
     }

@@ -407,6 +407,18 @@ describe('claimOwnership', () => {
     ]);
   });
 
+  it('records an admin who claims as a contributor as not acting as admin', async () => {
+    const account = await unclaimed();
+    await seedLink(t.db, account.id, admin.id);
+    await claimOwnership(t.db, admin.viewer, account.publicId);
+    const [row] = await auditRows(account.publicId);
+    expect(row).toMatchObject({
+      actorUserId: admin.id,
+      action: 'account.ownership_claimed',
+      meta: { asAdmin: false },
+    });
+  });
+
   it('refuses non-contributors, blocked contributors and owned accounts', async () => {
     const account = await unclaimed();
     await expectRefused(claimOwnership(t.db, admin.viewer, account.publicId), 'forbidden');

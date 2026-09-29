@@ -4,7 +4,7 @@
  */
 import { resolveAccess, type ResolvedAccess, type ToastFilter, type Viewer } from '@hub/core';
 import { events, osrsAccounts, type DbOrTx } from '@hub/db';
-import { and, asc, eq, gt, inArray, sql, type SQL } from 'drizzle-orm';
+import { and, asc, eq, gt, inArray, lt, lte, max, sql, type SQL } from 'drizzle-orm';
 import { loadAccountAccess } from '../accounts/access';
 import { toFeedEvent } from '../feed';
 import { EVENT_ROW_COLUMNS } from './load';
@@ -36,9 +36,9 @@ export interface ReplayOptions {
   now: Date;
   toast: ToastFilter;
   /**
-   * Serve only rows inserted at least this long ago (database clock), default 0. A cursor client must
-   * not move past a seq that may still commit: seq is taken at INSERT, so a lower seq can become
-   * visible after a higher one (DB-4). The polling fallback passes LIVE_POLL_SETTLE_MS. The SSE
+   * Serve only seqs below the first one inserted less than this long ago (database clock), default 0.
+   * A cursor client must not move past a seq that may still commit: seq is taken at INSERT, so a lower
+   * seq can become visible after a higher one (DB-4). The polling fallback passes LIVE_POLL_SETTLE_MS. The SSE
    * replay passes 0: it runs after the stream subscribed, so anything held back that had already
    * committed would never be delivered.
    */
@@ -52,6 +52,11 @@ export interface ReplayOptions {
  * toast). Accounts are filtered in SQL before the limit, so a burst from accounts the viewer can't see
  * never hides later events that they can. Clients dedupe by event id: a stream that subscribes and then
  * replays can receive an event both ways.
+ *
+ * Two reads: the accounts with events in the window (and each one's highest seq), then the rows of
+ * the readable ones. The second never returns a seq above the highest the first saw for them: rows
+ * that commit or settle between the reads may belong to an account the first read didn't see, and a
+ * later row of a known account would move the client's cursor past them for good (DB-4).
  */
 export async function replayEvents(
   db: DbOrTx,
@@ -62,8 +67,14 @@ export async function replayEvents(
   const window = replayWindow(opts);
   if (!window) return [];
 
-  const allowed = await readableAccounts(db, viewer, window);
+  const candidates = await db
+    .select({ accountId: events.accountId, maxSeq: max(events.seq) })
+    .from(events)
+    .where(window)
+    .groupBy(events.accountId);
+  const allowed = await readableAccounts(db, viewer, candidates);
   if (allowed.size === 0) return [];
+  const highestSeen = Math.max(...[...allowed.values()].map((a) => a.maxSeq));
 
   const rows = await db
     .select({
@@ -73,7 +84,9 @@ export async function replayEvents(
     })
     .from(events)
     .innerJoin(osrsAccounts, eq(osrsAccounts.id, events.accountId))
-    .where(and(window, inArray(events.accountId, [...allowed.keys()])))
+    .where(
+      and(window, inArray(events.accountId, [...allowed.keys()]), lte(events.seq, highestSeen)),
+    )
     .orderBy(asc(events.seq))
     .limit(clampLimit(opts.limit));
 
@@ -83,9 +96,9 @@ export async function replayEvents(
     const event = toFeedEvent(
       row,
       { publicId: row.publicId, name: row.accountName },
-      access.categories,
+      access.resolved.categories,
     );
-    return [toEventMessage(event, opts.toast, access, opts.now)];
+    return [toEventMessage(event, opts.toast, access.resolved, opts.now)];
   });
 }
 
@@ -96,17 +109,15 @@ function replayWindow(opts: ReplayOptions): SQL | null {
   // A cursor that isn't a safe integer (NaN, 1e300) can't be compared exactly; start from 0 then.
   const afterSeq = Number.isSafeInteger(opts.afterSeq) ? Math.max(opts.afterSeq, 0) : 0;
   const cutoff = new Date(nowMs - opts.maxAgeMs);
+  const floor = seqFloor(new Date(cutoff.getTime() - RECEIVE_ORDER_SLACK_MS));
   const parts: SQL[] = [
     gt(events.seq, afterSeq),
-    gt(events.seq, seqFloor(new Date(cutoff.getTime() - RECEIVE_ORDER_SLACK_MS))),
+    gt(events.seq, floor),
     gt(events.receivedAt, cutoff),
   ];
   const settleMs = opts.settleMs ?? 0;
   if (Number.isFinite(settleMs) && settleMs > 0) {
-    // inserted_at is clock_timestamp() at insert: compare with the database clock, not the app's.
-    parts.push(
-      sql`${events.insertedAt} <= clock_timestamp() - make_interval(secs => ${settleMs / 1000})`,
-    );
+    parts.push(lt(events.seq, settledCeiling(afterSeq, floor, settleMs)));
   }
   return and(...parts) ?? null;
 }
@@ -122,24 +133,40 @@ function seqFloor(before: Date): SQL {
   return sql`coalesce((select ${events.seq} from ${events} where ${events.receivedAt} <= ${before} order by ${events.seq} desc limit 1), 0)`;
 }
 
-/** The accounts with events in the window whose `events` category the viewer may read. */
+/**
+ * The lowest seq above the cursor inserted less than `settleMs` ago (database clock: inserted_at is
+ * clock_timestamp() at insert), or "no limit". Serving only seqs BELOW it, rather than skipping each
+ * young row on its own, keeps the result a gap-free prefix: inserted_at order can differ from seq
+ * order (a backend descheduled between taking its seq and its timestamp, or the database clock
+ * stepping back), and a settled row above a young one would move the cursor past it (DB-4). The
+ * walk up the seq index starts at the window's floor, so it reads only the last few minutes.
+ */
+function settledCeiling(afterSeq: number, floor: SQL, settleMs: number): SQL {
+  return sql`coalesce((select min(${events.seq}) from ${events} where ${events.seq} > ${afterSeq} and ${events.seq} > ${floor} and ${events.insertedAt} > clock_timestamp() - make_interval(secs => ${settleMs / 1000})), ${Number.MAX_SAFE_INTEGER})`;
+}
+
+interface ReadableAccount {
+  resolved: ResolvedAccess;
+  /** The highest seq of this account the candidate read saw. */
+  maxSeq: number;
+}
+
+/** The candidate accounts whose `events` category the viewer may read. */
 async function readableAccounts(
   db: DbOrTx,
   viewer: Viewer,
-  window: SQL,
-): Promise<Map<number, ResolvedAccess>> {
-  const candidates = await db
-    .selectDistinct({ accountId: events.accountId })
-    .from(events)
-    .where(window);
+  candidates: readonly { accountId: number; maxSeq: number | null }[],
+): Promise<Map<number, ReadableAccount>> {
   const accessMap = await loadAccountAccess(
     db,
     candidates.map((c) => c.accountId),
   );
-  const allowed = new Map<number, ResolvedAccess>();
-  for (const [accountId, access] of accessMap) {
+  const allowed = new Map<number, ReadableAccount>();
+  for (const { accountId, maxSeq } of candidates) {
+    const access = accessMap.get(accountId);
+    if (!access || maxSeq === null) continue;
     const resolved = resolveAccess(viewer, access);
-    if (resolved.categories.has('events')) allowed.set(accountId, resolved);
+    if (resolved.categories.has('events')) allowed.set(accountId, { resolved, maxSeq });
   }
   return allowed;
 }

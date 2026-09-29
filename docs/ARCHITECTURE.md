@@ -118,6 +118,7 @@ The protocol facts the hub relies on:
   `sha256(token)` is stored.
 - **Rate limits on `/pair`:** 10 attempts per IP per 10 min, 60 per minute globally, temporary IP
   lockout after repeated failures. The code space is only 100k.
+- **Decommissioned hub:** `/pair` answers 410 before anything else, as ingest does (D-56).
 
 ## 6. Ingest pipeline
 
@@ -125,11 +126,13 @@ The protocol facts the hub relies on:
 `packages/server/src/ingest/`, with every decision rule in `packages/core`.
 
 1. Decommission switch → 410. Authenticate `sha256(X-Osrs-Token)` → device → user; unknown/revoked
-   device or inactive user → 401.
+   device or inactive user → 401. The transaction checks again under row locks, so a revoke or an
+   offboarding that commits while the payload is in flight also ends in 401 (D-55).
 2. Version below minimum → `400 {"ok":false,"error":"plugin_outdated"}`; the device is flagged outdated.
 3. Body over `INGEST_MAX_BODY_KB` → 413 (enforced while streaming, not from `Content-Length`).
 4. Per-device token bucket (5/s, burst 30). Payloads carrying events always pass; snapshot-only payloads
-   over the limit get `429` + `Retry-After: 3`.
+   over the limit get `429` + `Retry-After: 3`, and so do unparsable bodies, which are then not archived
+   (D-57).
 5. The raw body is archived to `raw_payloads` outside the main transaction, and its final status is
    recorded afterwards.
 6. Section-by-section lenient parsing: a malformed section or event is skipped and counted; the rest is
@@ -142,7 +145,8 @@ The protocol facts the hub relies on:
     `ON CONFLICT DO NOTHING` on `(account_id, plugin_event_id, sub_index)`, `latest_state` upsert where a
     missing section keeps its previous value.
 11. Commit; `pg_notify` inside the transaction is delivered on commit only. Deadlocks and racing
-    unique inserts are retried in-process (D-49, TSDB-12).
+    unique inserts are retried in-process (D-49, TSDB-12); transactions that may create a hypertable
+    chunk take one shared advisory lock first, so chunk creation never deadlocks (D-58).
 12. 200 on success including all-duplicate payloads; 503 + `Retry-After: 30` on transient DB failures.
 
 ## 7. Data model
@@ -285,3 +289,7 @@ Decisions are permanent IDs; a reversed decision is marked superseded, never del
 | D-52 | Transferring or claiming a hidden account also un-hides it; removing a *blocked* contributor is refused. | The reason it was hidden no longer holds; deleting the link would silently delete the block. | Build |
 | D-53 | Prometheus label cardinality is bounded (32 plugin-version labels, then `other`; known event types or `other`). | Label values come from clients. | Build |
 | D-54 | `/pair` limits: the global limit counts every attempt; IPv6 clients are keyed by their /64; a successful pairing does not clear the failure count. | One client rotates addresses inside its /64; interleaving your own valid codes must not reset a lockout. | Build |
+| D-55 | The ingest transaction first locks the reporting user's row `FOR SHARE` and re-checks `status = 'active'`, and re-checks `devices.revoked_at` under the device row lock; either failing → 401. | `authenticateDevice` runs before the transaction. Offboarding locks the same user row first, so the two serialize: a new account's first payload in flight can no longer make a user in grace its owner and leave it visible, and a revoke committed mid-request stores nothing. User row before the account lock, as offboarding orders them. Pairing locks the code's creator the same way. | Build |
+| D-56 | `/pair` honours the decommission switch: 410 before rate limits, body or version checks. | A decommissioned hub must not hand out tokens whose first payload gets 410 (D-19). | Build |
+| D-57 | The `pluginVersions` metric counts authenticated requests only; unparsable bodies take a rate-limit token and past the bucket get 429 without being archived. | Strangers could otherwise use up the 32 version labels (D-53), and a device could fill `raw_payloads` with 256 KB invalid bodies. | Build |
+| D-58 | An ingest transaction whose XP or location write may create a new hypertable chunk first takes one shared advisory lock (`0x4f43`, 0); the chunk ranges already written and committed are remembered in-process, so the lock is taken only for the first payloads of a new day or week and after a restart. | Chunk creation holds `ShareRowExclusiveLock` on `osrs_accounts` until commit; two transactions creating `xp_samples` and `location_samples` chunks in different orders deadlocked at every boundary with a few concurrent payloads (TSDB-12). | Build |

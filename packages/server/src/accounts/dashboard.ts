@@ -2,7 +2,7 @@
  * The dashboard (handoff §12): a card per account the viewer owns or contributes to, and the guild's
  * "online now" strip.
  */
-import { OVERALL, totalLevel, type Viewer } from '@hub/core';
+import { OVERALL, overallXp, totalLevel, type Viewer } from '@hub/core';
 import type { DbOrTx } from '@hub/db';
 import type { FeedEvent } from '../feed';
 import {
@@ -17,7 +17,7 @@ import {
 } from './load';
 import { periodStarts } from './periods';
 import { sectionOf, type Section } from './sections';
-import { computeGains, loadCurrentSkills, xpBySkill, type XpByAccount } from './xp';
+import { computeGains, loadCurrentSkills, type XpByAccount } from './xp';
 
 /** Events per dashboard card. */
 export const CARD_EVENTS = 5;
@@ -111,8 +111,9 @@ async function buildCards(
   const idsWith = (category: 'stats' | 'events') =>
     mine.filter((e) => e.access.categories.has(category)).map((e) => e.account.id);
   const skills = await loadCurrentSkills(db, idsWith('stats'));
+  // Cards show Overall only: its gains alone are looked up, not every skill's.
   const current: XpByAccount = new Map();
-  for (const [id, parsed] of skills) current.set(id, xpBySkill(parsed));
+  for (const [id, parsed] of skills) current.set(id, new Map([[OVERALL, overallXp(parsed)]]));
   const periods = periodStarts(opts.now, opts.timezone);
   const today = await computeGains(db, periods.today, current);
   const week = await computeGains(db, periods.week, current);

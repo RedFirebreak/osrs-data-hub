@@ -48,12 +48,7 @@ export {
   type Presence,
   type PresenceRow,
 } from './load';
-export {
-  DEFAULT_PERIOD_TIMEZONE,
-  periodStarts,
-  startOfLocalDay,
-  type PeriodStarts,
-} from './periods';
+export { periodStarts, startOfLocalDay, type PeriodStarts } from './periods';
 export type { Section } from './sections';
 export {
   MAX_SERIES_POINTS,

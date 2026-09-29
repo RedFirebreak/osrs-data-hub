@@ -1,5 +1,5 @@
 import { DEFAULT_TOAST_FILTER, KNOWN_EVENT_TYPES } from '@hub/core';
-import { auditLog, hubSettings, userSettings } from '@hub/db';
+import { auditLog, hubSettings, userSettings, type Db } from '@hub/db';
 import { createTestDatabase, type TestDatabase } from '@hub/db/testing';
 import { eq } from 'drizzle-orm';
 import { ZodError } from 'zod';
@@ -164,12 +164,21 @@ describe('time zone helpers', () => {
     expect(canonicalTimeZone('Nowhere/Special')).toBeNull();
   });
 
-  it('lists UTC first and every entry validates', () => {
+  it('lists UTC first and every entry is stored as listed', () => {
     const zones = supportedTimeZones();
     expect(zones[0]).toBe('UTC');
     expect(new Set(zones).size).toBe(zones.length);
     expect(zones.length).toBeGreaterThan(300);
-    expect(zones.every((z) => canonicalTimeZone(z) !== null)).toBe(true);
+    // A saved zone must match a picker entry, or the Settings page shows nothing selected.
+    expect(zones.filter((z) => canonicalTimeZone(z) !== z)).toEqual([]);
+  });
+
+  it('stores an alias as a name the picker lists', () => {
+    const zones = new Set(supportedTimeZones());
+    for (const alias of ['utc', 'Etc/UTC', 'GMT', 'US/Pacific', 'Asia/Kolkata', 'Asia/Calcutta']) {
+      const canonical = canonicalTimeZone(alias);
+      expect(canonical !== null && zones.has(canonical)).toBe(true);
+    }
   });
 });
 
@@ -230,5 +239,25 @@ describe('decommission switch', () => {
       clearDecommissionedCache();
       expect(await isDecommissioned(t.db)).toBe(false);
     }
+  });
+
+  it("doesn't cache a value read before the switch changed", async () => {
+    const admin = await seedUser(t.db, { isAdmin: true });
+    await setDecommissioned(t.db, { value: false, actorUserId: admin });
+    // A read (an ingest request) that started before the admin flipped the switch.
+    let answer!: (rows: { on: boolean }[]) => void;
+    const inFlight = new Promise<{ on: boolean }[]>((resolve) => (answer = resolve));
+    const slowDb = {
+      select: () => ({ from: () => ({ where: () => inFlight }) }),
+    } as unknown as Db;
+    const stale = isDecommissioned(slowDb);
+
+    await setDecommissioned(t.db, { value: true, actorUserId: admin });
+    answer([{ on: false }]);
+    expect(await stale).toBe(false);
+
+    // This process sees the switch at once, as setDecommissioned promises.
+    expect(await isDecommissioned(t.db)).toBe(true);
+    await setDecommissioned(t.db, { value: false, actorUserId: admin });
   });
 });

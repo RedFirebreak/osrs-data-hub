@@ -241,6 +241,31 @@ describe('startLiveListener', () => {
     }
   });
 
+  it('keeps backing off when each new connection is lost right away (no resync storm)', async () => {
+    // Every successful LISTEN broadcasts 'resync' and every client then refetches: a connection
+    // killed right after it came back must not be retried (and resynced) every second forever.
+    const sink = fakeSink();
+    const { logger, lines } = captureLogger();
+    const listener = await started(sink, logger);
+    const delays = () =>
+      lines
+        .filter((l) => l.includes('reconnecting'))
+        .map((l) => (JSON.parse(l) as { delayMs: number }).delayMs);
+    try {
+      for (let round = 1; round <= 2; round++) {
+        const [pid] = await listenerPids();
+        await t.db.execute(sql`SELECT pg_terminate_backend(${pid})`);
+        await vi.waitFor(() => expect(sink.onReconnect).toHaveBeenCalledTimes(round + 1), {
+          timeout: 5_000,
+        });
+      }
+      expect(delays()).toEqual([1000, 2000]);
+      expect(listener.connected()).toBe(true);
+    } finally {
+      await listener.stop();
+    }
+  });
+
   it('keeps retrying while the database is unreachable', async () => {
     const sink = fakeSink();
     const { logger, lines } = captureLogger();

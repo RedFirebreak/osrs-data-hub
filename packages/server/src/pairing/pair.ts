@@ -18,6 +18,7 @@ import {
   safeDbErrorMessage,
   users,
   type Db,
+  type Tx,
 } from '@hub/db';
 import { and, eq, gt, isNull, sql } from 'drizzle-orm';
 import { audit } from '../audit';
@@ -44,6 +45,7 @@ export const PAIR_MESSAGES = {
     'The hub account that created this code is not active. Sign in to the hub again and create a new code.',
   unavailable: 'The hub is busy, try again in a minute',
   failed: 'Pairing failed because of a hub error, try again later',
+  decommissioned: 'This hub no longer accepts new devices.',
 } as const;
 
 export interface PairDeps {
@@ -55,6 +57,12 @@ export interface PairDeps {
   limits: PairLimits;
   logger: Logger;
   metrics: HubMetrics;
+  /**
+   * The admin decommission switch (settings isDecommissioned): true → 410 before anything else, as
+   * ingest answers, so a decommissioned hub doesn't hand out tokens that would only ever get 410.
+   * Optional so callers without the switch (tests) keep pairing.
+   */
+  isDecommissioned?: () => boolean | Promise<boolean>;
   now?: () => Date;
 }
 
@@ -69,6 +77,7 @@ export interface PairRequest {
 
 /** pairAttempts{result} label values. */
 type PairResult =
+  | 'decommissioned'
   | 'locked_out'
   | 'rate_limited_global'
   | 'rate_limited_ip'
@@ -87,13 +96,18 @@ interface Outcome {
 
 /** Longest version header text stored (it is free text from the client). */
 const VERSION_TEXT_MAX = 32;
+/** Longest wait for a row lock and for one statement, well inside the plugin's 10 s (PLUGIN-4). */
+const LOCK_TIMEOUT = '3s';
+const STATEMENT_TIMEOUT = '5s';
 /** Retry-After for transient database failures (D-19, D-30). */
 const TRANSIENT_RETRY_AFTER_SECONDS = 30;
 
 /**
  * Handles one pairing request, in this order:
- * 1. Rate limits, keyed by pairRateKey(ip): an active lockout, then 60/min globally, then 10 per
- *    10 min per client. Each answers 429 with an integer Retry-After (PLUGIN-5).
+ * 0. The decommission switch (deps.isDecommissioned) → 410 (D-19, D-56).
+ * 1. Rate limits, keyed by pairRateKey(ip): an active lockout, then 10 per 10 min per client, then
+ *    60/min globally. Each answers 429 with an integer Retry-After (PLUGIN-5). An attempt one limit
+ *    refuses counts towards none of them, so a single client can't use up the global limit.
  * 2. The body must be a JSON object whose `code` is a string of 5 ASCII digits (PLUGIN-6: never a
  *    number, never other Unicode digits), else 400.
  * 3. Version gate (D-1): below MIN_PLUGIN_VERSION or missing → 400 with the "restart RuneLite" text.
@@ -114,6 +128,13 @@ export async function handlePair(deps: PairDeps, req: PairRequest): Promise<Plug
 }
 
 async function pair(deps: PairDeps, req: PairRequest): Promise<Outcome> {
+  try {
+    if (await deps.isDecommissioned?.()) {
+      return reject('decommissioned', 410, PAIR_MESSAGES.decommissioned);
+    }
+  } catch (err) {
+    return failure(deps, err);
+  }
   const key = pairRateKey(req.ip);
   const limited = checkRateLimits(deps.limits, key);
   if (limited) return limited;
@@ -177,13 +198,21 @@ function paired(deps: PairDeps, device: Extract<ConsumeResult, { kind: 'paired' 
   };
 }
 
+/**
+ * Lockout, then the client's own limit, then the global one. The client's limit is only peeked
+ * before the global hit and recorded after it: an attempt its own limit refuses must not take a
+ * global slot (one client sending an empty body every second would otherwise block pairing for
+ * everybody without ever reaching the lockout), and one the global limit refuses doesn't use up the
+ * client's allowance. Synchronous, so nothing runs between the peek and the hit.
+ */
 function checkRateLimits(limits: PairLimits, key: string): Outcome | null {
   const lockedFor = limits.lockout.lockedFor(key);
   if (lockedFor > 0) return rateLimited('locked_out', lockedFor);
+  const perClient = limits.perIp.peek(key);
+  if (!perClient.ok) return rateLimited('rate_limited_ip', perClient.retryAfterSeconds);
   const global = limits.global.hit('global');
   if (!global.ok) return rateLimited('rate_limited_global', global.retryAfterSeconds);
-  const perClient = limits.perIp.hit(key);
-  if (!perClient.ok) return rateLimited('rate_limited_ip', perClient.retryAfterSeconds);
+  limits.perIp.hit(key);
   return null;
 }
 
@@ -234,9 +263,21 @@ function activeCode(code: string, now: Date) {
 }
 
 /**
+ * Bounds how long a pairing transaction can wait: the plugin gives up after 10 s (PLUGIN-4), and a
+ * consumed code whose 200 never arrived is lost to the player. A lock or statement timeout is
+ * transient (503). set_config because SET LOCAL can't take a bind parameter (DB-11).
+ */
+async function setPairTimeouts(tx: Tx): Promise<void> {
+  await tx.execute(
+    sql`SELECT set_config('lock_timeout', ${LOCK_TIMEOUT}, true), set_config('statement_timeout', ${STATEMENT_TIMEOUT}, true)`,
+  );
+}
+
+/**
  * Marks an active code with the outdated attempt and tells its wizard, in one transaction (the
  * notification is delivered on commit only, D-32). No match does nothing. Best effort: the player
- * still gets the "update the plugin" answer when this fails, since that is what they need to see.
+ * still gets the "update the plugin" answer when this fails (a locked code row included, which
+ * gives up after the lock timeout), since that is what they need to see.
  */
 async function recordOutdatedAttempt(
   deps: PairDeps,
@@ -244,6 +285,7 @@ async function recordOutdatedAttempt(
 ): Promise<void> {
   try {
     await deps.db.transaction(async (tx) => {
+      await setPairTimeouts(tx);
       const rows = await tx
         .update(pairingCodes)
         .set({ lastOutdatedAttemptAt: v.now, lastOutdatedVersion: v.version })
@@ -271,73 +313,90 @@ type ConsumeResult =
   | { kind: 'inactive' }
   | { kind: 'paired'; token: string; deviceId: string; userId: string; codeId: string };
 
-/** Thrown inside the transaction to roll back the consumption of an inactive user's code. */
-class InactiveCodeOwner extends Error {}
-
 /**
- * Consumes an active code and creates the device in one transaction. The UPDATE … WHERE consumed_at
- * IS NULL is the single-use guard: of two concurrent requests with the same code, the second waits
- * for the first's row lock and then no longer matches.
+ * Consumes an active code and creates the device in one transaction.
+ *
+ * The code's creator is locked FOR SHARE before the code is touched. Offboarding locks the user row
+ * (FOR NO KEY UPDATE) before it sets `grace` and revokes the user's devices, so the two serialize:
+ * either offboarding commits first and the code is refused here as inactive, or this commits first
+ * and offboarding's revoke sees (and revokes) the new device. Without the lock, a device created
+ * while the user was being offboarded escaped the revoke and came back to life on a return from
+ * grace. User before code is also the order a hard delete takes (user row, then cascaded codes).
+ *
+ * The UPDATE … WHERE consumed_at IS NULL is the single-use guard: of two concurrent requests with
+ * the same code, the second waits for the first's row lock and then no longer matches. An inactive
+ * creator's code is left unconsumed (nothing is written).
  */
 async function consumeCode(
   db: Db,
   v: { code: string; now: Date; version: string | null; ip: string | null },
 ): Promise<ConsumeResult> {
-  try {
-    return await db.transaction(async (tx): Promise<ConsumeResult> => {
-      // Don't wait on a row lock past the plugin's 10 s read timeout (PLUGIN-4); a lock timeout is
-      // transient (503). set_config because SET LOCAL can't take a bind parameter (DB-11).
-      await tx.execute(sql`SELECT set_config('lock_timeout', '3s', true)`);
-      const [code] = await tx
-        .update(pairingCodes)
-        .set({ consumedAt: v.now })
-        .from(users)
-        .where(and(activeCode(v.code, v.now), eq(users.id, pairingCodes.userId)))
-        .returning({
-          id: pairingCodes.id,
-          userId: pairingCodes.userId,
-          label: pairingCodes.label,
-          userStatus: users.status,
-        });
-      if (!code) return { kind: 'invalid' };
-      if (code.userStatus !== 'active') throw new InactiveCodeOwner();
+  return db.transaction(async (tx): Promise<ConsumeResult> => {
+    await setPairTimeouts(tx);
+    const [candidate] = await tx
+      .select({ userId: pairingCodes.userId })
+      .from(pairingCodes)
+      .where(activeCode(v.code, v.now));
+    if (!candidate) return { kind: 'invalid' };
+    const [creator] = await tx
+      .select({ status: users.status })
+      .from(users)
+      .where(eq(users.id, candidate.userId))
+      .for('share');
+    // No row: the user was deleted meanwhile, and their codes with them.
+    if (!creator) return { kind: 'invalid' };
+    if (creator.status !== 'active') return { kind: 'inactive' };
 
-      const token = generateDeviceToken();
-      const [device] = await tx
-        .insert(devices)
-        .values({
-          userId: code.userId,
-          label: code.label,
-          tokenHash: sha256Hex(token),
-          pluginVersion: v.version,
-          createdAt: v.now,
-          lastIp: v.ip,
-        })
-        .returning({ id: devices.id });
-      if (!device) throw new Error('device insert returned no row');
-      await tx
-        .update(pairingCodes)
-        .set({ deviceId: device.id })
-        .where(eq(pairingCodes.id, code.id));
-      await notifyPairing(tx, {
-        kind: 'consumed',
-        userId: code.userId,
-        codeId: code.id,
-        deviceId: device.id,
-      });
-      await audit(tx, {
-        actorUserId: code.userId,
-        action: 'device.paired',
-        targetType: 'device',
-        targetId: device.id,
-        meta: { codeId: code.id, pluginVersion: v.version },
-      });
-      return { kind: 'paired', token, deviceId: device.id, userId: code.userId, codeId: code.id };
-    });
-  } catch (err) {
-    if (err instanceof InactiveCodeOwner) return { kind: 'inactive' };
-    throw err;
-  }
+    const [code] = await tx
+      .update(pairingCodes)
+      .set({ consumedAt: v.now })
+      .where(and(activeCode(v.code, v.now), eq(pairingCodes.userId, candidate.userId)))
+      .returning({ id: pairingCodes.id, userId: pairingCodes.userId, label: pairingCodes.label });
+    // Consumed by a concurrent request since the lookup.
+    if (!code) return { kind: 'invalid' };
+    return createDevice(tx, { ...v, code });
+  });
+}
+
+/** The device for a just-consumed code, the wizard's notification and the audit entry. */
+async function createDevice(
+  tx: Tx,
+  v: {
+    code: { id: string; userId: string; label: string | null };
+    now: Date;
+    version: string | null;
+    ip: string | null;
+  },
+): Promise<ConsumeResult> {
+  const { code } = v;
+  const token = generateDeviceToken();
+  const [device] = await tx
+    .insert(devices)
+    .values({
+      userId: code.userId,
+      label: code.label,
+      tokenHash: sha256Hex(token),
+      pluginVersion: v.version,
+      createdAt: v.now,
+      lastIp: v.ip,
+    })
+    .returning({ id: devices.id });
+  if (!device) throw new Error('device insert returned no row');
+  await tx.update(pairingCodes).set({ deviceId: device.id }).where(eq(pairingCodes.id, code.id));
+  await notifyPairing(tx, {
+    kind: 'consumed',
+    userId: code.userId,
+    codeId: code.id,
+    deviceId: device.id,
+  });
+  await audit(tx, {
+    actorUserId: code.userId,
+    action: 'device.paired',
+    targetType: 'device',
+    targetId: device.id,
+    meta: { codeId: code.id, pluginVersion: v.version },
+  });
+  return { kind: 'paired', token, deviceId: device.id, userId: code.userId, codeId: code.id };
 }
 
 function recordFailure(deps: PairDeps, key: string): void {

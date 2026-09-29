@@ -18,6 +18,7 @@ import {
 import { accountNames, latestState, users, type DbOrTx } from '@hub/db';
 import { and, desc, eq, ne } from 'drizzle-orm';
 import type { FeedEvent } from '../feed';
+import { DEFAULT_TIMEZONE } from '../settings/user-settings';
 import {
   loadRecentEventRows,
   loadVisibleAccount,
@@ -26,8 +27,8 @@ import {
   type AccountWithAccess,
   type Presence,
 } from './load';
-import { periodStarts, type PeriodStarts } from './periods';
-import { latestOf, sectionOf, type Section } from './sections';
+import { periodStarts, startOfLocalDay, type PeriodStarts } from './periods';
+import { latestOf, restampSection, sectionOf, type Section } from './sections';
 import { computeGains, parseSkills, xpBySkill } from './xp';
 
 /** Events in the page's timeline before "load more" (listFeed with beforeSeq). */
@@ -79,6 +80,13 @@ export interface AccountHeader {
   hidden: boolean;
 }
 
+/**
+ * Every section follows Section's three states. A shared section's `updatedAt` is when the hub last
+ * received it, except for viewers without `activity`: for them skills, equipment and inventory carry
+ * only the day (local midnight in the viewer's time zone), since the plugin sends stats with every
+ * periodic update and the exact time would be the last-seen time the owner hid (D-50). The live
+ * location keeps its time: a live position is presence by nature, and whoever may see it may see that.
+ */
 export interface AccountPage {
   account: AccountHeader;
   /** activity */
@@ -101,7 +109,8 @@ type LatestRow = typeof latestState.$inferSelect;
 /**
  * The account page for `publicId`, or null when the viewer may not see the account at all (the route
  * answers 404). Each section follows Section's three states; data of a category the viewer lacks is
- * never loaded into the result. Gains periods use the viewer's `timezone` (default UTC) for "day".
+ * never loaded into the result. Gains periods use the viewer's `timezone` (default UTC) for "day",
+ * and so does the day-only `updatedAt` of viewers without `activity` (see AccountPage).
  */
 export async function getAccountPage(
   db: DbOrTx,
@@ -113,13 +122,17 @@ export async function getAccountPage(
   if (!entry) return null;
   const { account, access } = entry;
   const can = (category: Category) => access.categories.has(category);
+  const timezone = opts.timezone ?? DEFAULT_TIMEZONE;
+  // See AccountPage: without activity, the time of the last payload is withheld (D-50).
+  const dayOnly = <T>(section: Section<T>): Section<T> =>
+    can('activity') ? section : restampSection(section, (at) => startOfLocalDay(at, timezone));
 
   // Sequential on purpose: `db` may be a transaction, where concurrent queries on one client are
   // deprecated in pg 8 and removed in pg 9.
   const [state] = await db.select().from(latestState).where(eq(latestState.accountId, account.id));
   const header = await loadHeader(db, entry);
   const skills: AccountPage['skills'] = can('stats')
-    ? await skillsSection(db, account.id, state, periodStarts(opts.now, opts.timezone))
+    ? await skillsSection(db, account.id, state, periodStarts(opts.now, timezone))
     : { visible: false };
   const recentEvents: AccountPage['recentEvents'] = can('events')
     ? await eventsSection(db, entry)
@@ -136,23 +149,17 @@ export async function getAccountPage(
       () => vitalsOf(state as LatestRow),
     ),
     location: locationSection(can('location_live'), state, opts.now),
-    skills,
-    equipment: itemsSection(
-      can('equipment'),
-      state?.equipment,
-      state?.equipmentUpdatedAt,
-      (items) => ({
+    skills: dayOnly(skills),
+    equipment: dayOnly(
+      itemsSection(can('equipment'), state?.equipment, state?.equipmentUpdatedAt, (items) => ({
         items,
-      }),
+      })),
     ),
-    inventory: itemsSection(
-      can('inventory'),
-      state?.inventory,
-      state?.inventoryUpdatedAt,
-      (items) => ({
+    inventory: dayOnly(
+      itemsSection(can('inventory'), state?.inventory, state?.inventoryUpdatedAt, (items) => ({
         items,
         value: itemsValue(items) ?? 0,
-      }),
+      })),
     ),
     recentEvents,
   };

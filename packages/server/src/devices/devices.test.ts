@@ -1,7 +1,9 @@
-import { auditLog, devices } from '@hub/db';
+import { CATEGORIES, generateDeviceToken, sha256Hex } from '@hub/core';
+import { accountLinks, accountSharing, auditLog, devices, osrsAccounts } from '@hub/db';
 import { createTestDatabase, type TestDatabase } from '@hub/db/testing';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { authenticateDevice } from '../ingest/device';
 import {
   FakeClock,
   linkDeviceAccount,
@@ -122,6 +124,46 @@ describe('listDevices', () => {
 
   it('returns an empty list for a user without devices', async () => {
     expect(await listDevices(t.db, await seedUser(t.db))).toEqual([]);
+  });
+
+  it("doesn't list reported accounts the user may no longer see (resolveAccess)", async () => {
+    const clock = new FakeClock();
+    const owner = await seedUser(t.db);
+    const userId = await seedUser(t.db);
+    const deviceId = await seedDevice(t.db, userId);
+    const own = await seedAccount(t.db, { name: 'Own', ownerUserId: userId });
+    // Guild-visible by default: a blocked contributor still sees it as a member.
+    const shared = await seedAccount(t.db, { name: 'Shared', ownerUserId: owner });
+    // Blocked, and the owner shares nothing: invisible to the user.
+    const closed = await seedAccount(t.db, { name: 'Closed', ownerUserId: owner });
+    // Hidden (owner offboarded): invisible to every non-admin, contributors included.
+    const hidden = await seedAccount(t.db, { name: 'Hidden', ownerUserId: owner });
+    await t.db.update(osrsAccounts).set({ status: 'hidden' }).where(eq(osrsAccounts.id, hidden.id));
+    await t.db.insert(accountLinks).values([
+      { accountId: shared.id, userId, role: 'contributor', blocked: true },
+      { accountId: closed.id, userId, role: 'contributor', blocked: true },
+      { accountId: hidden.id, userId, role: 'contributor', blocked: false },
+    ]);
+    await t.db.insert(accountSharing).values(
+      CATEGORIES.map((category) => ({
+        accountId: closed.id,
+        category,
+        audience: 'private' as const,
+      })),
+    );
+    for (const [i, account] of [own, shared, closed, hidden].entries()) {
+      await linkDeviceAccount(t.db, deviceId, account.id, {
+        firstSeen: clock.date(),
+        lastSeen: new Date(clock.t + (4 - i) * MIN),
+      });
+    }
+
+    const [device] = await listDevices(t.db, userId);
+    expect(device?.accounts.map((a) => a.name)).toEqual(['Own', 'Shared']);
+
+    // The admin page shows everything a device reported.
+    const [adminRow] = (await listAllDevices(t.db)).filter((d) => d.id === deviceId);
+    expect(adminRow?.accounts.map((a) => a.name)).toEqual(['Own', 'Shared', 'Closed', 'Hidden']);
   });
 });
 
@@ -284,5 +326,27 @@ describe('revokeDevice', () => {
     await revokeDevice(t.db, { deviceId, actorUserId: userId, reason: 'user' });
     const [summary] = await listDevices(t.db, userId);
     expect(summary).toMatchObject({ id: deviceId, status: 'revoked', revokedReason: 'user' });
+  });
+
+  it("makes the device's token stop authenticating, so the next ingest answers 401", async () => {
+    const userId = await seedUser(t.db);
+    const token = generateDeviceToken();
+    const deviceId = await seedDevice(t.db, userId, { tokenHash: sha256Hex(token) });
+    expect(await authenticateDevice(t.db, token)).toEqual({ id: deviceId, userId });
+
+    await revokeDevice(t.db, { deviceId, actorUserId: userId, reason: 'user' });
+    expect(await authenticateDevice(t.db, token)).toBeNull();
+  });
+
+  it('writes one audit entry when the same device is revoked twice at once', async () => {
+    const owner = await seedUser(t.db);
+    const admin = await seedUser(t.db, { isAdmin: true });
+    const deviceId = await seedDevice(t.db, owner);
+    const results = await Promise.all([
+      revokeDevice(t.db, { deviceId, actorUserId: owner, reason: 'user' }),
+      revokeDevice(t.db, { deviceId, actorUserId: admin, asAdmin: true, reason: 'admin' }),
+    ]);
+    expect(results).toEqual([true, true]);
+    expect(await revokeAudits(deviceId)).toHaveLength(1);
   });
 });

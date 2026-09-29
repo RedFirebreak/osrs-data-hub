@@ -1,4 +1,4 @@
-import { devices, osrsAccounts, rawPayloads, type Db } from '@hub/db';
+import { devices, events, osrsAccounts, rawPayloads, type Db } from '@hub/db';
 import { createTestDatabase, type TestDatabase } from '@hub/db/testing';
 import { fixtureBody } from '@hub/fixtures';
 import { count, eq } from 'drizzle-orm';
@@ -192,6 +192,11 @@ describe('body limits and parsing', () => {
     const [row] = await archiveRows(device.id);
     expect(row?.body).toBe(text);
     expect(row?.status).toBe(200);
+    const [stored] = await t.db
+      .select({ data: events.data })
+      .from(events)
+      .where(eq(events.accountId, row?.accountId ?? -1));
+    expect(stored?.data).toMatchObject({ data: { questName: 'NulQuest' } });
   });
 });
 
@@ -209,7 +214,9 @@ describe('rate limit (snapshot-only payloads, handoff §7.6)', () => {
     const limited = await h.send(device, snapshot, { at });
     expect(limited.status).toBe(429);
     expect(limited.body).toEqual({ ok: false, error: 'rate_limited' });
-    expect(limited.headers?.['Retry-After']).toMatch(/^[1-9][0-9]*$/);
+    // An integer (PLUGIN-5), and the documented 3 s pause (handoff §7.6), although the bucket
+    // itself has a token back after 0.2 s.
+    expect(limited.headers).toEqual({ 'Retry-After': '3' });
     expect(await archiveRows(device.id)).toHaveLength(before.length);
 
     const events = wire('event-loot', { hash, freshEventIds: true });
@@ -218,6 +225,26 @@ describe('rate limit (snapshot-only payloads, handoff §7.6)', () => {
     // 1 s later five tokens are back.
     expect((await h.send(device, snapshot, { at: at + 1_000 })).status).toBe(200);
     expect(await counterValue(h.metrics.ingestPayloads, { status: '429' })).toBe(1);
+  });
+
+  it('unparsable bodies take a token too: past the bucket they get 429 and are not archived', async () => {
+    const device = await h.seedDevice();
+    const at = 1_790_000_700_000;
+    for (let i = 0; i < 30; i++) {
+      expect((await h.send(device, '{"player":', { at })).status).toBe(400);
+    }
+    expect(await archiveRows(device.id)).toHaveLength(30);
+
+    const limited = await h.send(device, '{"player":', { at });
+    expect(limited).toEqual({
+      status: 429,
+      body: { ok: false, error: 'rate_limited' },
+      headers: { 'Retry-After': '3' },
+    });
+    expect(await archiveRows(device.id)).toHaveLength(30);
+    // An event payload still passes the empty bucket.
+    const loot = wire('event-loot', { hash: newHash(), freshEventIds: true });
+    expect((await h.send(device, loot, { at })).status).toBe(200);
   });
 
   it('limits per device', async () => {
@@ -248,6 +275,16 @@ describe('metrics', () => {
       await m.send(device, '{', { version: `2.${i}` });
     }
     expect(await counterValue(m.metrics.pluginVersions, { version: 'other' })).toBeGreaterThan(0);
+  });
+
+  it('does not count the version header of a request that fails authentication', async () => {
+    const m = createHarness(t);
+    const device = await m.seedDevice();
+    await m.send(device, wire('login-partial-player'), { token: 'not-a-token', version: '7.7' });
+    await m.send(device, wire('login-partial-player'), { token: null, version: '7.8' });
+    expect(await counterValue(m.metrics.pluginVersions, { version: '7.7.0' })).toBe(0);
+    expect(await counterValue(m.metrics.pluginVersions, { version: '7.8.0' })).toBe(0);
+    expect(await counterValue(m.metrics.ingestPayloads, { status: '401' })).toBe(2);
   });
 
   it('times and counts every return path', async () => {
@@ -330,6 +367,61 @@ describe('error mapping (D-19, D-30)', () => {
     expect(timeouts.calls()).toBe(1);
   });
 
+  it('starts no new attempt once the retry budget is spent (PLUGIN-4: stay under 10 s)', async () => {
+    // Each attempt spends 1.5 s (lock waits) before its deadlock is detected: a third attempt
+    // would take the request to 4.5 s and more under real contention.
+    let calls = 0;
+    const slow = new Proxy(t.db, {
+      get(target, prop, receiver) {
+        if (prop === 'transaction') {
+          return async () => {
+            calls++;
+            await new Promise((r) => setTimeout(r, 1_500));
+            throw queryError('40P01');
+          };
+        }
+        return Reflect.get(target, prop, receiver) as unknown;
+      },
+    });
+    const e = createHarness(t, { db: slow });
+    const device = await e.seedDevice();
+    const started = performance.now();
+    const res = await e.send(device, wire('event-loot', { hash: newHash(), freshEventIds: true }));
+    expect(res.status).toBe(503);
+    expect(calls).toBe(2);
+    expect(performance.now() - started).toBeLessThan(4_000);
+  });
+
+  it('an account deleted just before the transaction → 503 for a hash (recreated on resend), 400 for a name', async () => {
+    const hash = newHash();
+    const deleting = new Proxy(t.db, {
+      get(target, prop, receiver) {
+        if (prop === 'transaction') {
+          return async (...args: Parameters<Db['transaction']>) => {
+            await target.delete(osrsAccounts).where(eq(osrsAccounts.accountHash, hash));
+            return target.transaction(...args);
+          };
+        }
+        return Reflect.get(target, prop, receiver) as unknown;
+      },
+    });
+    const e = createHarness(t, { db: deleting });
+    const device = await e.seedDevice();
+    const loot = wire('event-loot', { hash, name: 'Gone Soon', freshEventIds: true });
+    expect((await e.send(device, loot)).status).toBe(503);
+
+    // Recreated by the resend.
+    expect((await h.send(device, loot)).status).toBe(200);
+    expect(await h.accountIdByHash(hash)).toBeDefined();
+
+    const byName = wire('event-loot', { name: 'Gone Soon', freshEventIds: true });
+    delete byName.player?.accountHash;
+    expect(await e.send(device, byName)).toEqual({
+      status: 400,
+      body: { ok: false, error: 'unknown_account' },
+    });
+  });
+
   /** Shaped like drizzle's DrizzleQueryError: params in the message, SQLSTATE on the cause (DB-3). */
   function queryError(code: string) {
     return Object.assign(new Error('Failed query: insert …\nparams: SECRET-TOKEN,3222,3218'), {
@@ -406,6 +498,81 @@ describe('error mapping (D-19, D-30)', () => {
           Promise.resolve(JSON.stringify(wire('snapshot-normal', { hash: newHash() }))),
       }),
     ).resolves.toMatchObject({ status: 500 });
+  });
+});
+
+describe('archive failures (handoff §7.1.4)', () => {
+  /** t.db with insert/update on raw_payloads replaced; everything else runs for real. */
+  function archiveDb(opts: { insert?: () => never; update?: () => PromiseLike<unknown> }): Db {
+    return new Proxy(t.db, {
+      get(target, prop, receiver) {
+        if (prop === 'insert' && opts.insert) {
+          return (table: unknown) =>
+            table === rawPayloads ? opts.insert?.() : target.insert(table as never);
+        }
+        if (prop === 'update' && opts.update) {
+          const update = opts.update;
+          return (table: unknown) =>
+            table === rawPayloads
+              ? { set: () => ({ where: () => update() }) }
+              : target.update(table as never);
+        }
+        return Reflect.get(target, prop, receiver) as unknown;
+      },
+    });
+  }
+
+  const connectionLost = () =>
+    Object.assign(new Error('Failed query: insert …\nparams: SECRET'), {
+      cause: Object.assign(new Error('terminating connection'), { code: '57P01' }),
+    });
+
+  it('a transient failure of the archive insert → 503 + Retry-After 30, nothing stored', async () => {
+    const hash = newHash();
+    const e = createHarness(t, {
+      db: archiveDb({
+        insert: () => {
+          throw connectionLost();
+        },
+      }),
+    });
+    const device = await e.seedDevice();
+    const res = await e.send(device, wire('event-loot', { hash, freshEventIds: true }));
+    expect(res).toEqual({
+      status: 503,
+      body: { ok: false, error: 'temporarily_unavailable' },
+      headers: { 'Retry-After': '30' },
+    });
+    expect(await h.accountIdByHash(hash)).toBeUndefined();
+  });
+
+  it('a failed outcome update never changes the response and logs only the code', async () => {
+    const { logger, lines } = captureLogger();
+    const hash = newHash();
+    const e = createHarness(t, {
+      logger,
+      db: archiveDb({ update: () => Promise.reject(connectionLost()) }),
+    });
+    const device = await e.seedDevice();
+    const res = await e.send(device, wire('event-loot', { hash, freshEventIds: true }));
+    expect(res).toEqual({ status: 200, body: { ok: true } });
+    expect(await h.accountIdByHash(hash)).toBeDefined();
+    expect(lines.find((l) => l.msg === 'ingest: archive update failed')).toMatchObject({
+      level: 40,
+      pgCode: '57P01',
+    });
+    expect(JSON.stringify(lines)).not.toContain('SECRET');
+  });
+
+  it('a hanging outcome update delays the response by at most about 1 s (PLUGIN-4)', async () => {
+    const e = createHarness(t, {
+      db: archiveDb({ update: () => new Promise(() => undefined) }),
+    });
+    const device = await e.seedDevice();
+    const started = performance.now();
+    const res = await e.send(device, wire('event-loot', { hash: newHash(), freshEventIds: true }));
+    expect(res.status).toBe(200);
+    expect(performance.now() - started).toBeLessThan(2_500);
   });
 });
 

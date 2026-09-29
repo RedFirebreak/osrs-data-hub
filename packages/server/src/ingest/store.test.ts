@@ -3,6 +3,7 @@ import {
   XP_BUCKET_MS,
   carriedValue,
   floorTo,
+  isOnline,
   normalizeEvents,
   parsePayload,
   utcDay,
@@ -20,6 +21,7 @@ import {
   playSessions,
   rawPayloads,
   skills,
+  users,
   wealthDaily,
   xpSamples,
 } from '@hub/db';
@@ -293,6 +295,116 @@ describe('first snapshot of a new account', () => {
     expect(after.equipmentUpdatedAt).toEqual(before.equipmentUpdatedAt);
     expect(after.healthUpdatedAt).toEqual(new Date(at));
     expect(after.sourceTs).toEqual(new Date(at - 1_000));
+  });
+});
+
+// ---- derived writes over several payloads --------------------------------------------------------
+
+describe('derived writes across payloads (D-23, handoff §7.1.11)', () => {
+  /** snapshot-normal for a fresh account, `offsetMs` after the fixture's time. */
+  function snapshotAt(hash: string, offsetMs: number): Wire {
+    const body = wire('snapshot-normal', { hash });
+    body.timestamp = ts(body) + offsetMs;
+    return body;
+  }
+
+  it('XP rising twice within one 5-minute bucket keeps one row per skill with the higher value', async () => {
+    const device = await h.seedDevice();
+    const hash = newHash();
+    const first = snapshotAt(hash, 0);
+    await h.send(device, first);
+    const second = snapshotAt(hash, 60_000);
+    // The fixture arrives 201 s into its 5-minute bucket: +60 s is the same bucket.
+    const bucketOf = (body: Wire) => floorTo(new Date(ts(body) + 1_000), XP_BUCKET_MS).getTime();
+    expect(bucketOf(second)).toBe(bucketOf(first));
+    const attack = playerOf(second).stats?.skills.Attack;
+    if (!attack) throw new Error('fixture');
+    attack.xp += 500;
+    await h.send(device, second);
+
+    const { id } = await account(hash);
+    const rows = await xpRows(id);
+    expect(rows).toHaveLength(25);
+    const [attackId, overallId] = [await skillId('Attack'), await skillId('Overall')];
+    expect(rows.find((r) => r.skillId === attackId)?.xp).toBe(attack.xp);
+    const sentTotal = Object.values(playerOf(second).stats?.skills ?? {}).reduce(
+      (s, v) => s + v.xp,
+      0,
+    );
+    expect(rows.find((r) => r.skillId === overallId)?.xp).toBe(sentTotal);
+
+    // The next bucket gets new rows for the changed skills only (change-only).
+    const third = snapshotAt(hash, 5 * 60_000);
+    expect(bucketOf(third)).toBeGreaterThan(bucketOf(second));
+    const a3 = playerOf(third).stats?.skills.Attack;
+    if (!a3) throw new Error('fixture');
+    a3.xp += 900;
+    await h.send(device, third);
+    const after = await xpRows(id);
+    expect(after).toHaveLength(27);
+    expect(
+      after
+        .filter((r) => r.skillId === attackId)
+        .map((r) => r.xp)
+        .sort(),
+    ).toEqual([attack.xp, a3.xp].sort());
+  });
+
+  it('wealth keeps the day’s last and maximum carried value', async () => {
+    const device = await h.seedDevice();
+    const hash = newHash();
+    const rich = snapshotAt(hash, 0);
+    await h.send(device, rich);
+    const poorer = snapshotAt(hash, 60_000);
+    playerOf(poorer).inventory.items = [];
+    await h.send(device, poorer);
+
+    const { id } = await account(hash);
+    const p = playerOf(rich);
+    const [row] = await t.db.select().from(wealthDaily).where(eq(wealthDaily.accountId, id));
+    expect(row).toMatchObject({
+      lastValue: carriedValue([], p.equipment.items),
+      maxValue: carriedValue(p.inventory.items, p.equipment.items),
+      updatedAt: new Date(ts(poorer) + 1_000),
+    });
+  });
+
+  it('one location sample per account per minute', async () => {
+    const device = await h.seedDevice();
+    const hash = newHash();
+    await h.send(device, snapshotAt(hash, 0));
+    const moved = snapshotAt(hash, 20_000);
+    playerOf(moved).location.x += 3;
+    await h.send(device, moved);
+    const nextMinute = snapshotAt(hash, 60_000);
+    playerOf(nextMinute).location.x += 6;
+    // 21 s into the minute: +20 s is the same minute, +60 s the next.
+    const minuteOf = (offset: number) =>
+      floorTo(new Date(ts(wire('snapshot-normal')) + 1_000 + offset), LOCATION_BUCKET_MS).getTime();
+    expect([minuteOf(20_000), minuteOf(60_000)]).toEqual([minuteOf(0), minuteOf(0) + 60_000]);
+    await h.send(device, nextMinute);
+
+    const { id } = await account(hash);
+    const samples = await t.db
+      .select({ ts: locationSamples.ts, x: locationSamples.x })
+      .from(locationSamples)
+      .where(eq(locationSamples.accountId, id))
+      .orderBy(asc(locationSamples.ts));
+    const x0 = playerOf(wire('snapshot-normal')).location.x;
+    expect(samples.map((s) => s.x)).toEqual([x0, x0 + 6]);
+    // latest_state follows every payload.
+    expect((await latest(id)).location).toMatchObject({ x: x0 + 6 });
+  });
+
+  it('tickDelay 0 (unknown) keeps the last known tick delay', async () => {
+    const device = await h.seedDevice();
+    const hash = newHash();
+    await h.send(device, snapshotAt(hash, 0));
+    const unknown = snapshotAt(hash, 30_000);
+    unknown.tickDelay = 0;
+    await h.send(device, unknown);
+    const { id } = await account(hash);
+    expect((await latest(id)).tickDelay).toBe(100);
   });
 });
 
@@ -670,6 +782,28 @@ describe('identity', () => {
     expect(names.map((n) => n.name)).toEqual(['Old Name', 'New_Name']);
   });
 
+  it('a stale or special-world snapshot never renames the account', async () => {
+    // A stale payload is older information; a special-world one can be another character on the
+    // same hash (PLUGIN-8). Only applied snapshots rename (and set the account type).
+    const device = await h.seedDevice();
+    const hash = newHash();
+    const current = wire('retry-overtaking-snapshot', { hash, name: 'Current Name' });
+    await h.send(device, current);
+    const stale = wire('retry-duplicate-b', { hash, name: 'Older Name' });
+    (stale.player as Record<string, unknown>).accountType = '2';
+    await h.send(device, stale, { at: ts(current) + 30_000 });
+    const special = wire('special-world-seasonal', { hash, name: 'League Name' });
+    await h.send(device, special);
+
+    const row = await account(hash);
+    expect(row).toMatchObject({ currentName: 'Current Name', nameNormalized: 'current name' });
+    const names = await t.db
+      .select({ name: accountNames.name })
+      .from(accountNames)
+      .where(eq(accountNames.accountId, row.id));
+    expect(names).toEqual([{ name: 'Current Name' }]);
+  });
+
   it('a name without accountHash matches exactly one current name', async () => {
     const { logger, lines } = captureLogger();
     const g = createHarness(t, { logger });
@@ -707,6 +841,39 @@ describe('identity', () => {
     const twin = wire('snapshot-normal', { name: 'TWIN' });
     delete twin.player?.accountHash;
     expect((await h.send(device, twin)).status).toBe(400);
+  });
+
+  it('a name without accountHash never attaches a user to an account they are not linked to', async () => {
+    // A player's name is public, the salted hash is not: matching any account by name would let any
+    // member become a contributor of someone else's account (all categories, private ones included)
+    // or claim an unclaimed one, just by sending {"player":{"name":…}}.
+    const victim = await h.seedDevice();
+    const attacker = await h.seedDevice();
+    const hash = newHash();
+    await h.send(victim, wire('snapshot-normal', { hash, name: 'Victim Name' }));
+    const { id } = await account(hash);
+    const before = await latest(id);
+
+    const forged = wire('event-loot', { name: 'victim_name', freshEventIds: true });
+    delete forged.player?.accountHash;
+    playerOf(forged).health.current = 1;
+    expect(await h.send(attacker, forged)).toEqual({
+      status: 400,
+      body: { ok: false, error: 'unknown_account' },
+    });
+
+    const links = await t.db
+      .select({ userId: accountLinks.userId })
+      .from(accountLinks)
+      .where(eq(accountLinks.accountId, id));
+    expect(links).toEqual([{ userId: victim.userId }]);
+    expect(await eventRows(id)).toEqual([]);
+    expect(await latest(id)).toEqual(before);
+
+    // Nor can it claim an account whose owner is gone (owner_user_id null).
+    await t.db.update(osrsAccounts).set({ ownerUserId: null }).where(eq(osrsAccounts.id, id));
+    expect((await h.send(attacker, forged)).status).toBe(400);
+    expect((await account(hash)).ownerUserId).toBeNull();
   });
 
   it('never matches an empty normalized name', async () => {
@@ -781,6 +948,44 @@ describe('play sessions', () => {
     expect((await sessions(id))[0]?.endedAt).not.toBeNull();
   });
 
+  it('a clientShutdown sent while logged in ends presence at once (handoff §7.6)', async () => {
+    // shutdown.json carries state LOGGED_IN; "Disabled" while logged in looks the same. Nothing is
+    // sent afterwards, so without this the account showed online for tickDelay × 1.86 s more.
+    const device = await h.seedDevice();
+    const hash = newHash();
+    await h.send(device, wire('snapshot-normal', { hash }));
+    const { id } = await account(hash);
+    for (const data of ['Shutdown', 'Disabled']) {
+      const body = wire('shutdown', { hash, freshEventIds: true });
+      (body.events?.[0] as { data: string }).data = data;
+      body.timestamp = h.clock.now + 60_000;
+      expect((await h.send(device, body)).status).toBe(200);
+      const row = await latest(id);
+      expect(row.lastSeen).toEqual(new Date(h.clock.now));
+      expect(isOnline(row, new Date(h.clock.now))).toBe(false);
+      expect(row.gameState).toBeNull();
+    }
+
+    // The next login is online again.
+    const login = wire('snapshot-normal', { hash });
+    login.timestamp = h.clock.now + 60_000;
+    await h.send(device, login);
+    expect(isOnline(await latest(id), new Date(h.clock.now))).toBe(true);
+  });
+
+  it('a stale clientShutdown does not end presence (D-33) but still closes the session', async () => {
+    const device = await h.seedDevice();
+    const hash = newHash();
+    const newer = wire('snapshot-normal', { hash });
+    await h.send(device, newer);
+    const stale = wire('shutdown', { hash });
+    stale.timestamp = ts(newer) - 5_000;
+    expect((await h.send(device, stale, { at: ts(newer) + 2_000 })).status).toBe(200);
+    const { id } = await account(hash);
+    expect((await latest(id)).gameState).toBe('LOGGED_IN');
+    expect(await sessions(id)).toMatchObject([{ endReason: 'shutdown' }]);
+  });
+
   it('a first payload that is LOGGED_IN + Shutdown opens no session', async () => {
     const device = await h.seedDevice();
     const hash = newHash();
@@ -811,6 +1016,31 @@ describe('play sessions', () => {
       accountId: null,
       meta: { closedSessions: 1 },
     });
+  });
+
+  it('a shutdown without identity also ends presence of the accounts whose session it closed', async () => {
+    // The client crashed while logged in (no shutdown sent) and restarts a minute later: the
+    // "Logout" without player closes this device's session; the account must not stay online.
+    const device = await h.seedDevice();
+    const other = await h.seedDevice();
+    const [hash, otherHash] = [newHash(), newHash()];
+    const snapshot = wire('snapshot-normal', { hash });
+    await h.send(device, snapshot);
+    await h.send(other, wire('snapshot-normal', { hash: otherHash }));
+    const restartAt = ts(snapshot) + 60_000;
+
+    expect(
+      (await h.send(device, wire('logout-client-start-no-player'), { at: restartAt })).status,
+    ).toBe(200);
+
+    const { id } = await account(hash);
+    const row = await latest(id);
+    expect(isOnline(row, new Date(restartAt))).toBe(false);
+    expect(row.gameState).toBe('LOGIN_SCREEN');
+    // Another device's account is untouched.
+    const otherRow = await latest((await account(otherHash)).id);
+    expect(otherRow.gameState).toBe('LOGGED_IN');
+    expect(isOnline(otherRow, new Date(restartAt))).toBe(true);
   });
 
   it('disabled-login-screen closes sessions with reason disabled, or creates nothing', async () => {
@@ -904,6 +1134,48 @@ describe('owners and contributors (handoff §7.1.7)', () => {
     expect(await counterValue(h.metrics.ingestIgnored, { reason: 'blocked' })).toBe(
       ignoredBefore + 1,
     );
+  });
+});
+
+describe('owners of unclaimed accounts (D-21)', () => {
+  it('an account whose owner is gone is claimed by the next (non-blocked) reporter', async () => {
+    const first = await h.seedDevice();
+    const next = await h.seedDevice();
+    const hash = newHash();
+    await h.send(first, wire('snapshot-normal', { hash }));
+    const { id } = await account(hash);
+    // Grace expiry hard-deletes the owner: owner_user_id is set null, their links cascade.
+    await t.db.delete(users).where(eq(users.id, first.userId));
+    expect((await account(hash)).ownerUserId).toBeNull();
+
+    const hop = wire('snapshot-world-hop', { hash });
+    expect((await h.send(next, hop)).status).toBe(200);
+
+    expect((await account(hash)).ownerUserId).toBe(next.userId);
+    const links = await t.db
+      .select({ userId: accountLinks.userId, role: accountLinks.role })
+      .from(accountLinks)
+      .where(eq(accountLinks.accountId, id));
+    expect(links).toEqual([{ userId: next.userId, role: 'owner' }]);
+  });
+
+  it('a blocked contributor never claims an unclaimed account', async () => {
+    const first = await h.seedDevice();
+    const blocked = await h.seedDevice();
+    const hash = newHash();
+    await h.send(first, wire('snapshot-normal', { hash }));
+    await h.send(blocked, wire('snapshot-world-hop', { hash }));
+    const { id } = await account(hash);
+    await t.db
+      .update(accountLinks)
+      .set({ blocked: true })
+      .where(and(eq(accountLinks.accountId, id), eq(accountLinks.userId, blocked.userId)));
+    await t.db.update(osrsAccounts).set({ ownerUserId: null }).where(eq(osrsAccounts.id, id));
+
+    expect((await h.send(blocked, wire('event-loot', { hash, freshEventIds: true }))).status).toBe(
+      200,
+    );
+    expect((await account(hash)).ownerUserId).toBeNull();
   });
 });
 

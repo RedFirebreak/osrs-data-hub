@@ -1,12 +1,13 @@
 import { DEFAULT_TOAST_FILTER, type ToastFilter } from '@hub/core';
-import { events } from '@hub/db';
+import { events, type Db } from '@hub/db';
 import { createTestDatabase, type TestDatabase } from '@hub/db/testing';
-import { max } from 'drizzle-orm';
+import { eq, inArray, max } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { FeedEvent } from '../feed';
 import { LIVE_POLL_SETTLE_MS, LIVE_REPLAY_MAX_AGE_MS, replayEvents } from './replay';
 import {
   deathData,
+  grant,
   link,
   seedAccount,
   seedEvent,
@@ -44,6 +45,42 @@ beforeAll(async () => {
 afterAll(async () => {
   await t.drop();
 });
+
+/**
+ * `db`, running `hook` right after the first SELECT that replayEvents issues has returned (so a test
+ * can change the table between its queries).
+ */
+function afterFirstQuery(db: Db, hook: () => Promise<void>): Db {
+  let fired = false;
+  const wrap = (builder: {
+    from: (...a: unknown[]) => { execute: (...a: unknown[]) => Promise<unknown> };
+  }) => {
+    const from = builder.from.bind(builder);
+    builder.from = (...args: unknown[]) => {
+      const query = from(...args);
+      const execute = query.execute.bind(query);
+      query.execute = async (...a: unknown[]) => {
+        const result = await execute(...a);
+        if (!fired) {
+          fired = true;
+          await hook();
+        }
+        return result;
+      };
+      return query;
+    };
+    return builder;
+  };
+  return new Proxy(db, {
+    get(target, prop, receiver) {
+      const value: unknown = Reflect.get(target, prop, receiver);
+      if ((prop === 'select' || prop === 'selectDistinct') && typeof value === 'function') {
+        return (...args: unknown[]) => wrap(value.apply(target, args));
+      }
+      return value;
+    },
+  });
+}
 
 /** The highest seq so far: each test replays only what it seeded after it. */
 async function baseline(): Promise<number> {
@@ -143,6 +180,38 @@ describe('replayEvents', () => {
     expect(seqs(await replay(member, { afterSeq: base, limit: 3 }))).toEqual([visible.seq]);
   });
 
+  it('applies the resolver: hidden accounts only for admins, selected audiences only with a grant', async () => {
+    const base = await baseline();
+    const admin = await seedUser(t.db, { isAdmin: true });
+    const granted = await seedUser(t.db);
+    const hiddenAcc = await seedAccount(t.db, {
+      name: 'Hidden Hal',
+      ownerUserId: owner.userId,
+      status: 'hidden',
+    });
+    const selectedAcc = await seedAccount(t.db, { name: 'Selective Sam' });
+    await share(t.db, selectedAcc.id, 'events', 'selected');
+    await grant(t.db, selectedAcc.id, 'events', granted.userId);
+    const h = await seedEvent(t.db, hiddenAcc.id, { occurredAt: ago(MIN) });
+    const s = await seedEvent(t.db, selectedAcc.id, { occurredAt: ago(MIN) });
+
+    expect(seqs(await replay(owner, { afterSeq: base }))).toEqual([]);
+    expect(seqs(await replay(admin, { afterSeq: base }))).toEqual([h.seq]);
+    expect(seqs(await replay(member, { afterSeq: base }))).toEqual([]);
+    expect(seqs(await replay(granted, { afterSeq: base }))).toEqual([s.seq]);
+  });
+
+  it('the window excludes an event received exactly maxAgeMs ago', async () => {
+    const base = await baseline();
+    await seedEvent(t.db, guildAcc.id, { occurredAt: ago(6 * MIN), receivedAt: ago(5 * MIN) });
+    const inside = await seedEvent(t.db, guildAcc.id, {
+      occurredAt: ago(6 * MIN),
+      receivedAt: ago(5 * MIN - 1),
+    });
+
+    expect(seqs(await replay(member, { afterSeq: base }))).toEqual([inside.seq]);
+  });
+
   it('returns nothing for a viewer in grace, or for a window that matches nothing', async () => {
     const base = await baseline();
     await seedEvent(t.db, guildAcc.id, { occurredAt: ago(MIN) });
@@ -178,6 +247,67 @@ describe('replayEvents', () => {
     expect(seqs(await replay(member, { afterSeq: 0 }))).toEqual(
       expect.arrayContaining([inside.seq, after.seq]),
     );
+  });
+
+  it('with settleMs, stops at the first unsettled seq: a later settled row must not move the cursor past it (DB-4)', async () => {
+    // inserted_at order can differ from seq order (a backend descheduled between taking its seq and
+    // its clock_timestamp(), or the database clock stepping back). A settled row above an unsettled
+    // one would move the client's cursor past the unsettled row for good.
+    const base = await baseline();
+    const settledBefore = await seedEvent(t.db, guildAcc.id, {
+      occurredAt: ago(MIN),
+      insertedAt: new Date(Date.now() - 2 * LIVE_POLL_SETTLE_MS),
+    });
+    const unsettled = await seedEvent(t.db, guildAcc.id, { occurredAt: ago(MIN) });
+    await seedEvent(t.db, guildAcc.id, {
+      occurredAt: ago(MIN),
+      insertedAt: new Date(Date.now() - 2 * LIVE_POLL_SETTLE_MS),
+    });
+
+    const polled = await replay(member, { afterSeq: base, settleMs: LIVE_POLL_SETTLE_MS });
+    expect(seqs(polled)).toEqual([settledBefore.seq]);
+    // Once it has settled, the client gets it and everything after.
+    await t.db
+      .update(events)
+      .set({ insertedAt: new Date(Date.now() - 2 * LIVE_POLL_SETTLE_MS) })
+      .where(eq(events.id, unsettled.id));
+    const next = await replay(member, {
+      afterSeq: settledBefore.seq,
+      settleMs: LIVE_POLL_SETTLE_MS,
+    });
+    expect(seqs(next)[0]).toBe(unsettled.seq);
+    expect(next).toHaveLength(2);
+  });
+
+  it('never returns a row above what its access check saw, so rows landing in between are not skipped', async () => {
+    // The accounts are read first, the rows second. Rows that become visible (or settle) in between
+    // come from accounts the first read didn't see; returning a later row of a known account would
+    // move the cursor past them.
+    const base = await baseline();
+    const other = await seedAccount(t.db, { name: 'Newcomer Ned', ownerUserId: owner.userId });
+    const old = new Date(Date.now() - 2 * LIVE_POLL_SETTLE_MS);
+    const known = await seedEvent(t.db, guildAcc.id, { occurredAt: ago(MIN), insertedAt: old });
+    const newcomer = await seedEvent(t.db, other.id, { occurredAt: ago(MIN) });
+    const later = await seedEvent(t.db, guildAcc.id, { occurredAt: ago(MIN) });
+    // Both settle right after the first query: the moment time passes the settle margin.
+    const db = afterFirstQuery(t.db, async () => {
+      await t.db
+        .update(events)
+        .set({ insertedAt: old })
+        .where(inArray(events.id, [newcomer.id, later.id]));
+    });
+
+    const polled = await replayEvents(db, member, {
+      afterSeq: base,
+      maxAgeMs: LIVE_REPLAY_MAX_AGE_MS,
+      now: NOW,
+      toast: TOAST,
+      settleMs: LIVE_POLL_SETTLE_MS,
+    });
+    expect(seqs(polled)).toEqual([known.seq]);
+    expect(
+      seqs(await replay(member, { afterSeq: known.seq, settleMs: LIVE_POLL_SETTLE_MS })),
+    ).toEqual([newcomer.seq, later.seq]);
   });
 
   it('holds back rows that may still have a lower seq pending when settleMs is set (DB-4)', async () => {

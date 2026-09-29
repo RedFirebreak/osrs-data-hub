@@ -74,11 +74,15 @@ async function lookup(
       return { kind: 'error', status: 0, reason: 'unavailable' };
     }
     if (res.ok) {
-      const member = (await res.json()) as DiscordGuildMember;
-      return {
-        kind: 'member',
-        member: { ...member, roles: Array.isArray(member.roles) ? member.roles : [] },
-      };
+      // A body that isn't a member object (cut off by a proxy, say) is an outage, not a verdict: it
+      // must neither throw out of the caller nor count as membership. Discord always sends `roles`;
+      // reading a missing list as "no roles" would offboard a member as 'lost_role' whenever
+      // DISCORD_REQUIRED_ROLE_IDS is set, where re-verification must fail open (D-34).
+      const member = (await res.json().catch(() => null)) as DiscordGuildMember | null;
+      if (!isMemberObject(member)) {
+        return { kind: 'error', status: res.status, reason: 'unavailable' };
+      }
+      return { kind: 'member', member };
     }
     const body = (await res.json().catch(() => null)) as {
       code?: number;
@@ -104,6 +108,12 @@ async function lookup(
       return { kind: 'error', status: res.status, code, reason: 'auth' };
     return { kind: 'error', status: res.status, code, reason: 'unavailable' };
   }
+}
+
+function isMemberObject(value: unknown): value is DiscordGuildMember {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const { roles } = value as { roles?: unknown };
+  return Array.isArray(roles) && roles.every((r) => typeof r === 'string');
 }
 
 /** GET /users/@me/guilds/{guild}/member with the user's OAuth token. */
@@ -135,7 +145,10 @@ export function fetchGuildMemberAsBot(
   );
 }
 
-/** GET /users/@me with the user's OAuth token. */
+/**
+ * GET /users/@me with the user's OAuth token. Null on any failure, including a 200 whose body isn't
+ * a user with a string id and username: sign-in keys the account on that id.
+ */
 export async function fetchCurrentUser(
   accessToken: string,
   fetchFn: FetchFn = fetch,
@@ -145,7 +158,11 @@ export async function fetchCurrentUser(
       headers: { authorization: `Bearer ${accessToken}` },
       signal: AbortSignal.timeout(10_000),
     });
-    return res.ok ? ((await res.json()) as DiscordUser) : null;
+    if (!res.ok) return null;
+    const user = (await res.json()) as Partial<DiscordUser> | null;
+    return typeof user?.id === 'string' && typeof user.username === 'string'
+      ? (user as DiscordUser)
+      : null;
   } catch {
     return null;
   }

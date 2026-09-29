@@ -143,6 +143,34 @@ describe('getAccountPage header', () => {
     expect(page?.vitals).toEqual({ visible: false });
   });
 
+  it("doesn't reveal the last payload's time through other sections without activity (D-50)", async () => {
+    // Every periodic send carries stats, so skills.updatedAt would be the last-seen time exactly.
+    const idle = await seedAccount(t.db, { name: 'Idle', owner: owner.id });
+    await seedSharing(t.db, idle.id, 'activity', 'private');
+    await seedSharing(t.db, idle.id, 'equipment', 'guild');
+    await seedSharing(t.db, idle.id, 'inventory', 'guild');
+    await seedLatestState(t.db, idle.id, {
+      lastSeen: ago(30_000),
+      gameState: 'LOGGED_IN',
+      skills: skillMap({ Attack: [100, 2] }),
+      skillsUpdatedAt: ago(30_000),
+      equipment: [],
+      equipmentUpdatedAt: ago(30_000),
+      inventory: [],
+      inventoryUpdatedAt: ago(30_000),
+    });
+    const tz = { now: NOW, timezone: 'Europe/Amsterdam' };
+    const asMember = await getAccountPage(t.db, member.viewer, idle.publicId, tz);
+    // Only the day is left: local midnight in the viewer's time zone.
+    for (const section of [asMember?.skills, asMember?.equipment, asMember?.inventory]) {
+      expect(section).toMatchObject({ shared: true, updatedAt: '2026-09-27T22:00:00.000Z' });
+    }
+    const asOwner = await getAccountPage(t.db, owner.viewer, idle.publicId, tz);
+    for (const section of [asOwner?.skills, asOwner?.equipment, asOwner?.inventory]) {
+      expect(section).toMatchObject({ shared: true, updatedAt: ago(30_000).toISOString() });
+    }
+  });
+
   it('has no owner for an unclaimed account', async () => {
     const page = await getAccountPage(t.db, member.viewer, ownerless.publicId, { now: NOW });
     expect(page?.account.owner).toBeNull();

@@ -36,6 +36,12 @@ export interface LiveListenerOptions {
 export const LIVE_LISTENER_APPLICATION_NAME = 'hub-live-listener';
 export const RECONNECT_INITIAL_MS = 1_000;
 export const RECONNECT_MAX_MS = 30_000;
+/**
+ * The backoff starts over only after a connection stayed up this long: every successful LISTEN
+ * broadcasts 'resync' (every client refetches), so a connection lost right after it came back must
+ * not be retried, and resynced, every second.
+ */
+export const STABLE_CONNECTION_MS = 60_000;
 /** A silently dead TCP connection would never emit an error; a periodic query finds it. */
 const PING_INTERVAL_MS = 30_000;
 const PING_TIMEOUT_MS = 10_000;
@@ -48,7 +54,8 @@ export function reconnectDelayMs(attempt: number): number {
 
 /**
  * Starts listening (asynchronously; `connected()` turns true once LISTEN succeeded). On an error or
- * the end of the connection it reconnects with backoff (reconnectDelayMs), and after every successful
+ * the end of the connection it reconnects with backoff (reconnectDelayMs; it starts over at 1 s only
+ * once a connection stayed up for STABLE_CONNECTION_MS), and after every successful
  * LISTEN it calls hub.onReconnect(): notifications sent while nobody listened are lost, so open
  * streams must resync. That includes the first LISTEN, when a stream may already have opened (a
  * no-op for a hub without subscribers). Malformed notification payloads are logged and ignored.
@@ -64,6 +71,9 @@ class Listener implements LiveListener {
   private listening = false;
   private stopped = false;
   private attempt = 0;
+  /** When the current connection's LISTEN succeeded (performance.now()); null while down. */
+  private listeningSince: number | null = null;
+  private everListened = false;
   private retryTimer: NodeJS.Timeout | null = null;
   private pingTimer: NodeJS.Timeout | null = null;
 
@@ -113,8 +123,9 @@ class Listener implements LiveListener {
     }
     if (client !== this.client) return; // stopped (or failed) meanwhile; fail() ended it
     this.listening = true;
-    const reconnected = this.attempt > 0;
-    this.attempt = 0;
+    this.listeningSince = performance.now();
+    const reconnected = this.everListened;
+    this.everListened = true;
     this.pingTimer = setInterval(() => void this.ping(client), PING_INTERVAL_MS);
     this.pingTimer.unref();
     this.opts.logger.info({ reconnected }, 'live: listening');
@@ -129,6 +140,13 @@ class Listener implements LiveListener {
     this.clearTimers();
     client.end().catch(() => {});
     if (this.stopped) return;
+    if (
+      this.listeningSince !== null &&
+      performance.now() - this.listeningSince >= STABLE_CONNECTION_MS
+    ) {
+      this.attempt = 0;
+    }
+    this.listeningSince = null;
     const delayMs = reconnectDelayMs(this.attempt++);
     // DB-3: the code and the parameter-free message only.
     this.opts.logger.warn(

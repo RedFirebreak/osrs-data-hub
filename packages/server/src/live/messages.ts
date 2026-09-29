@@ -21,6 +21,13 @@ export interface PresenceMessage {
   specialWorld: boolean;
   /** ISO-8601 UTC. */
   lastSeen: string;
+  /**
+   * How much longer `online` stays true without another message (0 when offline): nothing is sent
+   * when presence times out (a crash, a lost connection or a hop to a special world just stops the
+   * payloads), so the client marks the account offline this long after receiving the message.
+   * Relative, so the browser's clock doesn't matter.
+   */
+  onlineForMs: number;
 }
 
 /** Payload of a 'pairing' message (the wizard's step 2), sent only to the code's user. */

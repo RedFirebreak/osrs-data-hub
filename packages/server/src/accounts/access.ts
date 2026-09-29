@@ -3,7 +3,6 @@
  * the UI queries, the SSE fan-out and (M3) the API, so every surface applies the same rules.
  */
 import {
-  CATEGORIES,
   isCategory,
   type AccountAccess,
   type Audience,
@@ -107,5 +106,3 @@ export async function loadAccountAccess(
   }
   return out;
 }
-
-export { CATEGORIES };

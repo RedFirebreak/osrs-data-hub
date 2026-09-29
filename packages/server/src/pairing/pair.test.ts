@@ -1,7 +1,8 @@
 import { sha256Hex } from '@hub/core';
 import { auditLog, devices, pairingCodes, createDb, type Db } from '@hub/db';
 import { createTestDatabase, type TestDatabase } from '@hub/db/testing';
-import { and, eq } from 'drizzle-orm';
+import { fixtureBody, httpCapture } from '@hub/fixtures';
+import { and, eq, isNull } from 'drizzle-orm';
 import pg from 'pg';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { silentLogger } from '../logger';
@@ -235,6 +236,34 @@ describe('handlePair: success', () => {
     expect(output).not.toContain(sha256Hex(token));
     // Not as a standalone number (uuids are hex, so the digits could occur inside one by chance).
     expect(output).not.toMatch(new RegExp(`(?<![0-9a-f])${code.code}(?![0-9a-f])`));
+  });
+});
+
+describe('handlePair: decommissioned hub', () => {
+  it('answers 410 before anything else and leaves the code alone', async () => {
+    const { clock, pair, metrics } = setup({ isDecommissioned: () => Promise.resolve(true) });
+    const code = await seedCode(clock);
+
+    const res = await pair(body(code.code));
+
+    expect(res).toEqual({ status: 410, body: { ok: false, error: PAIR_MESSAGES.decommissioned } });
+    expect(await attempts(metrics, 'decommissioned')).toBe(1);
+    const [row] = await t.db.select().from(pairingCodes).where(eq(pairingCodes.id, code.id));
+    expect(row?.consumedAt).toBeNull();
+    expect(await t.db.select().from(devices).where(eq(devices.userId, code.userId))).toEqual([]);
+  });
+
+  it('pairs normally while the switch is off, and answers 503 when it cannot be read', async () => {
+    const off = setup({ isDecommissioned: () => false });
+    const code = await seedCode(off.clock);
+    expect((await off.pair(body(code.code))).status).toBe(200);
+
+    const unreadable = new Error('connect ECONNREFUSED');
+    Object.assign(unreadable, { code: 'ECONNREFUSED' });
+    const broken = setup({ isDecommissioned: () => Promise.reject(unreadable) });
+    const res = await broken.pair(body(code.code));
+    expect(res.status).toBe(503);
+    expect(res.headers).toEqual({ 'Retry-After': '30' });
   });
 });
 
@@ -498,6 +527,122 @@ describe('handlePair: rate limits', () => {
     expect((await pair(body(unknown))).status).toBe(403); // the 20th failure
     expect((await pair(body(unknown))).status).toBe(429);
   });
+
+  it("doesn't let one client use up the global limit with attempts its own limit refuses", async () => {
+    const { clock, pair } = setup();
+    // One client hammering (malformed bodies never reach the lockout): 10 × 400, then 429s.
+    for (let i = 0; i < 120; i++) {
+      const res = await pair('{}', { ip: '192.0.2.66' });
+      expect(res.status).toBe(i < 10 ? 400 : 429);
+    }
+    const code = await seedCode(clock);
+    expect((await pair(body(code.code), { ip: '198.51.100.5' })).status).toBe(200);
+  });
+
+  it("doesn't count an attempt the global limit refused against the client", async () => {
+    const { clock, pair } = setup();
+    for (let i = 0; i < 60; i++) await pair(null, { ip: `192.0.2.${i}` });
+    for (let i = 0; i < 15; i++) {
+      expect((await pair(null, { ip: '198.51.100.77' })).status).toBe(429);
+    }
+    clock.advance(MIN);
+    expect((await pair(null, { ip: '198.51.100.77' })).status).toBe(400);
+  });
+
+  it("doesn't count a locked-out client's attempts towards the global limit", async () => {
+    const { clock, pair } = setup();
+    const unknown = await freeCode(t.db);
+    for (let i = 0; i < 20; i++) {
+      if (i % 10 === 0) clock.advance(10 * MIN);
+      await pair(body(unknown));
+    }
+    for (let i = 0; i < 100; i++) expect((await pair(body(unknown))).status).toBe(429);
+    const code = await seedCode(clock);
+    expect((await pair(body(code.code), { ip: '198.51.100.6' })).status).toBe(200);
+  });
+});
+
+describe('handlePair: the captured plugin request', () => {
+  /** Seeds an active code with a fixed value, removing any row that holds it. */
+  async function seedFixedCode(clock: FakeClock, code: string) {
+    const userId = await seedUser(t.db);
+    await t.db.delete(pairingCodes).where(eq(pairingCodes.code, code));
+    const row = await insertCodeWithValue(t.db, {
+      code,
+      userId,
+      label: null,
+      now: clock.date(),
+      expiresAt: new Date(clock.t + 5 * MIN),
+    });
+    if (!row) throw new Error('seedFixedCode: code taken');
+    return { ...row, userId };
+  }
+
+  it('pairs with the request exactly as OkHttp sends it (pair-request.http)', async () => {
+    const capture = httpCapture('pair-request');
+    const split = capture.indexOf('\r\n\r\n');
+    const head = capture.slice(0, split);
+    const requestBody = capture.slice(split + 4);
+    const version = /^X-Osrs-Exporter-Version: ([^\r\n]*)$/im.exec(head)?.[1] ?? null;
+    expect(version).toBe('1.5');
+    expect(head).not.toMatch(/^X-Osrs-Token:/im);
+
+    const { clock, pair } = setup();
+    const code = await seedFixedCode(clock, '04817');
+    const res = await pair(requestBody, { version });
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ ok: true, name: 'Test Hub' });
+    await listener.waitFor(1);
+    const [row] = await t.db.select().from(pairingCodes).where(eq(pairingCodes.id, code.id));
+    expect(row?.deviceId).toBe((res.body as { device_id: string }).device_id);
+  });
+
+  it('pairs with the pair-request payload fixture (whitespace and a trailing newline)', async () => {
+    const { clock, pair } = setup();
+    await seedFixedCode(clock, '04817');
+    expect((await pair(fixtureBody('pair-request'), { version: '1.5' })).status).toBe(200);
+  });
+});
+
+describe('handlePair: concurrent offboarding', () => {
+  it('refuses the code of a user whose offboarding commits while the code is consumed', async () => {
+    const { clock, pair } = setup();
+    const code = await seedCode(clock);
+    const offboarding = new pg.Client({ connectionString: t.url });
+    await offboarding.connect();
+    let open = false;
+    try {
+      // The first steps of offboardUser, left uncommitted: lock the user, grace, revoke devices.
+      await offboarding.query('BEGIN');
+      open = true;
+      await offboarding.query('SELECT 1 FROM users WHERE id = $1 FOR NO KEY UPDATE', [code.userId]);
+      await offboarding.query(`UPDATE users SET status = 'grace' WHERE id = $1`, [code.userId]);
+      await offboarding.query(
+        `UPDATE devices SET revoked_at = now(), revoked_reason = 'offboarding'
+         WHERE user_id = $1 AND revoked_at IS NULL`,
+        [code.userId],
+      );
+      const pending = pair(body(code.code));
+      await new Promise((r) => setTimeout(r, 300));
+      await offboarding.query('COMMIT');
+      open = false;
+
+      expect(await pending).toEqual({
+        status: 403,
+        body: { ok: false, error: PAIR_MESSAGES.inactive },
+      });
+    } finally {
+      if (open) await offboarding.query('ROLLBACK');
+      await offboarding.end();
+    }
+    const unrevoked = await t.db
+      .select()
+      .from(devices)
+      .where(and(eq(devices.userId, code.userId), isNull(devices.revokedAt)));
+    expect(unrevoked).toHaveLength(0);
+    const [row] = await t.db.select().from(pairingCodes).where(eq(pairingCodes.id, code.id));
+    expect(row?.consumedAt).toBeNull();
+  });
 });
 
 describe('handlePair: server errors', () => {
@@ -549,6 +694,28 @@ describe('handlePair: server errors', () => {
     }
     // Nothing was consumed: the code still pairs.
     expect((await pair(body(code.code))).status).toBe(200);
+  });
+
+  it('answers an outdated plugin without waiting on a locked code row past the lock timeout', async () => {
+    const { clock, pair } = setup();
+    const code = await seedCode(clock);
+    const blocker = new pg.Client({ connectionString: t.url });
+    await blocker.connect();
+    try {
+      await blocker.query('BEGIN');
+      await blocker.query('SELECT 1 FROM pairing_codes WHERE id = $1 FOR UPDATE', [code.id]);
+      const started = Date.now();
+      const res = await Promise.race([
+        pair(body(code.code), { version: '1.4' }),
+        new Promise<null>((r) => setTimeout(() => r(null), 6_000)),
+      ]);
+      // Well inside the plugin's 10 s read timeout (PLUGIN-4), with the usual answer.
+      expect(res).toEqual({ status: 400, body: { ok: false, error: OUTDATED_TEXT } });
+      expect(Date.now() - started).toBeLessThan(5_000);
+    } finally {
+      await blocker.query('ROLLBACK');
+      await blocker.end();
+    }
   });
 
   it('answers 500 with a JSON error for an unexpected failure', async () => {

@@ -3,11 +3,10 @@
  * table's day/week/month/year, the guild leaderboards). "Today" starts at local midnight, which is
  * the only period that depends on the time zone; the others are rolling windows.
  */
+import { DEFAULT_TIMEZONE } from '../settings/user-settings';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
-
-export const DEFAULT_PERIOD_TIMEZONE = 'UTC';
 
 export interface PeriodStarts {
   /** Local midnight of `now`'s day in the time zone. */
@@ -26,7 +25,7 @@ export interface PeriodStarts {
  * rather than failing the page: the stored setting is validated on save, so this only guards against
  * a runtime that lacks a zone the saving one knew.
  */
-export function periodStarts(now: Date, timezone: string = DEFAULT_PERIOD_TIMEZONE): PeriodStarts {
+export function periodStarts(now: Date, timezone: string = DEFAULT_TIMEZONE): PeriodStarts {
   const t = now.getTime();
   return {
     today: startOfLocalDay(now, timezone),
@@ -78,19 +77,24 @@ interface LocalParts {
 }
 
 const formatters = new Map<string, Intl.DateTimeFormat>();
+/**
+ * Bounds the cache: Intl accepts any capitalization of a zone name ("europe/AMSTERDAM"), so keys
+ * from input could grow it without end. There are about 600 zones, so real use never reaches it.
+ */
+const MAX_CACHED_FORMATTERS = 1_000;
 
 function formatterFor(timezone: string): Intl.DateTimeFormat {
   const cached = formatters.get(timezone);
   if (cached) return cached;
   try {
     const fmt = makeFormatter(timezone);
-    formatters.set(timezone, fmt);
+    if (formatters.size < MAX_CACHED_FORMATTERS) formatters.set(timezone, fmt);
     return fmt;
   } catch {
     // RangeError: unknown time zone. Not cached, so odd input can't grow the cache.
-    return timezone === DEFAULT_PERIOD_TIMEZONE
-      ? makeFormatter(DEFAULT_PERIOD_TIMEZONE)
-      : formatterFor(DEFAULT_PERIOD_TIMEZONE);
+    return timezone === DEFAULT_TIMEZONE
+      ? makeFormatter(DEFAULT_TIMEZONE)
+      : formatterFor(DEFAULT_TIMEZONE);
   }
 }
 

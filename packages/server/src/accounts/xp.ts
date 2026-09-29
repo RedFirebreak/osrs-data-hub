@@ -55,7 +55,8 @@ export type XpByAccount = Map<number, XpBySkill>;
  * beyond (handoff §9). An explicit resolution is kept unless the range would have more than
  * MAX_SERIES_POINTS buckets at it, in which case the next coarser one is used (the response says
  * which), so a 5-minute request over a year can't return 100k points per skill. Unknown values are
- * treated as 'auto'.
+ * treated as 'auto'. By span only: getXpSeries also moves 5m to 1h for a range older than the raw
+ * retention (rawTierStart).
  */
 export function pickResolution(from: Date, to: Date, requested: Resolution | 'auto'): Resolution {
   const span = Math.max(0, to.getTime() - from.getTime());
@@ -70,6 +71,23 @@ export function pickResolution(from: Date, to: Date, requested: Resolution | 'au
     resolution = resolution === '5m' ? '1h' : '1d';
   }
   return resolution;
+}
+
+/**
+ * Where xp_samples is complete from: now − the retention policy's drop_after, or null without a
+ * retention policy (nothing is ever dropped). Retention drops whole chunks older than that, so raw
+ * samples before it may be gone while xp_hourly and xp_daily keep that history (TSDB-1). The policy
+ * is the worker's reconciliation of XP_RAW_RETENTION_DAYS (D-40), so this follows the configuration
+ * without the read model knowing it.
+ */
+async function rawTierStart(db: DbOrTx): Promise<Date | null> {
+  const result = await db.execute<{ start: Date | string | null }>(sql`
+    SELECT max(now() - (j.config->>'drop_after')::interval) AS start
+    FROM timescaledb_information.jobs j
+    WHERE j.proc_name = 'policy_retention' AND j.hypertable_name = 'xp_samples'
+      AND j.hypertable_schema = current_schema()`);
+  const start = result.rows[0]?.start;
+  return start === null || start === undefined ? null : new Date(start);
 }
 
 /**
@@ -295,7 +313,9 @@ export interface XpSeries {
 
 /**
  * XP chart data for one account (stats category required, else null; also null when the account
- * isn't visible). Resolution per pickResolution; the source is xp_samples (5m), xp_hourly (1h) or
+ * isn't visible). Resolution per pickResolution, except that 5m becomes 1h when the range starts
+ * before rawTierStart (the handoff's "5 min for ranges up to 7 days" assumes they are within the raw
+ * tier; an old week would otherwise chart nothing). The source is xp_samples (5m), xp_hourly (1h) or
  * xp_daily (1d, UTC days). The range starts at `from` floored to the resolution, so a bucket that
  * straddles `from` is included, and ends with the bucket that starts at or before `to`.
  *
@@ -315,7 +335,12 @@ export async function getXpSeries(
   const found = await loadVisibleAccount(db, viewer, publicId);
   if (!found || !found.access.categories.has('stats')) return null;
 
-  const resolution = pickResolution(opts.from, opts.to, opts.resolution);
+  let resolution = pickResolution(opts.from, opts.to, opts.resolution);
+  if (resolution === '5m') {
+    const rawStart = await rawTierStart(db);
+    const start = floorTo(opts.from, RESOLUTION_MS['5m']);
+    if (rawStart !== null && start.getTime() < rawStart.getTime()) resolution = '1h';
+  }
   const names = await knownSkills(db, opts.skills);
   if (names.length === 0 || opts.to.getTime() < opts.from.getTime()) {
     return { resolution, series: names.map((skill) => ({ skill, points: [] })) };

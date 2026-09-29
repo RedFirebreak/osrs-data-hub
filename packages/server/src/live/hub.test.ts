@@ -1,5 +1,7 @@
-import { createDb } from '@hub/db';
+import { createDb, schema, users, type Db } from '@hub/db';
 import { createTestDatabase, type TestDatabase } from '@hub/db/testing';
+import { eq } from 'drizzle-orm';
+import { drizzle } from 'drizzle-orm/node-postgres';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { FeedEvent } from '../feed';
 import { createTestMetrics, type HubMetrics } from '../metrics';
@@ -255,19 +257,27 @@ describe('LiveHub.onEvents', () => {
     expect(o.chunks).toEqual([]);
   });
 
-  it('keeps notification order when handlers overlap', async () => {
+  it('handles notifications one at a time, in arrival order, even when an earlier one is slow', async () => {
     newHub();
     const a = await seedEvent(t.db, zezima.id, { occurredAt: ago(MIN) });
-    const b = await seedEvent(t.db, privy.id, { occurredAt: ago(MIN) });
     const o = fakeSubscriber(owner);
     hub.subscribe(o);
+    // Block only the events read: the state notification behind it needs no events row.
+    const locker = await t.pool.connect();
+    try {
+      await locker.query('BEGIN');
+      await locker.query('LOCK TABLE events IN ACCESS EXCLUSIVE MODE');
+      const first = hub.onEvents({ accountId: zezima.id, seqs: [a.seq] });
+      const second = hub.onState({ accountId: zezima.id, deviceId: null });
+      await new Promise((r) => setTimeout(r, 300));
+      expect(o.chunks).toEqual([]);
+      await locker.query('COMMIT');
+      await Promise.all([first, second]);
+    } finally {
+      locker.release();
+    }
 
-    await Promise.all([
-      hub.onEvents({ accountId: zezima.id, seqs: [a.seq] }),
-      hub.onEvents({ accountId: privy.id, seqs: [b.seq] }),
-    ]);
-
-    expect(o.messages('event').map((m) => m.id)).toEqual([String(a.seq), String(b.seq)]);
+    expect(o.messages().map((m) => m.event)).toEqual(['event', 'presence']);
   });
 
   it('never throws: a failed read is logged without its message, and the hub keeps working', async () => {
@@ -286,7 +296,10 @@ describe('LiveHub.onEvents', () => {
     await expect(
       brokenHub.onState({ accountId: zezima.id, deviceId: null }),
     ).resolves.toBeUndefined();
-    expect(lines.filter((l) => l.includes('live: notification dropped'))).toHaveLength(2);
+    const dropped = lines.filter((l) => l.includes('live: notification dropped'));
+    expect(dropped).toHaveLength(2);
+    // DB-3: neither the query nor its parameters.
+    expect(dropped.join('\n')).not.toMatch(/Failed query|params|select /i);
 
     brokenHub.onReconnect();
     expect(sub.messages('resync')).toHaveLength(1);
@@ -335,6 +348,8 @@ describe('LiveHub.onState', () => {
       world: 302,
       specialWorld: false,
       lastSeen: ago(30_000).toISOString(),
+      // No tickDelay: the 25-minute timeout, 30 s of it gone.
+      onlineForMs: 25 * MIN - 30_000,
     };
     expect(m!.messages('presence').map((x) => x.data)).toEqual([expected]);
     expect(b!.messages('presence').map((x) => x.data)).toEqual([expected]);
@@ -343,6 +358,37 @@ describe('LiveHub.onState', () => {
     expect(g!.chunks).toEqual([]);
     // Presence messages carry no id: they must not move the client's Last-Event-ID.
     expect(o!.messages('presence').every((x) => x.id === undefined)).toBe(true);
+  });
+
+  it('sends presence of a hidden account to admins only (not even its owner)', async () => {
+    newHub();
+    const subs = [owner, member, admin].map((v) => fakeSubscriber(v));
+    subs.forEach((s) => hub.subscribe(s));
+
+    await hub.onState({ accountId: hidden.id, deviceId: null });
+
+    expect(subs.map((s) => s.messages('presence').length)).toEqual([0, 0, 1]);
+  });
+
+  it('tells the client how long "online" stays true, since no message comes when it expires', async () => {
+    // A crash, a lost connection or a hop to a special world sends nothing more: the stale-session
+    // job ends the session without a notification, so the client must expire "online" itself.
+    newHub();
+    const quick = await seedAccount(t.db, { name: 'Quick Quinn', ownerUserId: owner.userId });
+    await seedLatestState(t.db, quick.id, {
+      lastSeen: ago(20_000),
+      gameState: 'LOGGED_IN',
+      tickDelay: 100, // floor(100 × 1.86) = 186 s
+    });
+    const o = fakeSubscriber(owner);
+    hub.subscribe(o);
+
+    await hub.onState({ accountId: quick.id, deviceId: null });
+    await hub.onState({ accountId: offline.id, deviceId: null });
+
+    const [online, off] = o.messages('presence').map((x) => x.data as PresenceMessage);
+    expect(online).toMatchObject({ online: true, onlineForMs: 186_000 - 20_000 });
+    expect(off).toMatchObject({ online: false, onlineForMs: 0 });
   });
 
   it('computes online with isOnline at the hub clock', async () => {
@@ -419,6 +465,45 @@ describe('LiveHub.onState', () => {
         ownerName: 'Owner Olga',
       },
     ]);
+  });
+});
+
+describe('LiveHub reads', () => {
+  /** A hub on its own drizzle instance that counts the queries it runs. */
+  function countingHub(): { hub: LiveHub; queries: () => number } {
+    let count = 0;
+    const db: Db = drizzle(t.pool, { schema, logger: { logQuery: () => void count++ } });
+    const counted = new LiveHub({
+      db,
+      logger: captureLogger().logger,
+      metrics: createTestMetrics(),
+      now: () => NOW,
+    });
+    return { hub: counted, queries: () => count };
+  }
+
+  it('reads once per notification, however many streams are open (no query per subscriber)', async () => {
+    const device = await seedDevice(t.db, owner.userId);
+    const e = await seedEvent(t.db, zezima.id, {
+      type: 'death',
+      occurredAt: ago(MIN),
+      data: deathData(),
+    });
+    const run = async (viewers: Awaited<ReturnType<typeof seedUser>>[]) => {
+      const { hub: h, queries } = countingHub();
+      const subs = viewers.map((v) => fakeSubscriber(v));
+      subs.forEach((s) => h.subscribe(s));
+      await h.onEvents({ accountId: zezima.id, seqs: [e.seq] });
+      await h.onState({ accountId: zezima.id, deviceId: device, firstDataForDevice: true });
+      return { queries: queries(), subs };
+    };
+
+    const one = await run([member]);
+    const many = await run([owner, contributor, member, granted, blocked, admin, owner, member]);
+
+    expect(many.queries).toBe(one.queries);
+    expect(one.subs[0]!.messages('event')).toHaveLength(1);
+    expect(many.subs.every((s) => s.messages('event').length === 1)).toBe(true);
   });
 });
 
@@ -519,6 +604,58 @@ describe('LiveHub subscriptions', () => {
     expect(sends).toBe(1);
     offBad(); // the route's own cleanup afterwards is a no-op
     expect(hub.size()).toBe(2);
+  });
+
+  it('re-reads subscribed users before a fan-out: offboarded or deleted users are dropped, a demoted admin loses the override', async () => {
+    // The route captures the viewer when the stream opens, but a stream can stay open for days:
+    // offboarding (worker process) or an admin change must take effect on the next notification.
+    newHub();
+    const leaver = await seedUser(t.db, { name: 'Leaver Lou' });
+    const deleted = await seedUser(t.db, { name: 'Deleted Dee' });
+    const exAdmin = await seedUser(t.db, { name: 'Ex-admin Ed', isAdmin: true });
+    const closed: string[] = [];
+    const sub = (v: Awaited<ReturnType<typeof seedUser>>) => {
+      const s = fakeSubscriber(v);
+      s.close = () => void closed.push(v.userId);
+      hub.subscribe(s);
+      return s;
+    };
+    const [l, d, x, m] = [leaver, deleted, exAdmin, member].map(sub);
+    await t.db.update(users).set({ status: 'grace' }).where(eq(users.id, leaver.userId));
+    await t.db.delete(users).where(eq(users.id, deleted.userId));
+    await t.db.update(users).set({ isAdmin: false }).where(eq(users.id, exAdmin.userId));
+    const e = await seedEvent(t.db, zezima.id, { occurredAt: ago(MIN) });
+    const h = await seedEvent(t.db, hidden.id, { occurredAt: ago(MIN) });
+
+    await hub.onEvents({ accountId: zezima.id, seqs: [e.seq] });
+    await hub.onEvents({ accountId: hidden.id, seqs: [h.seq] });
+    await hub.onState({ accountId: zezima.id, deviceId: null });
+
+    expect(l!.chunks).toEqual([]);
+    expect(d!.chunks).toEqual([]);
+    expect(closed.sort()).toEqual([leaver.userId, deleted.userId].sort());
+    expect(hub.size()).toBe(2);
+    expect(await gauge(metrics)).toBe(2);
+    // Still a member: guild events and presence, but no hidden account any more.
+    expect(x!.messages('event').map((msg) => msg.id)).toEqual([String(e.seq)]);
+    expect(x!.messages('presence')).toHaveLength(1);
+    expect(m!.messages('event').map((msg) => msg.id)).toEqual([String(e.seq)]);
+  });
+
+  it('a stream subscribed while the users are re-read is kept', async () => {
+    newHub();
+    const early = fakeSubscriber(member);
+    hub.subscribe(early);
+    const late = fakeSubscriber(owner);
+    const e = await seedEvent(t.db, zezima.id, { occurredAt: ago(MIN) });
+
+    const pending = hub.onEvents({ accountId: zezima.id, seqs: [e.seq] });
+    hub.subscribe(late);
+    await pending;
+
+    expect(hub.size()).toBe(2);
+    expect(early.messages('event')).toHaveLength(1);
+    expect(late.messages('event')).toHaveLength(1);
   });
 
   it('a subscriber that unsubscribes another while receiving does not break the loop', () => {

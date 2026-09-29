@@ -14,16 +14,21 @@ const CACHE_TTL_MS = 10_000;
 // and the admin page's setDecommissioned must clear the cache ingest reads (NEXT-3, D-37).
 const g = globalThis as unknown as {
   __hubDecommissioned?: { value: boolean; expiresAt: number };
+  /** Bumped by every clear: a read that started before it must not fill the cache. */
+  __hubDecommissionedGeneration?: number;
 };
 
 /**
  * Whether the hub is decommissioned (hub_settings 'decommissioned' is JSON `true`; anything else,
- * or no row, is false). Cached for 10 s per process; setDecommissioned clears the cache.
+ * or no row, is false). Cached for 10 s per process; setDecommissioned clears the cache. A read
+ * still in flight when the cache is cleared returns its value but doesn't cache it, or a payload
+ * that arrived just before the admin flipped the switch would pin the old value for 10 s.
  */
 export async function isDecommissioned(db: DbOrTx): Promise<boolean> {
   const cached = g.__hubDecommissioned;
   const now = Date.now();
   if (cached && cached.expiresAt > now) return cached.value;
+  const generation = g.__hubDecommissionedGeneration ?? 0;
   // Compared in SQL: drizzle's jsonb reader JSON.parses string values a second time, so a stored
   // string "true" would come back as the boolean true.
   const [row] = await db
@@ -31,13 +36,16 @@ export async function isDecommissioned(db: DbOrTx): Promise<boolean> {
     .from(hubSettings)
     .where(eq(hubSettings.key, DECOMMISSIONED_KEY));
   const value = row?.on === true;
-  g.__hubDecommissioned = { value, expiresAt: now + CACHE_TTL_MS };
+  if ((g.__hubDecommissionedGeneration ?? 0) === generation) {
+    g.__hubDecommissioned = { value, expiresAt: now + CACHE_TTL_MS };
+  }
   return value;
 }
 
 /** Forgets the cached switch, so the next isDecommissioned reads the database. */
 export function clearDecommissionedCache(): void {
   delete g.__hubDecommissioned;
+  g.__hubDecommissionedGeneration = (g.__hubDecommissionedGeneration ?? 0) + 1;
 }
 
 /**

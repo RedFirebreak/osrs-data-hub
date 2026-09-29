@@ -29,7 +29,7 @@ Postgres behaviour, drizzle-orm 0.45 and drizzle-kit 0.31 (queries, errors, the 
 | [TSDB-9](#tsdb-9) | Compression, `CREATE MATERIALIZED VIEW … WITH (timescaledb.continuous)` or `add_retention_policy` fail with `functionality not supported under the current "apache" license`. |
 | [TSDB-10](#tsdb-10) | Timescale jobs (retention, compression, refresh) silently stop running in some databases, and the server log says `TimescaleDB background worker limit of 16 exceeded`. |
 | [TSDB-11](#tsdb-11) | A drizzle-kit-generated migration fails on a hypertable with `operation not supported on hypertables with compressed chunks` or `cannot add column with NOT NULL constraint without default to a hypertable that has columnstore enabled`. |
-| [TSDB-12](#tsdb-12) | Two concurrent ingest transactions fail with `40P01 deadlock detected`; one of them waits for a `ShareRowExclusiveLock` on a plain table while inserting into a hypertable. |
+| [TSDB-12](#tsdb-12) | Concurrent ingest transactions fail with `40P01 deadlock detected` around a chunk boundary (midnight, a new week); one of them waits for a `ShareRowExclusiveLock` on a plain table while inserting into a hypertable. |
 | [TSDB-13](#tsdb-13) | A "last value at or before t" lookup (`ORDER BY bucket DESC LIMIT 1`) on `xp_hourly`/`xp_daily` gets slower as history grows; `EXPLAIN` shows a Sort over an Append of the materialized hypertable instead of an index scan. |
 
 ### DB-1
@@ -294,16 +294,31 @@ affected chunks before a type change.
 *Source: `OBSERVED` (research sandbox, timescale/timescaledb:2.30.1, 2026-09-28)*
 
 ### TSDB-12
-**Two concurrent ingest transactions fail with `40P01 deadlock detected`; one of them waits for a `ShareRowExclusiveLock` on a plain table while inserting into a hypertable.**
+**Concurrent ingest transactions fail with `40P01 deadlock detected` around a chunk boundary (midnight, a new week); one of them waits for a `ShareRowExclusiveLock` on a plain table while inserting into a hypertable.**
 Inserting a row that needs a NEW chunk makes TimescaleDB create the chunk's foreign-key constraints,
 which takes `ShareRowExclusiveLock` on every plain table the hypertable references (`osrs_accounts` for
-`xp_samples`/`location_samples`) and waits for every open writer of that table. A transaction that
-already updated `osrs_accounts` and then inserts into a hypertable at a chunk boundary deadlocks with a
-second one doing the same. Fix: in a transaction, write the hypertables before (or without) touching the
-referenced row, and retry the whole transaction on 40P01 (packages/server/src/ingest/store.ts retries
-40P01/40001/23505 in-process; a retry costs about `deadlock_timeout`, 1 s).
+`xp_samples`/`location_samples`), waits for every open writer of that table, and **keeps the lock until
+commit**, while also holding the hypertable's chunk-creation lock (`ShareUpdateExclusiveLock`). Two faces:
 
-*Source: `OBSERVED` (ingest concurrency tests, timescale/timescaledb:2.30.1-pg18, 2026-09-28)*
+- A transaction that already wrote `osrs_accounts` (or any referenced table) and then inserts at a chunk
+  boundary deadlocks with another one doing the same, or with anything else that writes the referenced
+  table and then waits on a row the first holds (offboarding revoking a device an ingest transaction
+  has locked).
+- Neither writes `osrs_accounts`, yet two transactions create chunks of two hypertables in different
+  orders: one creates the `xp_samples` chunk (now holding `ShareRowExclusiveLock` on `osrs_accounts`)
+  and then waits for the `location_samples` chunk another is creating, which waits for that
+  `ShareRowExclusiveLock`. A new account's first snapshot (XP, then a location sample) next to an
+  existing account's (a location sample only) is enough.
+
+Retrying the transaction resolves it but costs `deadlock_timeout` (1 s) each time, and under load the
+retries collide again. Fix: in a transaction, write the hypertables before (or without) touching the
+referenced rows, create new referenced rows in their own committed statement first, and let only one
+transaction at a time create chunks: packages/server/src/ingest/chunks.ts takes one advisory lock
+before the first hypertable write whenever the target chunk range isn't known to exist yet. Pre-creating
+chunks ahead of time would take creation out of the hot path entirely.
+
+*Source: `OBSERVED` (ingest concurrency tests, timescale/timescaledb:2.30.1-pg18, 2026-09-28; the
+two-hypertable face in the server integration run, 2026-09-29)*
 
 ### TSDB-13
 **A "last value at or before t" lookup (`ORDER BY bucket DESC LIMIT 1`) on `xp_hourly`/`xp_daily` gets slower as history grows; `EXPLAIN` shows a Sort over an Append of the materialized hypertable instead of an index scan.**

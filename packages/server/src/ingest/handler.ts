@@ -24,10 +24,21 @@ import {
   type IngestDevice,
 } from './device';
 import { findAccountByName, identityClaim, type AccountRef } from './identity';
-import { MAX_EVENTS_PER_PAYLOAD, MAX_VERSION_TEXT, eventTypeLabel, versionLabel } from './limits';
+import {
+  INGEST_MIN_RETRY_AFTER_SECONDS,
+  MAX_EVENTS_PER_PAYLOAD,
+  MAX_VERSION_TEXT,
+  eventTypeLabel,
+  versionLabel,
+} from './limits';
 import * as res from './responses';
 import { resolveSkillIds } from './skills';
-import { AccountNotFoundError, storePayload, type StoreOutcome } from './store';
+import {
+  AccountNotFoundError,
+  ReporterRevokedError,
+  storePayload,
+  type StoreOutcome,
+} from './store';
 import type { IgnoredReason, IngestDeps, IngestMeta, IngestRequest } from './types';
 
 /** State of one request, shared by the steps and the outcome bookkeeping. */
@@ -48,13 +59,12 @@ interface IngestRun {
 /**
  * Handles one ingest request and never throws: every outcome is a PluginResponse with the status
  * the plugin needs (D-19, D-30). Every return path is timed (ingestLatency) and counted
- * (ingestPayloads{status}); every request counts its plugin version. After the body is archived,
- * the returned status and meta are recorded on the archive row.
+ * (ingestPayloads{status}); every authenticated request counts its plugin version. After the body is
+ * archived, the returned status and meta are recorded on the archive row.
  */
 export async function handleIngest(deps: IngestDeps, req: IngestRequest): Promise<PluginResponse> {
   const recv = deps.now?.() ?? new Date();
   const stopTimer = deps.metrics.ingestLatency.startTimer();
-  deps.metrics.pluginVersions.inc({ version: versionLabel(deps.metrics, req.versionHeader) });
   const run: IngestRun = {
     deps,
     req,
@@ -86,6 +96,9 @@ async function ingest(run: IngestRun): Promise<PluginResponse> {
   const device = await authenticateDevice(deps.db, req.token);
   if (device === null) return res.unauthorized();
   run.device = device;
+  // Counted only once authenticated: the header is free text, and the label set is capped
+  // (versionLabel), so a stranger's made-up versions must not use up the labels (D-57).
+  deps.metrics.pluginVersions.inc({ version: versionLabel(deps.metrics, req.versionHeader) });
 
   if (!meetsMinimumVersion(req.versionHeader, deps.minPluginVersion)) {
     await markDeviceOutdated(deps.db, device.id, run.recv, run.versionText);
@@ -99,7 +112,7 @@ async function ingest(run: IngestRun): Promise<PluginResponse> {
   if (!parsed.ok) return rejectUnparsable(run, device, text, parsed.error);
   const payload = parsed.payload;
 
-  const limited = checkRate(run, device, payload);
+  const limited = checkRate(run, device, payload.events.length > 0);
   if (limited !== null) return limited;
 
   run.archive = await archivePayload(deps.db, {
@@ -120,13 +133,13 @@ async function processPayload(
   normalized: NormalizeResult,
 ): Promise<PluginResponse> {
   const claim = identityClaim(payload.player);
-  if (claim.kind === 'none') return handleNoIdentity(run, device, normalized);
+  if (claim.kind === 'none') return handleNoIdentity(run, device, payload.state, normalized);
 
   let account: AccountRef;
   if (claim.kind === 'hash') {
     account = { kind: 'hash', accountHash: claim.accountHash };
   } else {
-    const accountId = await findAccountByName(run.deps.db, claim.name);
+    const accountId = await findAccountByName(run.deps.db, claim.name, device.userId);
     if (accountId === null) return res.unknownAccount();
     run.deps.logger.warn(
       { deviceId: device.id, accountId },
@@ -155,7 +168,13 @@ async function processPayload(
       },
     );
   } catch (err) {
-    if (err instanceof AccountNotFoundError) return res.unknownAccount();
+    // Deleted meanwhile (a hard delete): a name can't be matched any more (400), while a hash is
+    // simply created again when the plugin resends (503).
+    if (err instanceof AccountNotFoundError) {
+      return account.kind === 'id' ? res.unknownAccount() : res.temporarilyUnavailable();
+    }
+    // Revoked or offboarded while the request was in flight: the same 401 as at the door (D-19).
+    if (err instanceof ReporterRevokedError) return res.unauthorized();
     throw err;
   }
   return recordStored(run, outcome);
@@ -191,13 +210,20 @@ class UnreadableBodyError extends Error {
   }
 }
 
-/** Invalid JSON (or a non-object root) is archived with its final status and answered 400. */
+/**
+ * Invalid JSON (or a non-object root) is archived with its final status and answered 400. It takes a
+ * rate-limit token like a snapshot-only payload (it carries no events anyone could lose): a device
+ * sending unparsable bodies faster than the bucket allows gets 429 and nothing archived, so it can't
+ * fill raw_payloads with 256 KB bodies (D-57).
+ */
 async function rejectUnparsable(
   run: IngestRun,
   device: IngestDevice,
   text: string,
   error: 'not_json' | 'not_object',
 ): Promise<PluginResponse> {
+  const limited = checkRate(run, device, false);
+  if (limited !== null) return limited;
   await archivePayload(run.deps.db, {
     receivedAt: run.recv,
     deviceId: device.id,
@@ -210,18 +236,19 @@ async function rejectUnparsable(
 }
 
 /**
- * Per-device token bucket (handoff §7.6). Every payload takes a token, but only snapshot-only
- * payloads are refused: the plugin drops them while paused and the next snapshot carries the full
- * state, whereas event payloads must never be refused (they would only queue). Null = go on.
+ * Per-device token bucket (handoff §7.6). Every payload takes a token, but only payloads without
+ * events are refused, with a whole-second Retry-After of at least 3 (PLUGIN-5): the plugin drops
+ * snapshots while paused and the next snapshot carries the full state, whereas event payloads must
+ * never be refused (they would only queue). Null = go on.
  */
 function checkRate(
   run: IngestRun,
   device: IngestDevice,
-  payload: ParsedPayload,
+  hasEvents: boolean,
 ): PluginResponse | null {
   const result = run.deps.limiter.take(device.id);
-  if (result.ok || payload.events.length > 0) return null;
-  return res.rateLimited(result.retryAfterSeconds);
+  if (result.ok || hasEvents) return null;
+  return res.rateLimited(Math.max(INGEST_MIN_RETRY_AFTER_SECONDS, result.retryAfterSeconds));
 }
 
 /**
@@ -244,12 +271,13 @@ function normalizeCapped(run: IngestRun, payload: ParsedPayload): NormalizeResul
 
 /**
  * No usable identity (no player, or a partial one without name and hash; D-29, PLUGIN-1): 200.
- * A clientShutdown in it closes this device's open sessions; otherwise the payload is ignored.
- * Either way the device's own presence is refreshed.
+ * A clientShutdown in it closes this device's open sessions and ends those accounts' presence;
+ * otherwise the payload is ignored. Either way the device's own presence is refreshed.
  */
 async function handleNoIdentity(
   run: IngestRun,
   device: IngestDevice,
+  state: string | null,
   normalized: NormalizeResult,
 ): Promise<PluginResponse> {
   await touchDevice(run.deps.db, device.id, run.recv, run.req.ip, run.versionText);
@@ -258,6 +286,7 @@ async function handleNoIdentity(
       run.deps.db,
       device.id,
       normalized.shutdown,
+      state,
     );
     return res.ok();
   }

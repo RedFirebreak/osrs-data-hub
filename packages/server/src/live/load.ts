@@ -2,6 +2,7 @@
  * The reads behind one live notification. Each helper is a single query; the hub runs them once per
  * notification and shares the result across every subscriber.
  */
+import type { Viewer } from '@hub/core';
 import { devices, events, latestState, osrsAccounts, users, type DbOrTx } from '@hub/db';
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
@@ -121,4 +122,24 @@ export async function loadDeviceAccount(
     .leftJoin(ownerUsers, eq(ownerUsers.id, osrsAccounts.ownerUserId))
     .where(eq(devices.id, deviceId));
   return row ?? null;
+}
+
+/**
+ * The current status and admin flag of these users (absent from the map when deleted). The hub
+ * re-reads its subscribers with it, because a stream outlives changes to its user (offboarding,
+ * admin changes).
+ */
+export async function loadViewers(
+  db: DbOrTx,
+  userIds: readonly string[],
+): Promise<Map<string, Viewer>> {
+  const out = new Map<string, Viewer>();
+  const ids = [...new Set(userIds)];
+  if (ids.length === 0) return out;
+  const rows = await db
+    .select({ userId: users.id, status: users.status, isAdmin: users.isAdmin })
+    .from(users)
+    .where(inArray(users.id, ids));
+  for (const row of rows) out.set(row.userId, row);
+  return out;
 }

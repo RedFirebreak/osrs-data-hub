@@ -4,11 +4,14 @@
  * The web process holds one LISTEN connection (listener.ts) and one LiveHub; every open
  * `/api/live/stream` is a subscriber. For each notification the hub reads the rows ONCE, then applies
  * the one permission resolver (@hub/core resolveAccess, handoff §10) and the viewer's toast filter
- * per subscriber. Nothing is persisted: a stream that misses messages recovers through
- * `Last-Event-ID` (replayEvents) or a 'resync'.
+ * per subscriber. Each fan-out also re-reads the subscribed users (one query), so a user offboarded
+ * or demoted while their stream is open stops receiving what they may no longer see. Nothing is
+ * persisted: a stream that misses messages recovers through `Last-Event-ID` (replayEvents) or a
+ * 'resync'.
  */
 import {
   isOnline,
+  presenceTimeoutSeconds,
   resolveAccess,
   type AccountAccess,
   type Category,
@@ -26,6 +29,7 @@ import {
   loadEventRows,
   loadLiveAccount,
   loadPresence,
+  loadViewers,
   type DeviceAccountRow,
   type LiveAccount,
   type PresenceRow,
@@ -40,7 +44,11 @@ import { formatSse } from './sse';
 
 /** One open stream. */
 export interface LiveSubscriber {
-  /** Captured when the stream opened; a changed status or filter applies from the next stream. */
+  /**
+   * The viewer when the stream opened. The hub re-reads the user's status and admin flag before
+   * every fan-out (a stream outlives offboarding and admin changes) and drops the stream once the
+   * user is no longer active or was deleted. The toast filter applies until the next stream.
+   */
   viewer: Viewer;
   toast: ToastFilter;
   /**
@@ -48,7 +56,10 @@ export interface LiveSubscriber {
    * the hub then drops the subscriber (and calls `close`).
    */
   send(chunk: string): void;
-  /** Called once when the hub drops the subscriber after a failed send, so the route can end it. */
+  /**
+   * Called once when the hub drops the subscriber (a failed send, or its user is no longer active),
+   * so the route can end the response.
+   */
   close?(): void;
 }
 
@@ -62,6 +73,8 @@ export interface LiveHubDeps {
 interface Entry {
   sub: LiveSubscriber;
   active: boolean;
+  /** sub.viewer, refreshed from the users table before each fan-out (refreshViewers). */
+  viewer: Viewer;
 }
 
 export class LiveHub {
@@ -85,7 +98,8 @@ export class LiveHub {
    * gives two independent subscriptions. Keeps the `hub_sse_connections` gauge equal to size().
    */
   subscribe(sub: LiveSubscriber): () => void {
-    const entry: Entry = { sub, active: true };
+    const { userId, status, isAdmin } = sub.viewer;
+    const entry: Entry = { sub, active: true, viewer: { userId, status, isAdmin } };
     this.entries.add(entry);
     this.updateGauge();
     return () => this.remove(entry);
@@ -96,18 +110,20 @@ export class LiveHub {
   }
 
   /**
-   * New events committed for an account: loads the rows (ascending seq), the account and its
-   * AccountAccess once, then sends every subscriber that may read the account's `events` an 'event'
-   * message per row, redacted for them (toFeedEvent), with `id: seq` and their toast flag. Never
-   * throws: a failed read is logged and the notification dropped (clients recover by replay).
+   * New events committed for an account: loads the rows (ascending seq), the account, its
+   * AccountAccess and the subscribed users once (refreshViewers), then sends every subscriber that
+   * may read the account's `events` an 'event' message per row, redacted for them (toFeedEvent),
+   * with `id: seq` and their toast flag. Never throws: a failed read is logged and the notification
+   * dropped (clients recover by replay).
    */
   onEvents(n: EventsNotification): Promise<void> {
     return this.serial('events', () => this.handleEvents(n));
   }
 
   /**
-   * An account's live state changed: sends a 'presence' message to every subscriber that may read
-   * the account's `activity`. For the first data from a device (n.firstDataForDevice), also sends a
+   * An account's live state changed: loads the presence columns, the AccountAccess and the subscribed
+   * users once, then sends a 'presence' message to every subscriber that may read the account's
+   * `activity`. For the first data from a device (n.firstDataForDevice), also sends a
    * 'device' message to the device owner's streams, whatever their categories: it is their own
    * device, and the wizard waits for it. Never throws.
    */
@@ -123,7 +139,7 @@ export class LiveHub {
         : { kind: 'outdated_plugin', codeId: n.codeId, version: n.version };
     const chunk = formatSse({ event: 'pairing', data });
     for (const entry of this.snapshot()) {
-      if (entry.sub.viewer.userId === n.userId) this.deliver(entry, chunk);
+      if (entry.viewer.userId === n.userId) this.deliver(entry, chunk);
     }
   }
 
@@ -138,18 +154,21 @@ export class LiveHub {
 
   private async handleEvents(n: EventsNotification): Promise<void> {
     if (this.entries.size === 0 || n.seqs.length === 0) return;
-    const [rows, account, accessMap] = await Promise.all([
+    const subscribed = this.snapshot();
+    const [rows, account, accessMap, viewers] = await Promise.all([
       loadEventRows(this.db, n.accountId, n.seqs),
       loadLiveAccount(this.db, n.accountId),
       loadAccountAccess(this.db, [n.accountId]),
+      loadViewers(this.db, userIdsOf(subscribed)),
     ]);
+    this.refreshViewers(subscribed, viewers);
     const access = accessMap.get(n.accountId);
     if (rows.length === 0 || !account || !access) return;
     const now = this.now();
     // toFeedEvent depends only on the categories: build each variant once, not once per stream.
     const feedCache = new Map<string, FeedEvent[]>();
     for (const entry of this.snapshot()) {
-      const resolved = resolveAccess(entry.sub.viewer, access);
+      const resolved = resolveAccess(entry.viewer, access);
       if (!resolved.categories.has('events')) continue;
       const feed = cachedFeed(feedCache, rows, account, resolved.categories);
       const chunk = feed
@@ -168,11 +187,14 @@ export class LiveHub {
   private async handleState(n: StateNotification): Promise<void> {
     if (this.entries.size === 0) return;
     const deviceId = n.firstDataForDevice === true ? n.deviceId : null;
-    const [presence, accessMap, device] = await Promise.all([
+    const subscribed = this.snapshot();
+    const [presence, accessMap, device, viewers] = await Promise.all([
       loadPresence(this.db, n.accountId),
       loadAccountAccess(this.db, [n.accountId]),
       deviceId ? loadDeviceAccount(this.db, deviceId, n.accountId) : null,
+      loadViewers(this.db, userIdsOf(subscribed)),
     ]);
+    this.refreshViewers(subscribed, viewers);
     const access = accessMap.get(n.accountId);
     if (!presence || !access) return;
     this.sendPresence(presence, access);
@@ -180,16 +202,19 @@ export class LiveHub {
   }
 
   private sendPresence(row: PresenceRow, access: AccountAccess): void {
+    const now = this.now();
+    const online = isOnline(row, now);
     const data: PresenceMessage = {
       account: accountRef(row),
-      online: isOnline(row, this.now()),
+      online,
       world: row.world,
       specialWorld: row.specialWorld,
       lastSeen: row.lastSeen.toISOString(),
+      onlineForMs: online ? onlineForMs(row, now) : 0,
     };
     const chunk = formatSse({ event: 'presence', data });
     for (const entry of this.snapshot()) {
-      if (resolveAccess(entry.sub.viewer, access).categories.has('activity')) {
+      if (resolveAccess(entry.viewer, access).categories.has('activity')) {
         this.deliver(entry, chunk);
       }
     }
@@ -205,7 +230,7 @@ export class LiveHub {
     };
     const chunk = formatSse({ event: 'device', data });
     for (const entry of this.snapshot()) {
-      if (entry.sub.viewer.userId === row.deviceUserId) this.deliver(entry, chunk);
+      if (entry.viewer.userId === row.deviceUserId) this.deliver(entry, chunk);
     }
   }
 
@@ -226,18 +251,39 @@ export class LiveHub {
     return run;
   }
 
+  /**
+   * Applies the users as just read to the streams that were subscribed when the read started (a
+   * stream added meanwhile brought its own fresh viewer, and its user isn't in `viewers`): a
+   * deleted user, or one no longer active (offboarded: their sessions are revoked, so the browser's
+   * reconnect gets 401), loses the stream; everyone else gets their current status and admin flag.
+   */
+  private refreshViewers(subscribed: readonly Entry[], viewers: ReadonlyMap<string, Viewer>): void {
+    for (const entry of subscribed) {
+      if (!entry.active) continue;
+      const current = viewers.get(entry.viewer.userId);
+      if (current?.status === 'active') entry.viewer = current;
+      else this.drop(entry, 'user not active');
+    }
+  }
+
   private deliver(entry: Entry, chunk: string): void {
     if (!entry.active) return;
     try {
       entry.sub.send(chunk);
     } catch {
-      this.logger.warn({ userId: entry.sub.viewer.userId }, 'live: send failed, stream dropped');
-      this.remove(entry);
-      try {
-        entry.sub.close?.();
-      } catch {
-        // The stream is being dropped anyway.
-      }
+      this.drop(entry, 'send failed');
+    }
+  }
+
+  /** Removes the stream and tells the route to end it (`close`), once. */
+  private drop(entry: Entry, reason: 'send failed' | 'user not active'): void {
+    if (!entry.active) return;
+    this.logger.warn({ userId: entry.viewer.userId, reason }, 'live: stream dropped');
+    this.remove(entry);
+    try {
+      entry.sub.close?.();
+    } catch {
+      // The stream is being dropped anyway.
     }
   }
 
@@ -256,6 +302,16 @@ export class LiveHub {
   private updateGauge(): void {
     this.metrics.sseConnections.set(this.entries.size);
   }
+}
+
+/** Time left until isOnline turns false for this row (it is online at `now`). */
+function onlineForMs(row: PresenceRow, now: Date): number {
+  const offlineAt = row.lastSeen.getTime() + presenceTimeoutSeconds(row.tickDelay) * 1000;
+  return Math.max(0, offlineAt - now.getTime());
+}
+
+function userIdsOf(entries: readonly Entry[]): string[] {
+  return entries.map((e) => e.viewer.userId);
 }
 
 function accountRef(a: LiveAccount): PresenceMessage['account'] {
