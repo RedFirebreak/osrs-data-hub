@@ -232,8 +232,12 @@ export const Item = z
       .string()
       .nullable()
       .meta({ description: 'HEAD, CAPE, WEAPON, … on equipment items; null in the inventory.' }),
+    inventory_slot: int.nullable().meta({
+      description:
+        'Inventory slot 0–27 (left to right, then top to bottom) on inventory items from plugin 1.5.1; null from older plugins and on equipment.',
+    }),
   })
-  .meta({ description: 'An item as the plugin sent it (inventory: one entry per slot).' });
+  .meta({ description: 'An item as the plugin sent it (inventory: one entry per occupied slot).' });
 
 export const Skill = z.object({
   skill: z.string().meta({

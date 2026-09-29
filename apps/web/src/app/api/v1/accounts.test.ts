@@ -201,6 +201,7 @@ describe('GET /api/v1/accounts/{id}', () => {
       ge_price: 47601,
       ha_price: 30000,
       equipment_slot: 'HEAD',
+      inventory_slot: null,
     });
     expect(data.equipment.items.map((i) => i.equipment_slot)).toContain('WEAPON');
     expect(data.inventory).toMatchObject({ shared: true });

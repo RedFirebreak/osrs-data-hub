@@ -178,6 +178,17 @@ Each section sent by the plugin carries `shared: true` and `updated_at`.
 A section the plugin never sent looks like `"inventory":{"shared":false,"updated_at":null}`. Without
 `activity`, the `updated_at` of skills, equipment and inventory is cut to the UTC day (D-50).
 
+`equipment` and `inventory` hold `items` and `value` (Σ `ge_price × quantity`). An item is
+`{id, name, quantity, ge_price, ha_price, equipment_slot, inventory_slot}`, one entry per occupied slot
+(five sharks are five entries). `equipment_slot` (`HEAD`, `WEAPON`, …) is set on equipment items.
+`inventory_slot` is the inventory slot, 0–27, left to right and then top to bottom (row = slot / 4,
+column = slot % 4), from plugin 1.5.1 on; it is `null` on equipment and in inventories sent by an
+older plugin, whose items are in the order the plugin sent them (D-86).
+
+    "inventory":{"shared":true,"updated_at":"…","value":1650900,
+                 "items":[{"id":4151,"name":"Abyssal whip","quantity":1,"ge_price":1650000,"ha_price":72000,"equipment_slot":null,"inventory_slot":0},
+                          {"id":385,"name":"Shark","quantity":1,"ge_price":900,"ha_price":60,"equipment_slot":null,"inventory_slot":27}]}
+
 ### GET /snapshot?since=
 
 Every visible account in one response, built for polling every 2–10 s. Limited to 1 request per second
@@ -308,7 +319,7 @@ Every change of the worn set, newest first, each with the whole set after it (`e
 days.
 
     {"data":{"account":{…},"from":"…","to":"…","changes":[{"changed_at":"2026-09-29T13:24:12.046Z",
-     "items":[{"id":10828,"name":"Helm of Neitiznot","quantity":1,"ge_price":47601,"ha_price":30000,"equipment_slot":"HEAD"},…]}]},"meta":{…}}
+     "items":[{"id":10828,"name":"Helm of Neitiznot","quantity":1,"ge_price":47601,"ha_price":30000,"equipment_slot":"HEAD","inventory_slot":null},…]}]},"meta":{…}}
 
 ### GET /accounts/{id}/wealth?from=&to=
 

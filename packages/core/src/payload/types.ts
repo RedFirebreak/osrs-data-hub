@@ -3,7 +3,10 @@
  * player can filter sections, and some sends carry no (or a partial) `player` (PLUGIN-1).
  */
 
-/** One item as sent. Inventory is one entry per slot (not merged); equipment carries equipmentSlot. */
+/**
+ * One item as sent. Inventory is one entry per occupied slot (not merged) and, from plugin 1.5.1, carries
+ * inventorySlot; equipment carries equipmentSlot (PLUGIN-11).
+ */
 export interface ItemData {
   id: number;
   name?: string;
@@ -14,6 +17,11 @@ export interface ItemData {
   quantity: number;
   /** EquipmentInventorySlot name (HEAD, CAPE, …) on equipment items only. */
   equipmentSlot?: string;
+  /**
+   * Inventory slot 0..27 (left to right, then top to bottom) on `player.inventory` items from plugin
+   * 1.5.1; absent from older plugins and on every other item list (death kept/lost, loot).
+   */
+  inventorySlot?: number;
   /** Drop probability on some loot items (can be exponent notation on the wire). */
   rarity?: number;
 }

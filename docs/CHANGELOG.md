@@ -4,6 +4,22 @@ Changes are consolidated per pull request, newest first. Each entry names the PR
 open), what changed, and any decision (`D-n`, see [ARCHITECTURE.md](ARCHITECTURE.md#decision-log)) or
 gotcha (`AREA-n`, see [gotchas](gotchas/README.md)) it introduced.
 
+## Inventory slots from plugin 1.5.1 (branch `red/tender-curie-n2va8s`)
+
+HA Exporter 1.5.1 (`@9835dbe`) sends `inventorySlot` (0..27) on each inventory item, so the account
+page's inventory now looks as it does in game, gaps included (D-86).
+
+- **Parser** (`@hub/core`): `ItemData.inventorySlot`, a non-negative int32; an invalid one drops the
+  inventory section like any other invalid item field. It was already kept in `latest_state` (loose
+  objects), so inventories from 1.5.1 plugins place correctly as soon as this ships; no migration.
+- **Grid:** `inventorySlots` puts each item at its slot; items without one (1.5 plugins), outside
+  0..27 or on a slot already taken fill the first free slots in the order sent. `MIN_PLUGIN_VERSION`
+  stays `1.5`.
+- **API and Download my data:** items carry `inventory_slot` (`null` on equipment and from older
+  plugins); documented in API.md with an example.
+- **Docs:** ARCHITECTURE §3 (the v1.5.1 protocol change), §12, D-86; PLUGIN-11 now says where the slot
+  is and isn't sent.
+
 ## M4 metrics dashboards (branch `red/m4-metrics-dashboards-db30d3`)
 
 Handoff §16's metrics, complete, with a Grafana dashboard and alert rules as code (D-84, D-85).

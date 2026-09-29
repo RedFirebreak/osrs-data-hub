@@ -17,7 +17,7 @@ export interface ApiMeter {
   max: number;
 }
 
-/** An item as the plugin sent it (inventory: one entry per slot, not merged; equipment: by slot). */
+/** An item as the plugin sent it (inventory: one entry per occupied slot, not merged; equipment: by slot). */
 export interface ApiItem {
   id: number;
   /** null when the plugin didn't send a name. */
@@ -29,6 +29,11 @@ export interface ApiItem {
   haPrice: number | null;
   /** Equipment slot (HEAD, CAPE, WEAPON, …) on equipment items; null on inventory items. */
   equipmentSlot: string | null;
+  /**
+   * Inventory slot 0..27 (left to right, then top to bottom) on inventory items from plugin 1.5.1;
+   * null from older plugins and on equipment items.
+   */
+  inventorySlot: number | null;
 }
 
 /**
@@ -57,6 +62,7 @@ export function toApiItems(items: unknown): ApiItem[] {
       gePrice: typeof item.gePrice === 'number' ? item.gePrice : 0,
       haPrice: typeof item.haPrice === 'number' ? item.haPrice : null,
       equipmentSlot: typeof item.equipmentSlot === 'string' ? item.equipmentSlot : null,
+      inventorySlot: Number.isInteger(item.inventorySlot) ? item.inventorySlot! : null,
     });
   }
   return out;

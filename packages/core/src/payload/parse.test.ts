@@ -632,6 +632,9 @@ describe('parsePayload: inventory and equipment', () => {
     [{ items: [{ id: 1, quantity: 1, gePrice: 2 ** 53 }] }],
     [{ items: [{ id: 1, quantity: 1, gePrice: 1, haPrice: 1.5 }] }],
     [{ items: [{ id: 1, quantity: 1, gePrice: 1, rarity: true }] }],
+    [{ items: [{ id: 1, quantity: 1, gePrice: 1, inventorySlot: -1 }] }],
+    [{ items: [{ id: 1, quantity: 1, gePrice: 1, inventorySlot: 1.5 }] }],
+    [{ items: [{ id: 1, quantity: 1, gePrice: 1, inventorySlot: '3' }] }],
   ])('drops inventory %j', (inventory) => {
     const p = normal((b) => (b.player.inventory = inventory));
     expect(p.player).not.toHaveProperty('inventory');
@@ -657,6 +660,17 @@ describe('parsePayload: inventory and equipment', () => {
       { id: 995, quantity: 2147483647, gePrice: 1 },
       { id: 4151, quantity: 1, gePrice: 9007199254740991, haPrice: 72000, name: 'Abyssal whip' },
     ]);
+  });
+
+  it('keeps inventorySlot as plugin 1.5.1 sends it (empty slots omitted, PLUGIN-11)', () => {
+    const body = fixtureBody('snapshot-normal').replace(
+      '"inventory":{"items":[',
+      '"inventory":{"items":[{"name":"Abyssal whip","id":4151,"gePrice":1650000,"haPrice":72000,"quantity":1,"inventorySlot":0},{"name":"Shark","id":385,"gePrice":900,"haPrice":60,"quantity":1,"inventorySlot":27},',
+    );
+    const p = ok(body);
+    expect(p.skipped.sections).toEqual([]);
+    expect(p.player!.inventory!.slice(0, 2).map((i) => i.inventorySlot)).toEqual([0, 27]);
+    expect(p.player!.inventory![2]).not.toHaveProperty('inventorySlot');
   });
 
   it('drops a section holding a number JSON.parse turns into Infinity', () => {

@@ -45,11 +45,37 @@ describe('mergeStacks (inventory merged for display)', () => {
 });
 
 describe('inventorySlots', () => {
-  it('pads to 28 slots in the order sent and never exceeds 28', () => {
+  it('without slots (plugin before 1.5.1): pads to 28 in the order sent, never exceeds 28', () => {
     const slots = inventorySlots([shark, coins]);
     expect(slots).toHaveLength(28);
     expect(slots.slice(0, 3)).toEqual([shark, coins, null]);
     expect(inventorySlots(Array.from({ length: 30 }, () => shark))).toHaveLength(28);
+  });
+
+  it('places items at their inventorySlot, leaving gaps where the game has them', () => {
+    const first = { ...coins, inventorySlot: 0 };
+    const middle = { ...shark, inventorySlot: 13 };
+    const last = { ...brew, inventorySlot: 27 };
+    const slots = inventorySlots([last, first, middle]);
+    expect(slots).toHaveLength(28);
+    expect(slots[0]).toBe(first);
+    expect(slots[13]).toBe(middle);
+    expect(slots[27]).toBe(last);
+    expect(slots.filter((s) => s !== null)).toHaveLength(3);
+  });
+
+  it('fills the first free slots with items whose slot is missing, out of range or taken', () => {
+    const placed = { ...coins, inventorySlot: 0 };
+    const taken = { ...brew, inventorySlot: 0 };
+    const outOfRange = { ...shark, inventorySlot: 28 };
+    const slots = inventorySlots([placed, shark, taken, outOfRange]);
+    expect(slots.slice(0, 5)).toEqual([placed, shark, taken, outOfRange, null]);
+  });
+
+  it('never exceeds 28 when slotted items take every slot', () => {
+    const full = Array.from({ length: 28 }, (_, i) => ({ ...shark, inventorySlot: i }));
+    const slots = inventorySlots([...full, coins]);
+    expect(slots).toEqual(full);
   });
 });
 

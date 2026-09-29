@@ -155,9 +155,12 @@ event key of [DB-2](database.md#db-2)); nothing keyed by (device, eventId).
 quantity above 1 (ItemUtils.java:46-61). Loot `items` and death `lostItems` are merged by item id, and
 `equipment.items` is one entry per slot with `equipmentSlot`. `gePrice` (long) and `haPrice` (int) are
 per unit. Fix: always sum `gePrice × quantity` over entries; never key inventory by item id (a map keeps
-one shark of five); equipment can be keyed by `equipmentSlot`.
+one shark of five); equipment can be keyed by `equipmentSlot`. From v1.5.1, `inventory.items` entries
+also carry `inventorySlot` (0..27, left to right then top to bottom), but empty slots are still omitted
+and kept/lost and loot items never have it (DeathNotifier clears it), so a position in the list is
+never a slot: place by `inventorySlot` when present.
 
-*Source: `SOURCE` (ItemUtils.java:46-89, DeathNotifier.java:146-194, LootNotifier.java:141-207 @0ec2a36)*
+*Source: `SOURCE` (ItemUtils.java:46-89, DeathNotifier.java:146-194, LootNotifier.java:141-207 @0ec2a36; ItemUtils.java:50-62, DeathNotifier.java:148 @9835dbe, v1.5.1)*
 
 ### PLUGIN-12
 **Deaths and superior spawns inside raids and other instances have coordinates nowhere near the player's live location in the same instance.**

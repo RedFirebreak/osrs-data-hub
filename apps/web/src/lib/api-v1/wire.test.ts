@@ -5,8 +5,8 @@
  */
 import type { ApiAccountDetail, ApiEvent, ApiSnapshotAccount } from '@hub/server';
 import { describe, expect, it } from 'vitest';
-import { AccountDetail, Event, SnapshotAccount } from './schemas';
-import { wireAccountDetail, wireEvent, wireSnapshotAccount } from './wire';
+import { AccountDetail, Event, Item, SnapshotAccount } from './schemas';
+import { wireAccountDetail, wireEvent, wireItem, wireSnapshotAccount } from './wire';
 
 const AT = '2026-09-29T10:00:00.000Z';
 
@@ -33,7 +33,15 @@ describe('wireAccountDetail', () => {
       updatedAt: AT,
       value: 10,
       items: [
-        { id: 1, name: 'Whip', quantity: 1, gePrice: 10, haPrice: null, equipmentSlot: 'WEAPON' },
+        {
+          id: 1,
+          name: 'Whip',
+          quantity: 1,
+          gePrice: 10,
+          haPrice: null,
+          equipmentSlot: 'WEAPON',
+          inventorySlot: null,
+        },
       ],
     },
     location: { shared: false, updatedAt: null },
@@ -71,6 +79,7 @@ describe('wireAccountDetail', () => {
             ge_price: 10,
             ha_price: null,
             equipment_slot: 'WEAPON',
+            inventory_slot: null,
           },
         ],
       },
@@ -131,6 +140,22 @@ describe('wireSnapshotAccount', () => {
       stale: true,
       updated_at: AT,
     });
+  });
+});
+
+describe('wireItem', () => {
+  it('carries the inventory slot plugin 1.5.1 sends', () => {
+    const wire = wireItem({
+      id: 385,
+      name: 'Shark',
+      quantity: 1,
+      gePrice: 900,
+      haPrice: 60,
+      equipmentSlot: null,
+      inventorySlot: 27,
+    });
+    expect(Item.parse(wire)).toEqual(wire);
+    expect(wire).toMatchObject({ equipment_slot: null, inventory_slot: 27 });
   });
 });
 

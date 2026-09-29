@@ -279,6 +279,7 @@ describe('apiGetAccount', () => {
       gePrice: 1,
       haPrice: 0,
       equipmentSlot: null,
+      inventorySlot: null,
     });
     expect(inventory?.value).toBe(sent.reduce((sum, i) => sum + i.gePrice * i.quantity, 0));
     const equipment = d.equipment?.shared ? d.equipment : null;
