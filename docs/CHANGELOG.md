@@ -6,7 +6,7 @@ gotcha (`AREA-n`, see [gotchas](gotchas/README.md)) it introduced.
 
 ## M4 metrics dashboards (branch `red/m4-metrics-dashboards-db30d3`)
 
-Handoff §16's metrics, complete, with a Grafana dashboard and alert rules as code (D-83, D-84).
+Handoff §16's metrics, complete, with a Grafana dashboard and alert rules as code (D-84, D-85).
 
 - **Gap analysis.** Of §16, job durations were missing (only logged), and the Discord verification
   failures were counted in the worker, which nothing scraped, so `/metrics` always showed 0. Added since
@@ -21,10 +21,10 @@ Handoff §16's metrics, complete, with a Grafana dashboard and alert rules as co
   `hub_api_rate_limited_total{limit}`, `hub_api_auth_failures_total{reason}`. Every label is a fixed set
   (D-53); known label combinations start at 0, so the first event after a restart shows in `increase()`
   (PROM-1).
-- **Worker `/metrics`** (D-83): `WORKER_METRICS_PORT` (default 9464, 0 = off), the web route's rules
+- **Worker `/metrics`** (D-84): `WORKER_METRICS_PORT` (default 9464, 0 = off), the web route's rules
   (404 without `METRICS_TOKEN`, 401 without the bearer token) through a shared `metricsAccess`. Compose
   publishes it on `WORKER_METRICS_BIND` (default `127.0.0.1`).
-- **Dashboards and alerts** (D-84): `ops/grafana/dashboards/hub-overview.json` (datasource and job
+- **Dashboards and alerts** (D-85): `ops/grafana/dashboards/hub-overview.json` (datasource and job
   variables, no hardcoded uid, named colours for both themes), `ops/prometheus/alerts.yml` (ingest 5xx
   ratio, no payloads while players are online, breaker tripped, job failing or stale), and
   `ops/prometheus/scrape-example.yml` for an existing Prometheus.

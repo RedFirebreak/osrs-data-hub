@@ -153,7 +153,7 @@ a range whose raw data retention already dropped erases the aggregated history (
     group and status, latency, 429s by limit, failed key authentications) and data exports;
   - the worker's `GET /metrics` on port `WORKER_METRICS_PORT` (9464): job durations, runs and last
     success, Discord re-verification (checks, failures, circuit-breaker trips), open play sessions,
-    grace expiries and deleted accounts (D-83).
+    grace expiries and deleted accounts (D-84).
 
   The full list is in [ARCHITECTURE.md §13](ARCHITECTURE.md#13-configuration-and-operations). Labels
   are fixed sets: no user, account or device ids, names, IP addresses or coordinates.
@@ -187,7 +187,7 @@ In Grafana: **Dashboards → New → Import**, upload
 Prometheus in the **Data source** variable at the top (the JSON names no datasource). The **Job**
 variable lists the scrape jobs that export hub metrics; All sums web and worker, which is what every
 panel expects. To change the dashboard, edit it in Grafana, export it as JSON (with "Export for sharing
-externally" off) and commit it over the file, so the repo stays the source (D-84).
+externally" off) and commit it over the file, so the repo stays the source (D-85).
 
 Some panels need a little history: re-verification, grace expiry and the audit-log prune run every
 15 minutes, hourly and daily, so their panels use one-hour windows. The "last success" panel and the

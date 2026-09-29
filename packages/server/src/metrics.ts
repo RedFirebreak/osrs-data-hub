@@ -2,7 +2,7 @@
  * Prometheus metrics (handoff §16). The registry lives on globalThis: Next.js route handlers and
  * RSC/server code are separate module instances and would otherwise register twice (NEXT-3).
  *
- * Web and worker create the same set and each serves its own (D-83): a series only moves in the
+ * Web and worker create the same set and each serves its own (D-84): a series only moves in the
  * process that does the work, so dashboards sum over both. Every label value comes from a fixed set
  * in our own code, never an id, name, address or coordinate (D-53).
  */
@@ -238,7 +238,7 @@ export function createTestMetrics(): HubMetrics {
 }
 
 /**
- * Who may read /metrics (D-14, D-83), for the web route and the worker's endpoint alike: 'disabled'
+ * Who may read /metrics (D-14, D-84), for the web route and the worker's endpoint alike: 'disabled'
  * without METRICS_TOKEN (answer 404), 'ok' for `Authorization: Bearer <token>` (scheme in any case,
  * token compared in constant time), 'unauthorized' otherwise (401).
  */

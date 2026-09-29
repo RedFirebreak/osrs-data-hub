@@ -4,7 +4,7 @@ import { metricsAccess, type HubMetrics } from '@hub/server';
 type Registry = HubMetrics['registry'];
 
 /**
- * The worker's Prometheus endpoint (D-83): `GET /metrics` on WORKER_METRICS_PORT, with the web
+ * The worker's Prometheus endpoint (D-84): `GET /metrics` on WORKER_METRICS_PORT, with the web
  * route's rules (metricsAccess): 404 without METRICS_TOKEN, 401 without `Authorization: Bearer
  * <METRICS_TOKEN>`, else the worker's registry. Any other path is 404, any other method 405. Compose
  * publishes the port on 127.0.0.1 only (WORKER_METRICS_BIND to widen it); the proxy never sees it.

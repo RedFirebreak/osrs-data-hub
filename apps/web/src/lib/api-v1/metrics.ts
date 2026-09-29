@@ -1,5 +1,5 @@
 /**
- * Public API metrics (hub_api_*, D-83). The `group` label is the first path segment after /api/v1
+ * Public API metrics (hub_api_*, D-84). The `group` label is the first path segment after /api/v1
  * when it names one of the API's route groups, else 'unknown': the path is client-controlled, and
  * account ids never become a label (D-53).
  */

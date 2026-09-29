@@ -115,7 +115,7 @@ describe('timed', () => {
     expect(lines[0]?.pgCode).toBeUndefined();
   });
 
-  it('records a success: duration, run and last-success time (D-83)', async () => {
+  it('records a success: duration, run and last-success time (D-84)', async () => {
     const { logger } = captureLogger();
     const metrics = createTestMetrics();
     const before = Date.now() / 1000;

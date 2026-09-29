@@ -123,7 +123,7 @@ export interface HubConfig {
   ingestMaxBodyBytes: number;
   trustProxyHops: number;
   metricsToken: string | undefined;
-  /** The worker's /metrics port (D-83); 0 = no endpoint. */
+  /** The worker's /metrics port (D-84); 0 = no endpoint. */
   workerMetricsPort: number;
   logLevel: 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace' | 'silent';
 }

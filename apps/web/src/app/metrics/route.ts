@@ -1,7 +1,7 @@
 /**
  * GET /metrics — Prometheus scrape endpoint (handoff §16, D-14). Off (404) unless METRICS_TOKEN is
  * set; then only `Authorization: Bearer <METRICS_TOKEN>` gets the registry (compared in constant
- * time), anything else 401 (metricsAccess, shared with the worker's endpoint, D-83). Outside /api on
+ * time), anything else 401 (metricsAccess, shared with the worker's endpoint, D-84). Outside /api on
  * purpose: that's where Prometheus looks by default.
  */
 import { getConfig } from '@hub/core';

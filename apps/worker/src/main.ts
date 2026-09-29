@@ -9,7 +9,7 @@
  * | prune-audit-log            | daily                            |
  * | Timescale policies         | reconciled at startup            |
  *
- * Every run is timed and counted (timed.ts); the metrics are served on WORKER_METRICS_PORT (D-83).
+ * Every run is timed and counted (timed.ts); the metrics are served on WORKER_METRICS_PORT (D-84).
  * Raw payload clean-up is the raw_payloads retention policy; there is no job for it. Every queue
  * uses pg-boss's 'stately' policy (./queues): a run never overlaps the previous one, and ticks that
  * arrive meanwhile don't pile up.

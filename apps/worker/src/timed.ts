@@ -19,7 +19,7 @@ export class JobFailedError extends Error {
 }
 
 /**
- * Runs one job handler, logs its duration and records it in the job metrics (D-83):
+ * Runs one job handler, logs its duration and records it in the job metrics (D-84):
  * hub_job_duration_seconds and hub_job_runs_total{result} for every run, and
  * hub_job_last_success_timestamp_seconds after a success. The log line is 'job done' with the
  * result, or 'job failed' with { job, ms, pgCode, error } only. The error is rethrown (pg-boss marks

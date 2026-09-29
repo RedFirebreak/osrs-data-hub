@@ -313,7 +313,7 @@ async function added(
   return out;
 }
 
-describe('metrics (D-83)', () => {
+describe('metrics (D-84)', () => {
   const requests = () => valuesBy(getMetrics().apiRequests, ['group', 'status']);
 
   it('counts every request by route group and status, and times it', async () => {

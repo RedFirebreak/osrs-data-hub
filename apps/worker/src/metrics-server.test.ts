@@ -24,7 +24,7 @@ afterEach(async () => {
 const get = (url: string, authorization?: string, method = 'GET') =>
   fetch(url, { method, headers: authorization === undefined ? {} : { authorization } });
 
-describe('worker metrics endpoint (D-83)', () => {
+describe('worker metrics endpoint (D-84)', () => {
   it('404 when METRICS_TOKEN is not set, token or not', async () => {
     const { url } = await start(undefined);
     expect((await get(`${url}/metrics`)).status).toBe(404);

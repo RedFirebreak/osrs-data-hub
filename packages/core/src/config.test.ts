@@ -23,7 +23,7 @@ describe('HUB_NAME', () => {
   });
 });
 
-describe('WORKER_METRICS_PORT (D-83)', () => {
+describe('WORKER_METRICS_PORT (D-84)', () => {
   it('defaults to 9464, accepts 0 (no endpoint) and rejects anything but a whole number', () => {
     expect(parseConfig(ENV).workerMetricsPort).toBe(9464);
     expect(parseConfig({ ...ENV, WORKER_METRICS_PORT: '' }).workerMetricsPort).toBe(9464);

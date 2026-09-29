@@ -63,7 +63,7 @@ services:
     image: osrs-data-hub-worker:local
     command: ['node', '--enable-source-maps', 'dist/main.js']
     ports:
-      # /metrics (D-83; answers only with METRICS_TOKEN). Localhost by default; a Prometheus on
+      # /metrics (D-84; answers only with METRICS_TOKEN). Localhost by default; a Prometheus on
       # another machine needs WORKER_METRICS_BIND=<this VM's private address>, never a public one.
       - '${WORKER_METRICS_BIND:-127.0.0.1}:${WORKER_METRICS_PORT:-9464}:${WORKER_METRICS_PORT:-9464}'
     depends_on:

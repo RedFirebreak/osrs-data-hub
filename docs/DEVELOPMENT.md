@@ -131,7 +131,7 @@ design).
 
 ## Monitoring stack
 
-An opt-in Prometheus and Grafana for looking at the hub's metrics while developing (D-84). They run in
+An opt-in Prometheus and Grafana for looking at the hub's metrics while developing (D-85). They run in
 Docker and scrape `pnpm dev` (port 3000) and `pnpm dev:worker` (its metrics on port 9464) on the host
 through `host.docker.internal`.
 
