@@ -41,13 +41,14 @@ import {
 } from '@hub/db';
 import { and, eq, isNull, ne, sql } from 'drizzle-orm';
 import { notifyEvents, notifyState } from '../notify';
+import { takeOverFromOwnerInGrace, type AuditActor } from '../offboarding/accounts';
 import { chunkKeys, knownChunks, lockChunkCreation, rememberChunks } from './chunks';
 import type { IngestDevice } from './device';
 import type { AccountRef } from './identity';
+import { lockAccount } from './lock';
 import { gameStateAfterShutdown } from './presence';
 
-/** First key of the per-account advisory lock: 'OS'. The second is the account id (both int4). */
-export const ACCOUNT_LOCK_CLASS = 0x4f53;
+export { ACCOUNT_LOCK_CLASS, lockAccount } from './lock';
 /**
  * Both local to the transaction and well under the plugin's 10 s read timeout (PLUGIN-4): a lock wait
  * fails with 55P03 and a slow statement with 57014, both answered 503 + Retry-After.
@@ -58,6 +59,8 @@ const STATEMENT_TIMEOUT = '8s';
 const UNKNOWN_NAME = 'Unknown';
 /** Event rows per INSERT: 16 bind parameters each, far below Postgres' 65535 per statement. */
 const EVENT_INSERT_CHUNK = 1000;
+/** Ownership changes ingest makes on its own (D-60) are the system's, not the reporter's choice. */
+const INGEST_ACTOR: AuditActor = { actorUserId: null, actorLabel: 'system' };
 
 export interface StoreInput {
   recv: Date;
@@ -138,9 +141,9 @@ const RETRY_BUDGET_MS = 2_500;
  * offboarding committed meanwhile refuses the payload), the per-account advisory lock, link the user
  * (a blocked link rolls everything back: "store nothing"), device bookkeeping, plan the snapshot against
  * latest_state, then presence and latest_state, XP samples, equipment/location/wealth, play
- * sessions, the account row (last seen, owner, name), and the events LAST so the transaction holds
- * its event seqs as briefly as possible (DB-4). Other database errors are thrown unchanged; the
- * caller maps them to status codes.
+ * sessions, the account row (last seen, owner, name, a D-60 takeover), and the events LAST so the
+ * transaction holds its event seqs as briefly as possible (DB-4). Other database errors are thrown
+ * unchanged; the caller maps them to status codes.
  */
 export async function storePayload(
   db: Db,
@@ -338,16 +341,6 @@ async function lockReporter(tx: Tx, userId: string): Promise<void> {
 }
 
 /**
- * Serializes all ingest work per account until commit. lock_timeout bounds the wait (55P03 → 503).
- * Both keys are int4 so the lock shares the (int4, int4) space with pg_advisory_lock(0x4f53, id).
- */
-export async function lockAccount(tx: Tx, accountId: number): Promise<void> {
-  await tx.execute(
-    sql`SELECT pg_advisory_xact_lock(${ACCOUNT_LOCK_CLASS}::int4, ${accountId}::int4)`,
-  );
-}
-
-/**
  * Upserts account_links(account, user) as contributor (handoff §7.1.7). A blocked link rolls the
  * whole transaction back: "store nothing". Ownership is settled in updateAccount.
  */
@@ -368,6 +361,12 @@ async function linkUser(tx: Tx, accountId: number, userId: string, recv: Date): 
  * becomes this user's (first reporter is owner, D-21; COALESCE makes a concurrent claim safe) with
  * the link's role following, and — from an applied snapshot only (`identity` is empty otherwise) —
  * a rename (D-15: history is keyed by the id, so nothing else changes) or a new account type.
+ *
+ * A hidden account of someone else is checked for D-60: when its owner is in grace, the reporter (an
+ * active user, lockReporter; with a non-blocked link, linkUser) takes it over and it becomes
+ * visible. Hidden accounts are rare, so only they pay for the extra read. It runs here, after the
+ * hypertable writes, because it writes osrs_accounts (TSDB-12), and under the account lock taken at
+ * the start, like every owner change.
  */
 async function updateAccount(
   tx: Tx,
@@ -387,7 +386,7 @@ async function updateAccount(
       accountType: identity.accountType,
     })
     .where(eq(osrsAccounts.id, accountId))
-    .returning({ ownerUserId: osrsAccounts.ownerUserId });
+    .returning({ ownerUserId: osrsAccounts.ownerUserId, status: osrsAccounts.status });
   if (row?.ownerUserId === userId) {
     await tx
       .update(accountLinks)
@@ -399,6 +398,8 @@ async function updateAccount(
           ne(accountLinks.role, 'owner'),
         ),
       );
+  } else if (row?.status === 'hidden') {
+    await takeOverFromOwnerInGrace(tx, accountId, userId, INGEST_ACTOR, recv);
   }
   if (identity.name !== undefined) await touchAccountName(tx, accountId, identity.name, recv);
 }

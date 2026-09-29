@@ -1,11 +1,18 @@
-import { devices, users } from '@hub/db';
+import { auditLog, devices, users } from '@hub/db';
 import { createTestDatabase, type TestDatabase } from '@hub/db/testing';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { FetchFn, GuildPolicy } from '../discord';
 import { createTestMetrics, type HubMetrics } from '../metrics';
+import { offboardUser, restoreUser } from '../offboarding';
 import { captureLogger, seedDevice, seedUser, type LogLine } from '../offboarding/test-support';
-import { breakerTrips, reverifyDueMembers, type ReverifyDeps } from './reverify';
+import {
+  breakerTrips,
+  reverifyDueMembers,
+  windowBreakerLimit,
+  windowBreakerTrips,
+  type ReverifyDeps,
+} from './reverify';
 
 let t: TestDatabase;
 
@@ -23,6 +30,7 @@ beforeEach(async () => {
 });
 
 const NOW = new Date('2026-09-28T12:00:00Z');
+const MINUTE = 60_000;
 const HOUR = 3_600_000;
 const GUILD = '900000000000000001';
 const POLICY: GuildPolicy = {
@@ -547,5 +555,157 @@ describe('reverifyDueMembers', () => {
       aborted: false,
     });
     expect(calls).toHaveLength(0);
+  });
+});
+
+describe('the rolling circuit breaker (D-34)', () => {
+  const LOST_ROLE_POLICY: GuildPolicy = { ...POLICY, requiredRoleIds: ['role-member'] };
+
+  /** Every lookup finds the member, none of them with the required role. */
+  function roleGone(due: readonly { discordId: string }[]): Record<string, Reply> {
+    return Object.fromEntries(
+      due.map((u) => [u.discordId, member(u.discordId, { roles: ['role-other'] })]),
+    );
+  }
+
+  async function inGrace(ids: readonly string[]): Promise<number> {
+    let n = 0;
+    for (const id of ids) if ((await userRow(id))?.status === 'grace') n++;
+    return n;
+  }
+
+  it('lets max(3, 20% of the users) through per window', () => {
+    expect(windowBreakerLimit(0)).toBe(3);
+    expect(windowBreakerLimit(15)).toBe(3);
+    expect(windowBreakerLimit(20)).toBe(4);
+    expect(windowBreakerLimit(100)).toBe(20);
+    // recent + departures against the limit for (active + recent) users.
+    expect(windowBreakerTrips(0, 3, 5)).toBe(false);
+    expect(windowBreakerTrips(3, 1, 7)).toBe(true);
+    expect(windowBreakerTrips(2, 2, 18)).toBe(false);
+    expect(windowBreakerTrips(4, 1, 16)).toBe(true);
+    expect(windowBreakerTrips(19, 1, 81)).toBe(false);
+    expect(windowBreakerTrips(20, 1, 80)).toBe(true);
+  });
+
+  it('a required role deleted and recreated: staggered runs offboard at most the limit, then stop', async () => {
+    // Real time: the audit entries the window counts are stamped by the database clock.
+    const start = new Date();
+    const due = await Promise.all(Array.from({ length: 20 }, () => dueUser()));
+    const replies = roleGone(due);
+    const ids = due.map((u) => u.id);
+
+    const runs: { offboarded: number; aborted: boolean }[] = [];
+    const alerts: LogLine[] = [];
+    for (const [i, batchSize] of [1, 2, 1, 3, 2, 4, 1, 3].entries()) {
+      const { deps, lines } = setup(replies, {
+        policy: LOST_ROLE_POLICY,
+        batchSize,
+        now: new Date(start.getTime() + i * 15 * MINUTE),
+      });
+      const { offboarded, aborted } = await reverifyDueMembers(deps);
+      runs.push({ offboarded, aborted });
+      alerts.push(...errors(lines));
+    }
+
+    // Too few users per run for the batch rule (it needs 5 answers); the window stops it at 4.
+    expect(runs.map((r) => r.offboarded)).toEqual([1, 2, 1, 0, 0, 0, 0, 0]);
+    expect(runs.map((r) => r.aborted)).toEqual([false, false, false, true, true, true, true, true]);
+    expect(await inGrace(ids)).toBe(windowBreakerLimit(20));
+    expect(alerts).toHaveLength(5);
+    expect(alerts[0]).toMatchObject({
+      rules: ['window'],
+      checked: 3,
+      departures: 3,
+      recentOffboarded: 4,
+      activeUsers: 16,
+      windowLimit: 4,
+      windowHours: 6,
+    });
+
+    // Once the window has passed those offboardings it clears, and lets the next ones through.
+    const later = setup(replies, {
+      policy: LOST_ROLE_POLICY,
+      batchSize: 2,
+      now: new Date(start.getTime() + 7 * HOUR),
+    });
+    expect(await reverifyDueMembers(later.deps)).toMatchObject({ offboarded: 2, aborted: false });
+    expect(await inGrace(ids)).toBe(6);
+  });
+
+  it('clears once an admin restores the users it offboarded', async () => {
+    const start = new Date();
+    const due = await Promise.all(Array.from({ length: 10 }, () => dueUser()));
+    const replies = roleGone(due);
+    const run = (batchSize: number) =>
+      reverifyDueMembers(setup(replies, { policy: LOST_ROLE_POLICY, batchSize, now: start }).deps);
+
+    expect(await run(3)).toMatchObject({ offboarded: 3, aborted: false });
+    expect(await run(1)).toMatchObject({ offboarded: 0, aborted: true });
+    for (const u of due) {
+      if ((await userRow(u.id))?.status === 'grace') await restoreUser(t.db, { userId: u.id });
+    }
+    expect(await run(1)).toMatchObject({ offboarded: 1, aborted: false });
+  });
+
+  it("counts only re-verification's offboardings in the window that still stand", async () => {
+    const offboard = async (opts: { actorLabel?: string; actorUserId?: string }) => {
+      const userId = await seedUser(t.db);
+      const reason = opts.actorUserId ? 'admin' : 'left_guild';
+      await offboardUser(t.db, { userId, reason, graceDays: 30, ...opts });
+      return userId;
+    };
+    const admin = await seedUser(t.db, { isAdmin: true });
+    await offboard({ actorLabel: 'worker' }); // counts
+    await offboard({ actorLabel: 'worker' }); // counts
+    // Confirmed by an admin: the reason is 'admin' now.
+    const confirmed = await offboard({ actorLabel: 'worker' });
+    await offboardUser(t.db, {
+      userId: confirmed,
+      reason: 'admin',
+      graceDays: 30,
+      actorUserId: admin,
+    });
+    await offboard({ actorUserId: admin }); // an admin's offboarding
+    const restored = await offboard({ actorLabel: 'worker' });
+    await restoreUser(t.db, { userId: restored });
+    const old = await offboard({ actorLabel: 'worker' });
+    await t.db
+      .update(auditLog)
+      .set({ at: sql`${auditLog.at} - interval '7 hours'` })
+      .where(and(eq(auditLog.action, 'user.offboarded'), eq(auditLog.targetId, old)));
+
+    const due = await Promise.all(Array.from({ length: 6 }, () => dueUser()));
+    const replies: Record<string, Reply> = Object.fromEntries(
+      due.map((u) => [u.discordId, NOT_MEMBER]),
+    );
+    const run = () => {
+      const r = setup(replies, { batchSize: 1, now: new Date() });
+      return reverifyDueMembers(r.deps).then((result) => ({ result, lines: r.lines }));
+    };
+
+    // 10 users (2 counted, 8 active: the admin, the restored user and the 6 due) allow 3: 2 + 1.
+    expect((await run()).result).toMatchObject({ offboarded: 1, aborted: false });
+    const second = await run();
+    expect(second.result).toMatchObject({ offboarded: 0, aborted: true });
+    expect(errors(second.lines)).toEqual([
+      expect.objectContaining({
+        rules: ['window'],
+        recentOffboarded: 3,
+        activeUsers: 7,
+        departures: 1,
+      }),
+    ]);
+  });
+
+  it('logs one error naming both rules when both trip', async () => {
+    const due = await Promise.all(Array.from({ length: 5 }, () => dueUser()));
+    const replies = Object.fromEntries(due.map((u) => [u.discordId, NOT_MEMBER]));
+    const { deps, lines } = setup(replies, { now: new Date() });
+
+    expect(await reverifyDueMembers(deps)).toMatchObject({ offboarded: 0, aborted: true });
+    expect(errors(lines)).toEqual([
+      expect.objectContaining({ rules: ['batch', 'window'], answered: 5, departures: 5 }),
+    ]);
   });
 });

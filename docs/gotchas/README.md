@@ -1,6 +1,6 @@
 # Gotchas
 
-70 traps, grouped into five files, found while building osrs-data-hub. Each is written up
+72 traps, grouped into five files, found while building osrs-data-hub. Each is written up
 once under a stable ID and referenced by ID from everywhere else, so there is exactly one place to edit
 when something changes. Package-agnostic: things that are true of the shared layer (the HA Exporter
 plugin protocol, Next.js, Better Auth, Drizzle, Postgres/TimescaleDB, pg-boss, the Discord API, and the
@@ -24,7 +24,7 @@ defeats the point of them being separate.
 |---|---|---|
 | [auth.md](auth.md) | `AUTH`, `DISCORD` — Better Auth 1.7 (Discord provider, Drizzle adapter, hooks, sessions, endpoints) and the Discord HTTP API (OAuth, guild member lookups) | 11 |
 | [database.md](database.md) | `DB`, `TSDB` — Postgres behaviour, drizzle-orm 0.45 and drizzle-kit 0.31 (queries, errors, the migrator), and TimescaleDB 2.30 (hypertables, compression, continuous aggregates, policies, the Docker image) | 27 |
-| [nextjs.md](nextjs.md) | `NEXT` — Next.js 16 (route handlers, server actions, RSC, proxy.ts, instrumentation, basePath, standalone output, the dev and build CLI) | 10 |
+| [nextjs.md](nextjs.md) | `NEXT` — Next.js 16 (route handlers, server actions, RSC, proxy.ts, instrumentation, basePath, standalone output, the dev and build CLI) | 12 |
 | [plugin.md](plugin.md) | `PLUGIN` — the HA Exporter v1.5 wire protocol as seen from the hub (payload shapes, Gson serialization, the OkHttp transport, status handling, the retry queue, the pairing panel) | 13 |
 | [toolchain.md](toolchain.md) | `PGBOSS`, `TOOL`, `ZOD` — build, lint and package tooling (TypeScript, ESLint, pnpm, tsup, shadcn, Docker base images) and the pg-boss and zod libraries | 9 |
 | [open-questions.md](open-questions.md) | read from docs, not yet observed — no IDs, not in the index | — |
@@ -95,6 +95,8 @@ The `gotcha` skill walks this, including a trap that fits no existing file.
 | [NEXT-8](nextjs.md#next-8) | Next.js | `tsc` on a fresh checkout fails with `Cannot find name 'PageProps'` or `Cannot find name 'RouteContext'`. |
 | [NEXT-9](nextjs.md#next-9) | Next.js | The web container serves requests through its published port, but a localhost healthcheck inside it (`wget http://127.0.0.1:3000`) is refused. |
 | [NEXT-10](nextjs.md#next-10) | Next.js | `next build` fails with `Module not found: Can't resolve './hash.js'` for an import inside a TS-source workspace package, while tsc, tsx and vitest accept it. |
+| [NEXT-11](nextjs.md#next-11) | Next.js | `next build` fails at "Collecting page data" with `Failed to collect configuration for /<route>`, caused by `TypeError: The "path" argument must be of type string. Received undefined` at a `path.join(import.meta.dirname, …)` in a workspace package. |
+| [NEXT-12](nextjs.md#next-12) | Next.js | The browser downloads a ~440 KB chunk containing `crypto-browserify`, and `next build` passes without a warning, after a `'use client'` component imports one small helper from a workspace package whose index also re-exports a module that imports `node:crypto`. |
 | **[plugin.md](plugin.md)** | | |
 | [PLUGIN-1](plugin.md#plugin-1) | Plugin | Ingest answers 400 to payloads sent at client start and right after login, or a player shows offline for a moment during loading screens and world hops. |
 | [PLUGIN-2](plugin.md#plugin-2) | Plugin | A player's data silently stops arriving (no error on either side) and the access log shows a 3xx on `/api/osrs-data/*`, or a body-less `GET /api/osrs-data/events` carrying `X-Osrs-Token`. |

@@ -5,5 +5,5 @@
  */
 export { handleIngest } from './handler';
 export { createIngestLimiter, MAX_EVENTS_PER_PAYLOAD } from './limits';
-export { ACCOUNT_LOCK_CLASS } from './store';
+export { ACCOUNT_LOCK_CLASS, lockAccount } from './lock';
 export type { IgnoredReason, IngestDeps, IngestMeta, IngestRequest } from './types';

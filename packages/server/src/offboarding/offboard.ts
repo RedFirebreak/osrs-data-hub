@@ -1,4 +1,5 @@
 import {
+  accountLinks,
   apiKeys,
   devices,
   osrsAccounts,
@@ -10,9 +11,16 @@ import {
   type Tx,
   type UserStatus,
 } from '@hub/db';
-import { and, asc, eq, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import { audit } from '../audit';
-import { auditTransfer, findSuccessor, lockAccounts, setOwner, type AuditActor } from './accounts';
+import {
+  auditTransfer,
+  findSuccessor,
+  lockAccounts,
+  setOwner,
+  takeOverFromOwnerInGrace,
+  type AuditActor,
+} from './accounts';
 
 const DAY_MS = 86_400_000;
 /** Offboarding waits for ingest's per-account locks; ingest holds them for at most a few seconds. */
@@ -108,14 +116,25 @@ export async function offboardUser(
 
 /**
  * Coming back within the grace period: status → active, grace_until/offboard_reason cleared, and
- * accounts hidden because of this user become visible again. Devices stay revoked; transferred
- * accounts stay with their new owner. No-op for an active user.
+ * accounts become visible again: the ones this user owns that were hidden, and (D-60) those hidden
+ * because their owner is in grace on which this user is a non-blocked contributor, which pass to
+ * this user (audited as ownership transfers, reason 'owner_in_grace'). `unhidden` lists both.
+ * Devices stay revoked; accounts transferred away at offboarding stay with their new owner. No-op
+ * for an active user.
+ *
+ * Lock order as offboardUser's: the user's row, then the accounts' locks (ingest's, ascending),
+ * then their rows; so a payload in flight for one of them finishes first, and an owner change
+ * (ingest's own D-60 takeover, say) is seen before deciding.
  */
 export async function restoreUser(
   db: DbOrTx,
-  opts: { userId: string; actorUserId?: string | null; actorLabel?: string },
+  opts: { userId: string; actorUserId?: string | null; actorLabel?: string; now?: Date },
 ): Promise<{ unhidden: number[] }> {
+  const actor = auditActor(opts);
+  const now = opts.now ?? new Date();
   return db.transaction(async (tx) => {
+    // Transaction-local: inside a caller's transaction it holds for the rest of that transaction.
+    await tx.execute(sql`SELECT set_config('lock_timeout', ${LOCK_TIMEOUT}, true)`);
     const [user] = await tx
       .select({ status: users.status, offboardReason: users.offboardReason })
       .from(users)
@@ -127,21 +146,85 @@ export async function restoreUser(
       .update(users)
       .set({ status: 'active', graceUntil: null, offboardReason: null })
       .where(eq(users.id, opts.userId));
-    const unhidden = await tx
-      .update(osrsAccounts)
-      .set({ status: 'active', hiddenAt: null })
-      .where(and(eq(osrsAccounts.ownerUserId, opts.userId), eq(osrsAccounts.status, 'hidden')))
-      .returning({ id: osrsAccounts.id });
-    const ids = unhidden.map((r) => r.id).sort((a, b) => a - b);
+    const { own, adoptable } = await hiddenAccountsToRestore(tx, opts.userId);
+    await lockAccounts(tx, [...own, ...adoptable]);
+    const unhidden = await unhideOwnAccounts(tx, opts.userId, own);
+    const taken: number[] = [];
+    for (const id of adoptable) {
+      if (await takeOverFromOwnerInGrace(tx, id, opts.userId, actor, now)) taken.push(id);
+    }
+    const ids = [...unhidden, ...taken].sort((a, b) => a - b);
     await audit(tx, {
-      ...auditActor(opts),
+      ...actor,
       action: 'user.restored',
       targetType: 'user',
       targetId: opts.userId,
-      meta: { previousReason: user.offboardReason, unhidden: ids.length },
+      meta: {
+        previousReason: user.offboardReason,
+        unhidden: ids.length,
+        transferred: taken.length,
+      },
     });
     return { unhidden: ids };
   });
+}
+
+/**
+ * The hidden accounts a returning user may bring back, ascending: `own` (they own it) and
+ * `adoptable` (D-60: someone else in grace owns it, and the user has a non-blocked link). Read before
+ * the account locks are taken; each is checked again under its lock.
+ */
+async function hiddenAccountsToRestore(
+  tx: Tx,
+  userId: string,
+): Promise<{ own: number[]; adoptable: number[] }> {
+  const rows = await tx
+    .select({ id: osrsAccounts.id, ownerUserId: osrsAccounts.ownerUserId })
+    .from(osrsAccounts)
+    .innerJoin(users, eq(users.id, osrsAccounts.ownerUserId))
+    .leftJoin(
+      accountLinks,
+      and(
+        eq(accountLinks.accountId, osrsAccounts.id),
+        eq(accountLinks.userId, userId),
+        eq(accountLinks.blocked, false),
+      ),
+    )
+    .where(
+      and(
+        eq(osrsAccounts.status, 'hidden'),
+        or(
+          eq(osrsAccounts.ownerUserId, userId),
+          and(eq(users.status, 'grace'), isNotNull(accountLinks.userId)),
+        ),
+      ),
+    )
+    .orderBy(asc(osrsAccounts.id));
+  return {
+    own: rows.filter((r) => r.ownerUserId === userId).map((r) => r.id),
+    adoptable: rows.filter((r) => r.ownerUserId !== userId).map((r) => r.id),
+  };
+}
+
+/** Un-hides the given accounts that (still) belong to the user; returns those it changed. */
+async function unhideOwnAccounts(
+  tx: Tx,
+  userId: string,
+  accountIds: readonly number[],
+): Promise<number[]> {
+  if (accountIds.length === 0) return [];
+  const rows = await tx
+    .update(osrsAccounts)
+    .set({ status: 'active', hiddenAt: null })
+    .where(
+      and(
+        inArray(osrsAccounts.id, [...accountIds]),
+        eq(osrsAccounts.ownerUserId, userId),
+        eq(osrsAccounts.status, 'hidden'),
+      ),
+    )
+    .returning({ id: osrsAccounts.id });
+  return rows.map((r) => r.id);
 }
 
 /** Attribution: an explicit label wins; the system otherwise, unless a user acted. */

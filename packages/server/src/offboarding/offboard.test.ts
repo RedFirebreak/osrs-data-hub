@@ -3,6 +3,7 @@ import { createTestDatabase, type TestDatabase } from '@hub/db/testing';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ACCOUNT_LOCK_CLASS } from '../ingest/store';
+import { takeOverFromOwnerInGrace } from './accounts';
 import { nextGraceState, offboardUser, restoreUser } from './offboard';
 import {
   seedAccount,
@@ -316,19 +317,13 @@ describe('offboardUser', () => {
 });
 
 describe('restoreUser', () => {
-  it('reactivates the user and un-hides only the accounts they own', async () => {
+  it('reactivates the user and un-hides the accounts they own', async () => {
     const userId = await seedUser(t.db);
     const deviceId = await seedDevice(t.db, userId);
     const contributor = await seedUser(t.db);
     const hiddenOwn = await seedAccount(t.db, { owner: userId });
     const transferred = await seedAccount(t.db, { owner: userId });
     await seedLink(t.db, transferred.id, contributor);
-    const otherOwner = await seedUser(t.db, {
-      status: 'grace',
-      graceUntil: new Date('2026-10-20'),
-    });
-    const hiddenOther = await seedAccount(t.db, { owner: otherOwner, status: 'hidden' });
-    await seedLink(t.db, hiddenOther.id, userId);
     await offboardUser(t.db, { userId, reason: 'left_guild', graceDays: 30, now: NOW });
 
     const result = await restoreUser(t.db, { userId, actorLabel: 'login' });
@@ -346,14 +341,68 @@ describe('restoreUser', () => {
       [userId]: 'contributor',
       [contributor]: 'owner',
     });
-    expect((await accountRow(hiddenOther.id))?.status).toBe('hidden');
     // Devices stay revoked: the player re-pairs through the wizard.
     const [device] = await t.db.select().from(devices).where(eq(devices.id, deviceId));
     expect(device?.revokedReason).toBe('offboarding');
     const [entry] = await audits('user.restored', userId);
     expect(entry).toMatchObject({
       actorLabel: 'login',
-      meta: { previousReason: 'left_guild', unhidden: 1 },
+      meta: { previousReason: 'left_guild', unhidden: 1, transferred: 0 },
+    });
+  });
+
+  it('takes over accounts hidden because their owner is in grace, where it contributes (D-60)', async () => {
+    const userId = await seedUser(t.db);
+    const inGrace = { status: 'grace' as const, graceUntil: new Date('2026-10-20') };
+    const otherOwner = await seedUser(t.db, inGrace);
+    const hiddenOther = await seedAccount(t.db, { owner: otherOwner, status: 'hidden' });
+    await seedLink(t.db, hiddenOther.id, userId);
+    const blockedOn = await seedAccount(t.db, { owner: otherOwner, status: 'hidden' });
+    await seedLink(t.db, blockedOn.id, userId, { blocked: true });
+    const activeOwner = await seedUser(t.db);
+    const hiddenActive = await seedAccount(t.db, { owner: activeOwner, status: 'hidden' });
+    await seedLink(t.db, hiddenActive.id, userId);
+    const visible = await seedAccount(t.db, { owner: otherOwner });
+    await seedLink(t.db, visible.id, userId);
+    await offboardUser(t.db, { userId, reason: 'lost_role', graceDays: 30, now: NOW });
+
+    const result = await restoreUser(t.db, { userId, actorUserId: activeOwner, now: NOW });
+
+    expect(result).toEqual({ unhidden: [hiddenOther.id] });
+    expect(await accountRow(hiddenOther.id)).toMatchObject({
+      ownerUserId: userId,
+      status: 'active',
+      hiddenAt: null,
+    });
+    expect(await roles(hiddenOther.id)).toEqual({ [userId]: 'owner', [otherOwner]: 'contributor' });
+    // Blocked there; an owner who isn't in grace; an account that isn't hidden: all left alone.
+    expect(await accountRow(blockedOn.id)).toMatchObject({
+      ownerUserId: otherOwner,
+      status: 'hidden',
+    });
+    expect(await accountRow(hiddenActive.id)).toMatchObject({
+      ownerUserId: activeOwner,
+      status: 'hidden',
+    });
+    expect(await accountRow(visible.id)).toMatchObject({
+      ownerUserId: otherOwner,
+      status: 'active',
+    });
+    expect(await audits('account.ownership_transferred', hiddenOther.publicId)).toEqual([
+      expect.objectContaining({
+        actorUserId: activeOwner,
+        meta: { from: otherOwner, to: userId, reason: 'owner_in_grace' },
+      }),
+    ]);
+    const [entry] = await audits('user.restored', userId);
+    expect(entry?.meta).toMatchObject({ unhidden: 1, transferred: 1 });
+
+    // The previous owner coming back later finds it with its new owner, as a contributor; their
+    // own hidden account is visible again.
+    expect(await restoreUser(t.db, { userId: otherOwner })).toEqual({ unhidden: [blockedOn.id] });
+    expect(await accountRow(hiddenOther.id)).toMatchObject({
+      ownerUserId: userId,
+      status: 'active',
     });
   });
 
@@ -512,5 +561,51 @@ describe('offboardUser concurrency', () => {
       deletedSessions: 0,
     });
     expect(await accountRow(account.id)).toMatchObject({ status: 'hidden', lastSeen: NOW });
+  });
+});
+
+describe('restoreUser concurrency', () => {
+  it("waits for a payload in flight on an account it would take over, and sees that payload's takeover", async () => {
+    const owner = await seedUser(t.db, { status: 'grace', graceUntil: new Date('2026-10-20') });
+    const account = await seedAccount(t.db, { owner, status: 'hidden' });
+    const returning = await seedUser(t.db, {
+      status: 'grace',
+      graceUntil: new Date('2026-10-20'),
+      offboardReason: 'left_guild',
+    });
+    await seedLink(t.db, account.id, returning);
+    const reporter = await seedUser(t.db);
+    await seedLink(t.db, account.id, reporter, { firstSeen: new Date('2026-06-01') });
+    const locked = gate();
+    const release = gate();
+    // What ingest does for an active contributor's payload: the reporter's row FOR SHARE, the
+    // account lock, and (late) the D-60 takeover.
+    const ingest = t.db.transaction(async (tx) => {
+      await tx.select({ id: users.id }).from(users).where(eq(users.id, reporter)).for('share');
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(${ACCOUNT_LOCK_CLASS}::int4, ${account.id}::int4)`,
+      );
+      locked.open();
+      await release.promise;
+      const system = { actorUserId: null, actorLabel: 'system' };
+      expect(await takeOverFromOwnerInGrace(tx, account.id, reporter, system, NOW)).toBe(true);
+    });
+    await locked.promise;
+
+    const restoring = restoreUser(t.db, { userId: returning, actorLabel: 'login' });
+    await waitUntilBlocked(someoneWaitsForALock);
+    release.open();
+    await ingest;
+
+    // The payload committed first: the account is the reporter's, and the returning user, back
+    // too, stays a contributor.
+    expect(await restoring).toEqual({ unhidden: [] });
+    expect(await accountRow(account.id)).toMatchObject({ ownerUserId: reporter, status: 'active' });
+    expect(await roles(account.id)).toEqual({
+      [owner]: 'contributor',
+      [returning]: 'contributor',
+      [reporter]: 'owner',
+    });
+    expect((await userRow(returning))?.status).toBe('active');
   });
 });

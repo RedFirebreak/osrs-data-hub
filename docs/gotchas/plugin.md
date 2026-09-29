@@ -44,12 +44,16 @@ still sends `X-Osrs-Token` (in clear text on an http hop), and 307/308 on a POST
 The plugin classifies the resulting 3xx, 404 or 405 as REJECTED (ConnectionBackoff.java:64-81): the
 payload is dropped, with no pause, no retry and nothing shown to the player, for every payload from then
 on. Typical triggers: the player typed `http://` and the proxy upgrades to https, a www/apex redirect, or
-Next's `trailingSlash: true` (`POST /api/osrs-data/events/` → 308). Fix: never redirect `/api/osrs-data/*`
-at the proxy (docs/OPERATIONS.md §3); `trailingSlash: false` (apps/web/next.config.ts); answer GET on the plugin routes with a JSON
-`400 {"error":"…"}` naming the exact https:// URL (the pairing dialog shows that text), and count
-token-bearing GETs per device as a misconfigured URL.
+Next's `trailingSlash: true` (`POST /api/osrs-data/events/` → 308). `trailingSlash: false` doesn't remove
+Next's own redirect either: it answers `POST /api/osrs-data/events/` with a 308 to the slash-less path.
+The plugin never sends that itself (it strips the base URL's trailing `/` and appends fixed paths), so only
+a hand-built URL hits it; `skipTrailingSlashRedirect: true` would switch the redirect off (docs, not tried).
+Fix: never redirect `/api/osrs-data/*` at the proxy (docs/OPERATIONS.md §3); `trailingSlash: false`
+(apps/web/next.config.ts); answer GET on the plugin routes with a JSON `400 {"error":"…"}` naming the exact
+https:// URL (the pairing dialog shows that text), and count token-bearing GETs per device as a
+misconfigured URL (apps/web logs them with the device id).
 
-*Source: `OBSERVED` (research sandbox: OkHttp 3.14.9 against a capture server, `fixtures/redirect-301-downgraded-get.http`; Next 16.3.6 standalone, 2026-09-28); `SOURCE` (ConnectionBackoff.java:64-81 @0ec2a36)*
+*Source: `OBSERVED` (research sandbox: OkHttp 3.14.9 against a capture server, `fixtures/redirect-301-downgraded-get.http`; Next 16.3.6 standalone, 2026-09-28; the 308 with `trailingSlash: false`, apps/web standalone, 2026-09-29); `SOURCE` (ConnectionBackoff.java:64-81 @0ec2a36)*
 
 ### PLUGIN-3
 **After the hub answers one payload with a 5xx, that player's events from the next ~5.5 minutes never arrive and no snapshots arrive for ~15 minutes, while other players are fine.**

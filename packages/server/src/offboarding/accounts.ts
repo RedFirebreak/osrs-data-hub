@@ -1,11 +1,11 @@
 /**
- * Account-ownership steps shared by offboarding and grace expiry (handoff §14.3, §14.5): the
- * per-account lock, choosing a successor owner, and moving ownership.
+ * Account-ownership steps shared by offboarding, grace expiry, restore and ingest (handoff §14.3,
+ * §14.5, D-60): the per-account lock, choosing a successor owner, and moving ownership.
  */
 import { accountLinks, osrsAccounts, users, type Tx, type UserStatus } from '@hub/db';
 import { and, asc, desc, eq, gt, notInArray, or, sql } from 'drizzle-orm';
 import { audit } from '../audit';
-import { lockAccount } from '../ingest/store';
+import { lockAccount } from '../ingest/lock';
 
 /** Who an offboarding step is attributed to in the audit log. */
 export interface AuditActor {
@@ -94,12 +94,15 @@ export async function setOwner(
     .where(eq(accountLinks.accountId, accountId));
 }
 
+/** Why ownership moved: offboarding, grace expiry, or an owner in grace (D-60). */
+export type TransferReason = 'offboarding' | 'grace_expired' | 'owner_in_grace';
+
 /** Audit entry for an ownership move; `from` is null when the previous owner no longer exists. */
 export async function auditTransfer(
   tx: Tx,
   actor: AuditActor,
   account: { publicId: string },
-  change: { from: string | null; to: string; reason: 'offboarding' | 'grace_expired' },
+  change: { from: string | null; to: string; reason: TransferReason },
 ): Promise<void> {
   await audit(tx, {
     ...actor,
@@ -108,4 +111,57 @@ export async function auditTransfer(
     targetId: account.publicId,
     meta: change,
   });
+}
+
+/**
+ * Handoff §14.3 applied lazily (D-60): an account hidden because its owner is in grace passes to
+ * `userId`, an active user with a non-blocked link to it, and becomes visible again; audited as an
+ * ownership transfer with reason 'owner_in_grace'. Offboarding hid it because no active contributor
+ * existed then; this runs once one does, when that contributor is restored (restoreUser) or reports
+ * the account (ingest). Returns whether the account moved.
+ *
+ * The caller holds the account's lock (lockAccount) and has established that `userId` is active:
+ * every owner change and every restore of an owner takes the same lock, so the owner's status read
+ * here can't change underneath. The owner's row is read, never locked: user rows are locked before
+ * account locks (offboarding and restore lock the owner's row and then wait for this lock), so
+ * locking it here could deadlock.
+ */
+export async function takeOverFromOwnerInGrace(
+  tx: Tx,
+  accountId: number,
+  userId: string,
+  actor: AuditActor,
+  now: Date,
+): Promise<boolean> {
+  const [account] = await tx
+    .select({
+      publicId: osrsAccounts.publicId,
+      status: osrsAccounts.status,
+      ownerUserId: osrsAccounts.ownerUserId,
+      ownerStatus: users.status,
+      linkBlocked: accountLinks.blocked,
+    })
+    .from(osrsAccounts)
+    .innerJoin(users, eq(users.id, osrsAccounts.ownerUserId))
+    .innerJoin(
+      accountLinks,
+      and(eq(accountLinks.accountId, osrsAccounts.id), eq(accountLinks.userId, userId)),
+    )
+    .where(eq(osrsAccounts.id, accountId));
+  if (
+    !account ||
+    account.status !== 'hidden' ||
+    account.ownerStatus !== 'grace' ||
+    account.ownerUserId === userId ||
+    account.linkBlocked
+  ) {
+    return false;
+  }
+  await setOwner(tx, accountId, { userId, status: 'active' }, now);
+  await auditTransfer(tx, actor, account, {
+    from: account.ownerUserId,
+    to: userId,
+    reason: 'owner_in_grace',
+  });
+  return true;
 }

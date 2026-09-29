@@ -11,6 +11,7 @@ import {
 import {
   accountLinks,
   accountNames,
+  auditLog,
   deviceAccounts,
   devices,
   equipmentChanges,
@@ -29,6 +30,7 @@ import { createTestDatabase, type TestDatabase } from '@hub/db/testing';
 import { fixtureBody, type FixtureName } from '@hub/fixtures';
 import { and, asc, eq, isNull } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { offboardUser } from '../offboarding';
 import { MAX_EVENTS_PER_PAYLOAD } from './limits';
 import {
   captureLogger,
@@ -1176,6 +1178,100 @@ describe('owners of unclaimed accounts (D-21)', () => {
       200,
     );
     expect((await account(hash)).ownerUserId).toBeNull();
+  });
+});
+
+describe('a hidden account whose owner is in grace (D-60)', () => {
+  /** An account reported by `owner`, then hidden by offboarding them (nobody to take it over). */
+  async function hiddenAccount(owner: SeededDevice): Promise<{ hash: string; id: number }> {
+    const hash = newHash();
+    await h.send(owner, wire('snapshot-normal', { hash }));
+    await offboardUser(t.db, { userId: owner.userId, reason: 'left_guild', graceDays: 30 });
+    const { id, status } = await account(hash);
+    expect(status).toBe('hidden');
+    return { hash, id };
+  }
+
+  const linkRoles = async (accountId: number) =>
+    Object.fromEntries(
+      (
+        await t.db
+          .select({ userId: accountLinks.userId, role: accountLinks.role })
+          .from(accountLinks)
+          .where(eq(accountLinks.accountId, accountId))
+      ).map((l) => [l.userId, l.role]),
+    );
+
+  it('passes to the active contributor who reports it, and becomes visible', async () => {
+    const owner = await h.seedDevice();
+    const { hash, id } = await hiddenAccount(owner);
+    const contributor = await h.seedDevice();
+
+    const loot = wire('event-loot', { hash, freshEventIds: true });
+    expect((await h.send(contributor, loot)).status).toBe(200);
+
+    const row = await account(hash);
+    expect(row).toMatchObject({
+      ownerUserId: contributor.userId,
+      status: 'active',
+      hiddenAt: null,
+    });
+    expect(await linkRoles(id)).toEqual({
+      [owner.userId]: 'contributor',
+      [contributor.userId]: 'owner',
+    });
+    expect((await eventRows(id)).length).toBeGreaterThan(0);
+    const entries = await t.db
+      .select()
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.action, 'account.ownership_transferred'),
+          eq(auditLog.targetId, row.publicId),
+        ),
+      );
+    expect(entries).toEqual([
+      expect.objectContaining({
+        actorUserId: null,
+        actorLabel: 'system',
+        targetType: 'osrs_account',
+        meta: { from: owner.userId, to: contributor.userId, reason: 'owner_in_grace' },
+      }),
+    ]);
+  });
+
+  it('stays hidden for a blocked contributor (nothing is stored)', async () => {
+    const owner = await h.seedDevice();
+    const blocked = await h.seedDevice();
+    const hash = newHash();
+    await h.send(owner, wire('snapshot-normal', { hash }));
+    await h.send(blocked, wire('snapshot-world-hop', { hash }));
+    const { id } = await account(hash);
+    await t.db
+      .update(accountLinks)
+      .set({ blocked: true, blockedAt: new Date() })
+      .where(and(eq(accountLinks.accountId, id), eq(accountLinks.userId, blocked.userId)));
+    await offboardUser(t.db, { userId: owner.userId, reason: 'left_guild', graceDays: 30 });
+    expect((await account(hash)).status).toBe('hidden');
+
+    expect((await h.send(blocked, wire('event-loot', { hash, freshEventIds: true }))).status).toBe(
+      200,
+    );
+    expect(await account(hash)).toMatchObject({ ownerUserId: owner.userId, status: 'hidden' });
+  });
+
+  it('stays hidden when its owner is not in grace', async () => {
+    const owner = await h.seedDevice();
+    const contributor = await h.seedDevice();
+    const hash = newHash();
+    await h.send(owner, wire('snapshot-normal', { hash }));
+    await t.db
+      .update(osrsAccounts)
+      .set({ status: 'hidden', hiddenAt: new Date() })
+      .where(eq(osrsAccounts.accountHash, hash));
+
+    expect((await h.send(contributor, wire('snapshot-world-hop', { hash }))).status).toBe(200);
+    expect(await account(hash)).toMatchObject({ ownerUserId: owner.userId, status: 'hidden' });
   });
 });
 

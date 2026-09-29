@@ -9,10 +9,12 @@
  * | prune-audit-log            | daily                            |
  * | Timescale policies         | reconciled at startup            |
  *
- * Raw payload clean-up is the raw_payloads retention policy; there is no job for it.
+ * Raw payload clean-up is the raw_payloads retention policy; there is no job for it. Every queue
+ * uses pg-boss's 'stately' policy (./queues): a run never overlaps the previous one, and ticks that
+ * arrive meanwhile don't pile up.
  */
 import { getConfig } from '@hub/core';
-import { applyTimescalePolicies, createDb } from '@hub/db';
+import { applyTimescalePolicies, createDb, pgErrorCode, safeDbErrorMessage } from '@hub/db';
 import {
   closeStaleSessions,
   expireGracePeriods,
@@ -22,6 +24,8 @@ import {
   reverifyDueMembers,
 } from '@hub/server';
 import { PgBoss, type Job } from 'pg-boss';
+import { JOBS, SCHEDULED_QUEUE_POLICY, ensureScheduledQueues } from './queues';
+import { timed } from './timed';
 
 const config = getConfig();
 const log = getLogger().child({ service: 'worker' });
@@ -39,25 +43,9 @@ const boss = new PgBoss({
 });
 // Without a listener an 'error' event would crash the process; work() on a missing queue only emits
 // errors (PGBOSS-1).
-boss.on('error', (err) => log.error({ err: String(err) }, 'pg-boss error'));
-
-const JOBS = {
-  closeStaleSessions: { name: 'close-stale-sessions', cron: '* * * * *' },
-  reverifyMembers: { name: 'reverify-members', cron: '*/15 * * * *' },
-  expireGrace: { name: 'expire-grace', cron: '7 * * * *' },
-  pruneAuditLog: { name: 'prune-audit-log', cron: '23 3 * * *' },
-} as const;
-
-async function timed<T>(job: string, fn: () => Promise<T>): Promise<void> {
-  const started = performance.now();
-  try {
-    const result = await fn();
-    log.info({ job, ms: Math.round(performance.now() - started), result }, 'job done');
-  } catch (err) {
-    log.error({ job, ms: Math.round(performance.now() - started), err: String(err) }, 'job failed');
-    throw err;
-  }
-}
+boss.on('error', (err) =>
+  log.error({ pgCode: pgErrorCode(err), error: safeDbErrorMessage(err) }, 'pg-boss error'),
+);
 
 async function main() {
   const changed = await applyTimescalePolicies(db, {
@@ -68,14 +56,15 @@ async function main() {
   log.info({ changed }, 'timescale policies reconciled');
 
   await boss.start(); // creates/migrates the pgboss schema under an advisory lock
-  for (const job of Object.values(JOBS)) {
-    await boss.createQueue(job.name); // required before schedule/send; idempotent (PGBOSS-1)
-    await boss.schedule(job.name, job.cron, null, { tz: 'UTC' });
+  // Queues before schedule/work (PGBOSS-1), with a policy that keeps runs from overlapping.
+  const { recreated } = await ensureScheduledQueues(boss);
+  if (recreated.length > 0) {
+    log.info({ recreated, policy: SCHEDULED_QUEUE_POLICY }, 'queues re-created with a new policy');
   }
 
   // Handlers always receive an array of jobs (PGBOSS-1).
   await boss.work(JOBS.closeStaleSessions.name, async (_jobs: Job[]) => {
-    await timed('close-stale-sessions', () => closeStaleSessions(db));
+    await timed(log, 'close-stale-sessions', () => closeStaleSessions(db));
   });
   await boss.work(JOBS.reverifyMembers.name, async (_jobs: Job[]) => {
     const botToken = config.discord.botToken;
@@ -84,7 +73,7 @@ async function main() {
       log.warn('DISCORD_BOT_TOKEN or DISCORD_GUILD_ID not set: membership re-verification skipped');
       return;
     }
-    await timed('reverify-members', () =>
+    await timed(log, 'reverify-members', () =>
       reverifyDueMembers({
         db,
         botToken,
@@ -101,10 +90,10 @@ async function main() {
     );
   });
   await boss.work(JOBS.expireGrace.name, async (_jobs: Job[]) => {
-    await timed('expire-grace', () => expireGracePeriods(db, {}));
+    await timed(log, 'expire-grace', () => expireGracePeriods(db, {}));
   });
   await boss.work(JOBS.pruneAuditLog.name, async (_jobs: Job[]) => {
-    await timed('prune-audit-log', () =>
+    await timed(log, 'prune-audit-log', () =>
       pruneAuditLog(db, { retentionDays: config.auditLogRetentionDays }),
     );
   });
@@ -127,6 +116,7 @@ process.on('SIGTERM', () => void shutdown('SIGTERM'));
 process.on('SIGINT', () => void shutdown('SIGINT'));
 
 main().catch((err) => {
-  log.fatal({ err: String(err) }, 'worker failed to start');
+  // Code and Postgres message only: a drizzle error's message lists the bound parameters (DB-3).
+  log.fatal({ pgCode: pgErrorCode(err), error: safeDbErrorMessage(err) }, 'worker failed to start');
   process.exit(1);
 });

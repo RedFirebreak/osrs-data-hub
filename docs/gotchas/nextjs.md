@@ -14,6 +14,8 @@ Next.js 16 (route handlers, server actions, RSC, proxy.ts, instrumentation, base
 | [NEXT-8](#next-8) | `tsc` on a fresh checkout fails with `Cannot find name 'PageProps'` or `Cannot find name 'RouteContext'`. |
 | [NEXT-9](#next-9) | The web container serves requests through its published port, but a localhost healthcheck inside it (`wget http://127.0.0.1:3000`) is refused. |
 | [NEXT-10](#next-10) | `next build` fails with `Module not found: Can't resolve './hash.js'` for an import inside a TS-source workspace package, while tsc, tsx and vitest accept it. |
+| [NEXT-11](#next-11) | `next build` fails at "Collecting page data" with `Failed to collect configuration for /<route>`, caused by `TypeError: The "path" argument must be of type string. Received undefined` at a `path.join(import.meta.dirname, …)` in a workspace package. |
+| [NEXT-12](#next-12) | The browser downloads a ~440 KB chunk containing `crypto-browserify`, and `next build` passes without a warning, after a `'use client'` component imports one small helper from a workspace package whose index also re-exports a module that imports `node:crypto`. |
 
 ### NEXT-1
 **Changing `basePath` or an `APP_URL` path prefix at runtime has no effect: the app still answers on the prefix it was built with and 404s on the new one.**
@@ -108,3 +110,34 @@ workspace packages, and `transpilePackages` doesn't help. `.ts` specifiers work 
 (tsconfig.base.json) in every package.
 
 *Source: `OBSERVED` (research sandbox, Next 16.3.6 with Turbopack and `--webpack`, an import-style matrix across tsc, tsx, tsup, vitest and node, 2026-09-28)*
+
+### NEXT-11
+**`next build` fails at "Collecting page data" with `Failed to collect configuration for /<route>`, caused by `TypeError: The "path" argument must be of type string. Received undefined` at a `path.join(import.meta.dirname, …)` in a workspace package.**
+Turbopack compiles `import.meta` in server bundles to an object with only a `url` getter and `env`
+(`{ get url(){…}, env: { … } }` in the emitted chunk), so `import.meta.dirname` and `import.meta.filename`
+are `undefined`. Node, tsx and vitest provide them (and tsc accepts them), so the code works everywhere
+until a route handler imports the module: a top-level `path.join(import.meta.dirname, '..',
+'drizzle')` in packages/db/src/migrate.ts breaks every route that imports `@hub/db`, even though the web
+app never migrates. packages/fixtures/src/index.ts has the same pattern. Fix: in any package the web app
+imports, don't read `import.meta.dirname`/`filename` at module top level; derive the path from
+`import.meta.url` (the build passes with `new URL(import.meta.url).pathname`), or resolve it lazily inside
+the function that needs it. Compare ([NEXT-10](#next-10)), the other workspace-package trap only
+`next build` shows.
+
+*Source: `OBSERVED` (apps/web `next build`, Next 16.3.6 Turbopack, 2026-09-29: fails with the migrate.ts line, passes with it derived from `import.meta.url`)*
+
+### NEXT-12
+**The browser downloads a ~440 KB chunk containing `crypto-browserify`, and `next build` passes without a warning, after a `'use client'` component imports one small helper from a workspace package whose index also re-exports a module that imports `node:crypto`.**
+Turbopack does not fail on Node built-ins in client bundles: it substitutes browser polyfills
+(`node:crypto` becomes crypto-browserify, missing exports such as `randomInt` just come out
+`undefined`). And a package whose `package.json` doesn't declare `"sideEffects": false` can't have the
+unused modules of an `export *` barrel dropped, so importing `relativeTime` from `@hub/core` in a client
+component ships `crypto.ts` (and the polyfill) with it; the same goes for zod via `config.ts`. Nothing
+breaks, so it only shows as bundle size. Fix: `"sideEffects": false` in the workspace package's
+`package.json` (verified: the polyfill chunk disappears), or give client code an entry point that
+doesn't reach Node-only modules. Never value-import `@hub/server` or `@hub/db` from client code at all;
+type-only imports must be written `import type { … }`, because under `verbatimModuleSyntax`
+`import { type X }` still emits a bare `import '<pkg>'`. Compare ([NEXT-10](#next-10)), another
+Turbopack behaviour specific to TS-source workspace packages.
+
+*Source: `OBSERVED` (scratch Next 16.3.6 Turbopack app, 2026-09-29: a client component importing a barrel that re-exports a `node:crypto` module produced a 439,080-byte chunk with crypto-browserify; the same package with `"sideEffects": false` produced none)*

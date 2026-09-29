@@ -1,5 +1,18 @@
-import { pgErrorCode, users, type Db } from '@hub/db';
-import { and, asc, eq, isNotNull, isNull, lt, or, sql } from 'drizzle-orm';
+import { auditLog, pgErrorCode, users, type Db } from '@hub/db';
+import {
+  and,
+  asc,
+  count,
+  countDistinct,
+  eq,
+  gt,
+  inArray,
+  isNotNull,
+  isNull,
+  lt,
+  or,
+  sql,
+} from 'drizzle-orm';
 import {
   avatarUrl,
   displayName,
@@ -38,15 +51,24 @@ export interface ReverifyResult {
   checked: number;
   offboarded: number;
   failures: number;
-  /** The circuit breaker stopped the run (too many "not a member" answers at once). */
+  /**
+   * The run was cut short: a circuit breaker tripped (too many departures in the batch or in the
+   * rolling window), or the lookups stopped early.
+   */
   aborted: boolean;
 }
 
 const HOUR_MS = 3_600_000;
-/** The circuit breaker needs at least this many answers before it judges a batch (DISCORD-1). */
+/** The per-batch breaker needs at least this many answers before it judges a batch (DISCORD-1). */
 export const BREAKER_MIN_CHECKED = 5;
-/** More than this share of departures in one batch is treated as a config problem (D-34). */
+/** More than this share of departures (in a batch, or in the window) is a config problem (D-34). */
 export const BREAKER_MAX_DEPARTURE_SHARE = 0.2;
+/** The rolling breaker lets at least this many departures through per window, however few users. */
+export const BREAKER_WINDOW_MIN_DEPARTURES = 3;
+/** The offboarding reasons re-verification gives (and the rolling breaker counts). */
+const REVERIFY_REASONS = ['left_guild', 'lost_role'] as const;
+/** actor_label of re-verification's audit entries (offboardDepartures). */
+const REVERIFY_ACTOR = 'worker';
 /** Discord's "Unknown Guild": the bot isn't in the guild, or DISCORD_GUILD_ID is wrong (DISCORD-1). */
 const UNKNOWN_GUILD = 10004;
 
@@ -70,12 +92,20 @@ type FailureReason = Extract<MembershipVerdict, { kind: 'error' }>['reason'];
  * → refresh roles/isAdmin/nickname and last_verified_at; definitive not-member (404/10007) or a
  * missing required role → offboardUser(reason 'left_guild' | 'lost_role'); any error (config, auth,
  * rate limit, outage) → fail OPEN: increment verify_failures and alert after N in a row, never
- * offboard (DISCORD-1). Circuit breaker: if more than 20% of a batch (with at least 5 checked) come
- * back not-member, offboard nobody in that run and log an error (likely a config problem).
+ * offboard (DISCORD-1).
+ *
+ * Two circuit breakers, either of which makes the run offboard nobody and log an error (likely a
+ * config problem: a wrong guild id, a kicked bot, a required role deleted and recreated):
+ *  - per batch: more than 20% of the users Discord answered for (at least 5) are departures;
+ *  - rolling: the users re-verification offboarded in the last intervalHours who are still in grace
+ *    for it, plus this batch's departures, would exceed max(3, 20% of the users). Checks are
+ *    staggered (a few users per run), so the per-batch rule alone almost never applies. See
+ *    windowBreakerTrips for how it clears.
  */
 export async function reverifyDueMembers(deps: ReverifyDeps): Promise<ReverifyResult> {
   const now = deps.now ?? new Date();
-  const due = await loadDueUsers(deps.db, now, deps.intervalHours ?? 6, deps.batchSize ?? 25);
+  const intervalHours = deps.intervalHours ?? 6;
+  const due = await loadDueUsers(deps.db, now, intervalHours, deps.batchSize ?? 25);
   const checks = await lookUpAll(deps, due);
   const stoppedEarly = checks.length < due.length;
 
@@ -94,16 +124,18 @@ export async function reverifyDueMembers(deps: ReverifyDeps): Promise<ReverifyRe
     }
   }
 
-  // The breaker judges the users Discord answered for: counting errors in would dilute it, and a
+  // The batch rule judges the users Discord answered for: counting errors in would dilute it, and a
   // wrong role list during a partial outage would then offboard everyone it did get an answer for.
   const answered = checks.length - failures;
-  const tripped = breakerTrips(answered, departures.length);
-  if (tripped) {
-    deps.logger.error(
-      { checked: checks.length, answered, departures: departures.length },
-      'discord re-verification: too many members missing in one batch, offboarding nobody (check DISCORD_GUILD_ID, the bot and DISCORD_REQUIRED_ROLE_IDS)',
-    );
-  }
+  const tripped =
+    departures.length > 0 &&
+    (await breakerTripped(deps, {
+      checked: checks.length,
+      answered,
+      departures,
+      now,
+      intervalHours,
+    }));
   const offboarded = tripped ? 0 : await offboardDepartures(deps, departures, now);
   return { checked: checks.length, offboarded, failures, aborted: tripped || stoppedEarly };
 }
@@ -115,6 +147,92 @@ export async function reverifyDueMembers(deps: ReverifyDeps): Promise<ReverifyRe
  */
 export function breakerTrips(answered: number, departures: number): boolean {
   return answered >= BREAKER_MIN_CHECKED && departures > answered * BREAKER_MAX_DEPARTURE_SHARE;
+}
+
+/**
+ * Most departures the rolling window lets through: max(3, 20% of `population`), the users there
+ * were at the start of the window (the active ones plus those the window offboarded), so the limit
+ * doesn't shrink as the window's own offboardings are spent.
+ */
+export function windowBreakerLimit(population: number): number {
+  return Math.max(BREAKER_WINDOW_MIN_DEPARTURES, population * BREAKER_MAX_DEPARTURE_SHARE);
+}
+
+/**
+ * The rolling breaker (D-34): true when `recent` (users re-verification offboarded in the window who
+ * are still in grace for it) plus this batch's `departures` exceed windowBreakerLimit. It clears by
+ * itself: once the window has passed those offboardings, or once an admin restores the users (they
+ * are active again) or confirms the offboarding (the reason becomes 'admin'). A tripped run
+ * offboards nobody, so it never adds to `recent`.
+ */
+export function windowBreakerTrips(recent: number, departures: number, active: number): boolean {
+  return recent + departures > windowBreakerLimit(active + recent);
+}
+
+/** Judges both breakers for a batch with departures; logs one error when either trips. */
+async function breakerTripped(
+  deps: ReverifyDeps,
+  batch: {
+    checked: number;
+    answered: number;
+    departures: readonly Departure[];
+    now: Date;
+    intervalHours: number;
+  },
+): Promise<boolean> {
+  const departures = batch.departures.length;
+  const { recent, active } = await windowCounts(deps.db, batch.now, batch.intervalHours);
+  const rules = [
+    ...(breakerTrips(batch.answered, departures) ? ['batch'] : []),
+    ...(windowBreakerTrips(recent, departures, active) ? ['window'] : []),
+  ];
+  if (rules.length === 0) return false;
+  deps.logger.error(
+    {
+      rules,
+      checked: batch.checked,
+      answered: batch.answered,
+      departures,
+      recentOffboarded: recent,
+      activeUsers: active,
+      windowLimit: windowBreakerLimit(active + recent),
+      windowHours: batch.intervalHours,
+    },
+    'discord re-verification: too many members missing, offboarding nobody (check DISCORD_GUILD_ID, the bot and DISCORD_REQUIRED_ROLE_IDS)',
+  );
+  return true;
+}
+
+/**
+ * The rolling window's counts. `recent`: distinct users with a 'user.offboarded' audit entry by
+ * re-verification (actor label 'worker', no actor user) since now − intervalHours who are still in
+ * grace for a membership reason. The audit entry says when and by whom; the user row says whether it
+ * still stands, so a restore or an admin's own offboarding takes the user out of the count. Only
+ * the window's entries are read (audit_log_at_idx). `active`: users now active.
+ */
+async function windowCounts(
+  db: Db,
+  now: Date,
+  intervalHours: number,
+): Promise<{ recent: number; active: number }> {
+  const since = new Date(now.getTime() - intervalHours * HOUR_MS);
+  const [recent] = await db
+    .select({ n: countDistinct(users.id) })
+    .from(auditLog)
+    .innerJoin(users, eq(users.id, auditLog.targetId))
+    .where(
+      and(
+        gt(auditLog.at, since),
+        eq(auditLog.action, 'user.offboarded'),
+        eq(auditLog.targetType, 'user'),
+        eq(auditLog.actorLabel, REVERIFY_ACTOR),
+        isNull(auditLog.actorUserId),
+        eq(users.status, 'grace'),
+        inArray(users.offboardReason, [...REVERIFY_REASONS]),
+      ),
+    );
+  const [active] = await db.select({ n: count() }).from(users).where(eq(users.status, 'active'));
+  return { recent: recent?.n ?? 0, active: active?.n ?? 0 };
 }
 
 /**
@@ -277,7 +395,7 @@ async function offboardDepartures(
         reason,
         graceDays: deps.graceDays,
         now,
-        actorLabel: 'worker',
+        actorLabel: REVERIFY_ACTOR,
       });
       offboarded++;
       deps.logger.info(

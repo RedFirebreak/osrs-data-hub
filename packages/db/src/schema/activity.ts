@@ -65,6 +65,8 @@ export const events = pgTable(
     // Per-account feeds page by seq (newest first).
     index('events_account_seq_idx').on(t.accountId, t.seq.desc()),
     index('events_type_occurred_idx').on(t.type, t.occurredAt.desc()),
+    // Deleting a device sets device_id null here: without an index each delete scans every event.
+    index('events_device_idx').on(t.deviceId),
   ],
 );
 
@@ -97,6 +99,8 @@ export const playSessions = pgTable(
       .on(t.accountId)
       .where(sql`${t.endedAt} is null`),
     index('play_sessions_account_started_idx').on(t.accountId, t.startedAt.desc()),
+    // For the device FK's ON DELETE SET NULL, as on events.
+    index('play_sessions_device_idx').on(t.deviceId),
   ],
 );
 
