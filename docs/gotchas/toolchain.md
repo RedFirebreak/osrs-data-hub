@@ -1,6 +1,6 @@
 # Toolchain and libraries
 
-Build, lint, test and package tooling (TypeScript, ESLint, pnpm, tsup, shadcn, Playwright, Docker base images) and the pg-boss and zod libraries.
+Build, lint, test and package tooling (TypeScript, ESLint, Prettier, pnpm, tsup, shadcn, Playwright, Docker base images, Git line endings) and the pg-boss and zod libraries.
 
 | ID | Symptom |
 |---|---|
@@ -14,6 +14,7 @@ Build, lint, test and package tooling (TypeScript, ESLint, pnpm, tsup, shadcn, P
 | [TOOL-6](#tool-6) | A Docker build on `node:26-alpine` fails with `sh: corepack: not found`. |
 | [TOOL-7](#tool-7) | After `pnpm format`, `tools/check_gotchas.py` reports `has no '*Source: ...*' line` for every entry and doc tables are re-padded, or tests that splice a payload fixture as a string fail (`expected [] to deeply equal [ 'player.inventory' ]`). |
 | [TOOL-8](#tool-8) | A Playwright run whose `globalSetup` creates the app's database fails with `Timed out waiting 60000ms from config.webServer`, or the server logs `database "…" does not exist` at start although `globalSetup` created it. |
+| [TOOL-9](#tool-9) | On a Windows clone `pnpm format:check` flags nearly every file (`Code style issues found in 548 files`), untouched ones like `apps/web/tsconfig.json` included, while the same content with the CRs stripped passes; or it still fails that way after pulling the commit that adds `.gitattributes`, with `git ls-files --eol` still showing `w/crlf`. |
 | [ZOD-1](#zod-1) | Unknown or new fields in a plugin payload vanish after parsing: stored event data lacks keys the plugin sent. |
 
 ### PGBOSS-1
@@ -137,6 +138,27 @@ migrate in `globalSetup`, then wait for whatever the server connects at boot and
 the database in the `webServer` command itself, before it starts the server.
 
 *Source: `SOURCE` (playwright 1.63.0 `lib/runner/index.js` `createGlobalSetupTasks`), `OBSERVED` (apps/web e2e, 2026-09-29: the standalone server logged `3D000 database "hub_e2e_…" does not exist` before `globalSetup` created it)*
+
+### TOOL-9
+**On a Windows clone `pnpm format:check` flags nearly every file (`Code style issues found in 548 files`), untouched ones like `apps/web/tsconfig.json` included, while the same content with the CRs stripped passes; or it still fails that way after pulling the commit that adds `.gitattributes`, with `git ls-files --eol` still showing `w/crlf`.**
+The Git for Windows installer writes `core.autocrlf=true` into the *system* gitconfig
+(`C:/Program Files/Git/etc/gitconfig`), not the repo's `.git/config`, so the local config looks clean;
+`git config --show-origin core.autocrlf` shows where it comes from. Every checkout converts LF to CRLF
+(`i/lf w/crlf`), and Prettier 3's default `endOfLine: "lf"` counts each CRLF file as unformatted.
+Markdown escapes only because it is in `.prettierignore` ([TOOL-7](#tool-7)), and
+`tools/check_gotchas.py` reads with universal newlines, so it passes either way. Fix: `.gitattributes`
+with `* text=auto eol=lf` overrides `core.autocrlf` in every clone. Files whose CRLF is the point need
+`-text` (the raw OkHttp captures in `packages/fixtures/http`, which tests split on `"\r\n\r\n"`), or the
+rule rewrites them too. Setting Prettier's `endOfLine: "auto"` instead would only hide the CRLF working
+tree, not fix it.
+
+The second face: adding the attributes fixes the index, not an existing working tree.
+`git add --renormalize .` changes only the index (here it staged nothing, since the index was already
+LF), and `git checkout-index -a -f` skips every file whose stat still matches the index, so the files
+stay CRLF. With a clean working tree, delete the tracked files and check them out again:
+`git ls-files -z | xargs -0 rm -f && git checkout -- .` (or clone again).
+
+*Source: `OBSERVED` (this repo, Windows 11, Git for Windows with system `core.autocrlf=true`, prettier 3.9.9, 2026-09-29: 548 files flagged; after adding `.gitattributes`, `git checkout-index -a -f` left 594 files CRLF until they were deleted and checked out again)*
 
 ### ZOD-1
 **Unknown or new fields in a plugin payload vanish after parsing: stored event data lacks keys the plugin sent.**

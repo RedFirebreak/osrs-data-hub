@@ -13,3 +13,9 @@ trim_trailing_whitespace = false
 
 [*.py]
 indent_size = 4
+
+# Wire-exact HTTP captures (see .gitattributes): CRLF, and no newline added or whitespace trimmed.
+[packages/fixtures/http/*.http]
+end_of_line = crlf
+insert_final_newline = unset
+trim_trailing_whitespace = false

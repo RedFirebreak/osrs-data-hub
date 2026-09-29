@@ -27,6 +27,12 @@ switch). Status per milestone: [ARCHITECTURE.md §14](ARCHITECTURE.md#14-milesto
   on the documented setup. Not `--env-file`, which crashes `next dev` (NEXT-15). `.claude/launch.json`
   starts the web app for Claude's browser preview; DEVELOPMENT.md covers `.env.dev` and a no-admin
   `corepack enable` on Windows.
+- LF line endings in every checkout: a root `.gitattributes` (`* text=auto eol=lf`) overrides the
+  `core.autocrlf=true` that Git for Windows sets system-wide. Before, a Windows clone checked everything out
+  as CRLF and `pnpm format:check` flagged 548 files (TOOL-9). The raw OkHttp captures in
+  `packages/fixtures/http` stay CRLF (`-text`, and a matching `.editorconfig` section) because tests split
+  them on `"\r\n\r\n"`. The index was already LF, so the renormalize changed no file. An existing Windows
+  checkout keeps its CRLF files until they are checked out again (TOOL-9 has the command).
 
 ### M4 (part) — data rights, and fixes from review
 

@@ -1,0 +1,8 @@
+# LF in the repository and in every checkout, whatever core.autocrlf says. Git for Windows sets
+# core.autocrlf=true system-wide, which otherwise checks every file out as CRLF, and Prettier (endOfLine
+# "lf") then flags all of them (TOOL-9). Files git detects as binary are left alone.
+* text=auto eol=lf
+
+# Raw HTTP/1.1 captures from OkHttp: CRLF is part of the wire format and tests split on "\r\n\r\n"
+# (packages/fixtures/README.md), so these stay byte-exact.
+packages/fixtures/http/*.http -text
