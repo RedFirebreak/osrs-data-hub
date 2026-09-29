@@ -342,8 +342,9 @@ describe('ingest → read models → live', () => {
     const theirs = await page(member, zezima.publicId);
     expect(theirs?.account).toMatchObject({ relation: 'member', canManage: false });
     expect(shared(theirs!.skills).totalLevel).toBe(2372);
+    // Live location is shared with the guild by default (D-82).
+    expect(theirs?.location).toMatchObject({ visible: true, shared: true });
     // Private by default (handoff §10): not even the "not shared" state.
-    expect(theirs?.location).toEqual({ visible: false });
     expect(theirs?.equipment).toEqual({ visible: false });
     expect(theirs?.inventory).toEqual({ visible: false });
 
@@ -354,7 +355,10 @@ describe('ingest → read models → live', () => {
       'superior_spawn',
       'death',
     ]);
-    expect(memberFeed.filter((e) => locationOf(e) !== undefined)).toEqual([]);
+    // With live location (D-82) the member gets the same coordinates as the owner.
+    expect(memberFeed.filter((e) => locationOf(e) !== undefined).map(locationOf)).toEqual(
+      ownFeed.filter((e) => locationOf(e) !== undefined).map(locationOf),
+    );
     expect(shared(theirs!.recentEvents).map((e) => e.id)).toEqual(memberFeed.map((e) => e.id));
   });
 
@@ -372,7 +376,11 @@ describe('ingest → read models → live', () => {
     });
     // The live stream and the page build events the same way (toFeedEvent, same redaction).
     expect([...memberLive].reverse()).toEqual(memberFeed);
-    expect(memberLive.filter((e) => locationOf(e) !== undefined)).toEqual([]);
+    // The member has live location by default (D-82): the same coordinates as the owner's stream.
+    expect(memberLive.filter((e) => locationOf(e) !== undefined).map(locationOf)).toEqual(
+      ownerLive.filter((e) => locationOf(e) !== undefined).map(locationOf),
+    );
+    expect(memberLive.filter((e) => locationOf(e) !== undefined)).toHaveLength(2);
 
     // The wizard's step 3 reaches the device owner only, once.
     const devices = ownerStream.messages('device').map((m) => m.data as DeviceMessage);

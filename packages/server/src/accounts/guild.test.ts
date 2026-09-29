@@ -90,7 +90,7 @@ beforeAll(async () => {
 
   // Nothing shared with the guild: invisible, however big its gains.
   const uniform = await seedAccount(t.db, { name: 'Uniform', owner: bob.id });
-  for (const c of ['stats', 'events', 'activity'] as const) {
+  for (const c of ['stats', 'events', 'activity', 'location_live'] as const) {
     await seedSharing(t.db, uniform.id, c, 'private');
   }
   await withSkills(uniform, { Attack: [1e9, 99] });

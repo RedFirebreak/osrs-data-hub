@@ -82,9 +82,9 @@ export default async function SettingsPage() {
             snapshot.
           </p>
           <p className="text-muted-foreground">
-            Inside the hub, stats, events and activity are visible to the guild by default;
-            location, equipment and inventory stay private. Account owners change this per account
-            on the account page.
+            Inside the hub, stats, events, activity and live location are visible to the guild by
+            default; location history, equipment and inventory stay private. Account owners change
+            this per account on the account page.
           </p>
           <Link
             href="/privacy"

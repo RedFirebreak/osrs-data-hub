@@ -223,7 +223,7 @@ describe('setAudience', () => {
       'not_found',
     );
     const secret = await sharedAccount();
-    for (const c of ['stats', 'events', 'activity'] as const) {
+    for (const c of ['stats', 'events', 'activity', 'location_live'] as const) {
       await seedSharing(t.db, secret.id, c, 'private');
     }
     await expectRefused(

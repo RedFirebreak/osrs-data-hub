@@ -91,6 +91,7 @@ async function GuildContent({ userId, viewer }: { userId: string; viewer: Viewer
       >
         <EventTimeline
           initial={overview.feed}
+          guildFilter={overview.feedFilter}
           pageSize={GUILD_FEED_EVENTS}
           typeOptions={eventTypeOptions()}
           now={now}

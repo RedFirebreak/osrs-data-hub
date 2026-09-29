@@ -3,9 +3,15 @@
  * whose `events` category the viewer may see, every event redacted for the viewer (toFeedEvent).
  * Special-world events are included and flagged (FeedEvent.specialWorld).
  */
-import type { Viewer } from '@hub/core';
+import {
+  COMBAT_LEVEL_SKILL,
+  LOOT_EVENT_TYPES,
+  MAX_REAL_LEVEL,
+  type GuildFeedFilter,
+  type Viewer,
+} from '@hub/core';
 import { events, type DbOrTx } from '@hub/db';
-import { and, desc, inArray, lt } from 'drizzle-orm';
+import { and, desc, inArray, lt, sql, type SQL } from 'drizzle-orm';
 import type { FeedEvent } from '../feed';
 import {
   loadVisibleAccount,
@@ -28,6 +34,8 @@ export interface ListFeedOptions {
   beforeSeq?: number;
   /** Default 50, clamped to 1…200. */
   limit?: number;
+  /** The guild activity feed's filter (D-81); only the guild feed passes it. */
+  guildFilter?: GuildFeedFilter;
 }
 
 /**
@@ -92,6 +100,7 @@ export async function feedForAccounts(
         inArray(events.accountId, [...byId.keys()]),
         types.length > 0 ? inArray(events.type, types) : undefined,
         beforeSeq !== null ? lt(events.seq, beforeSeq) : undefined,
+        opts.guildFilter ? guildFeedCondition(opts.guildFilter) : undefined,
       ),
     )
     .orderBy(desc(events.seq))
@@ -100,6 +109,22 @@ export async function feedForAccounts(
     const entry = byId.get(row.accountId);
     return entry ? toFeedEvents([row], entry) : [];
   });
+}
+
+/** @hub/core inGuildFeed as SQL: the rows it keeps. */
+function guildFeedCondition(filter: GuildFeedFilter): SQL | undefined {
+  const conditions: SQL[] = [];
+  if (filter.minLootValue > 0) {
+    conditions.push(
+      sql`not (${inArray(events.type, [...LOOT_EVENT_TYPES])} and coalesce(${events.valueGp}, 0) < ${filter.minLootValue})`,
+    );
+  }
+  if (!filter.showVirtualLevels) {
+    conditions.push(
+      sql`not (${events.type} = 'level_up' and ${events.skill} is distinct from ${COMBAT_LEVEL_SKILL} and coalesce(${events.level}, 0) > ${MAX_REAL_LEVEL})`,
+    );
+  }
+  return and(...conditions);
 }
 
 function clampLimit(limit: number | undefined): number {

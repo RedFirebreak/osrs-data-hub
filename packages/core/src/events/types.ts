@@ -14,6 +14,9 @@ export type KnownEventType = (typeof EVENT_TYPE_MAP)[keyof typeof EVENT_TYPE_MAP
 
 export const KNOWN_EVENT_TYPES: readonly KnownEventType[] = Object.values(EVENT_TYPE_MAP);
 
+/** Stored event types that carry a loot value (minimum loot values apply to these). */
+export const LOOT_EVENT_TYPES: readonly KnownEventType[] = ['loot', 'pk_loot'];
+
 /** One row for the `events` table (without account/device/received_at, which the caller adds). */
 export interface NormalizedEvent {
   pluginEventId: string;

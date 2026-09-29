@@ -22,6 +22,7 @@ import { getAccountPage, type AccountPage } from './account-page';
 import { getDashboard } from './dashboard';
 import { getGuildOverview } from './guild';
 import { listFeed } from './list-feed';
+import { seedSharing } from './test-support';
 import { getGains } from './xp';
 
 const MIN = 60_000;
@@ -106,6 +107,16 @@ async function publicIdOf(accountHash: string): Promise<string> {
   return row.publicId;
 }
 
+/** Takes live location away from the guild, so a member has no location category at all. */
+async function keepLocationPrivate(accountPublicId: string): Promise<void> {
+  const [row] = await t.db
+    .select({ id: osrsAccounts.id })
+    .from(osrsAccounts)
+    .where(eq(osrsAccounts.publicId, accountPublicId));
+  if (!row) throw new Error('account missing');
+  await seedSharing(t.db, row.id, 'location_live', 'private');
+}
+
 afterAll(async () => {
   await t.drop();
 });
@@ -144,7 +155,8 @@ describe('a normal snapshot (snapshot-normal)', () => {
     expect(data(asOwner.equipment).items.length).toBeGreaterThan(0);
 
     const asMember = await page(member, publicId, t0 + 2_000);
-    expect(asMember.location).toEqual({ visible: false });
+    // Live location is a guild category by default (D-82).
+    expect(data(asMember.location)).toEqual(data(asOwner.location));
     expect(asMember.equipment).toEqual({ visible: false });
     expect(asMember.inventory).toEqual({ visible: false });
     expect(asMember.skills.visible && asMember.skills.shared).toBe(true);
@@ -219,6 +231,8 @@ describe('sections the plugin stops sending (snapshot-no-sections, D-18)', () =>
 
 describe('events from the fixtures', () => {
   it('strips superior and death locations for members, keeps them for the owner', async () => {
+    await keepLocationPrivate(publicId);
+    await keepLocationPrivate(ironPublicId);
     await sendZezima('event-superior', 4 * HOUR, 'drop');
     const [superior] = await listFeed(t.db, member, {
       accountPublicId: publicId,
@@ -305,6 +319,7 @@ describe('every event fixture in the feed', () => {
     const body = wire(name, { hash: newHash(), name: `P ${name}`, freshEventIds: true });
     expect((await h.send(ownerDevice, body)).status).toBe(200);
     const id = await publicIdOf(body.player?.accountHash as string);
+    await keepLocationPrivate(id);
     const asMember = await listFeed(t.db, member, { accountPublicId: id });
     expect(asMember.length).toBeGreaterThanOrEqual(body.events?.length ?? 0);
     for (const e of asMember) {

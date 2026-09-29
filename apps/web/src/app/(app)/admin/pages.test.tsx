@@ -5,7 +5,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { auditLog, devices, rawPayloads, users } from '@hub/db';
-import { getMetrics, setDecommissioned } from '@hub/server';
+import { getMetrics, setDecommissioned, setGuildFeedFilter } from '@hub/server';
 import { eq } from 'drizzle-orm';
 import { renderToReadableStream } from 'react-dom/server';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -19,6 +19,7 @@ import IngestPage from './ingest/page';
 import AdminLayout from './layout';
 import UsersPage from './page';
 import PayloadsPage from './payloads/page';
+import SettingsPage from './settings/page';
 
 const page = vi.hoisted(() => ({ headers: new Headers() }));
 
@@ -91,6 +92,7 @@ const PAGES: [string, () => Promise<React.ReactNode>][] = [
   ['payloads', () => PayloadsPage(searchParams() as PageProps<'/admin/payloads'>)],
   ['audit', () => AuditPage()],
   ['config', () => ConfigPage()],
+  ['settings', () => SettingsPage()],
   ['decommission', () => DecommissionPage()],
 ];
 
@@ -244,7 +246,7 @@ describe('ingest and raw payloads', () => {
   });
 });
 
-describe('audit, configuration and decommission pages', () => {
+describe('audit, configuration, settings and decommission pages', () => {
   it('shows audit entries with their actor', async () => {
     await ctx.t.db.insert(auditLog).values({
       actorUserId: adminId,
@@ -279,5 +281,18 @@ describe('audit, configuration and decommission pages', () => {
     } finally {
       await setDecommissioned(ctx.t.db, { value: false, actorUserId: adminId });
     }
+  });
+
+  it('shows the stored guild feed filter on the settings page', async () => {
+    const before = await render(() => SettingsPage());
+    expect(before).toContain('Guild activity');
+    expect(before).toContain('value="0"');
+    await setGuildFeedFilter(ctx.t.db, {
+      filter: { minLootValue: 25_000, showVirtualLevels: true },
+      actorUserId: adminId,
+    });
+    const after = await render(() => SettingsPage());
+    expect(after).toContain('value="25000"');
+    expect(after).toMatch(/role="switch"[^>]*aria-checked="true"/);
   });
 });

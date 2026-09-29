@@ -9,6 +9,7 @@
  *   <EventTimeline initial={page.recentEvents.data} pageSize={20} accountPublicId={publicId}
  *                  typeOptions={eventTypeOptions()} now={now} linkAccounts={false} />
  */
+import type { GuildFeedFilter } from '@hub/core';
 import type { FeedEvent } from '@hub/server';
 import { LoaderCircleIcon } from 'lucide-react';
 import { useRef, useState } from 'react';
@@ -33,6 +34,11 @@ export interface EventTimelineProps {
   pageSize: number;
   /** Only this account's events; omit for every visible account. */
   accountPublicId?: string;
+  /**
+   * The guild feed's admin filter (D-81): live events that fail it are not added. The server
+   * applies it to every page without `accountPublicId`, so only the guild page passes it.
+   */
+  guildFilter?: GuildFeedFilter;
   /** Filter chips; omit for no filter. */
   typeOptions?: readonly EventTypeOption[];
   /** Server render time (ISO), for relative times. */
@@ -56,6 +62,7 @@ export function EventTimeline({
   initial,
   pageSize,
   accountPublicId,
+  guildFilter,
   typeOptions,
   now,
   linkAccounts = true,
@@ -72,7 +79,7 @@ export function EventTimeline({
   // The types of the events the list shows (the last filter that loaded; `types` runs ahead of it
   // while a filter change loads).
   const shownTypes = useRef<readonly string[]>([]);
-  const filter: TimelineFilter = { accountPublicId, types };
+  const filter: TimelineFilter = { accountPublicId, types, guildFilter };
 
   useLiveSubscription('event', (msg) => {
     if (matchesFilter(msg.event, filter)) setEvents((list) => mergeEvents(list, [msg.event]));
@@ -121,7 +128,7 @@ export function EventTimeline({
     else set.add(type);
     const nextTypes = (typeOptions ?? []).map((o) => o.value).filter((v) => set.has(v));
     setTypes(nextTypes);
-    void load({ accountPublicId, types: nextTypes }, undefined);
+    void load({ accountPublicId, types: nextTypes, guildFilter }, undefined);
   }
 
   const filtered = types.length > 0;

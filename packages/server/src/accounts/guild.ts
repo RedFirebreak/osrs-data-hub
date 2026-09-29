@@ -2,10 +2,11 @@
  * The guild page (handoff §12): members with their visible accounts, the activity feed and simple
  * gains leaderboards (day, week, month).
  */
-import { sortSkillsForDisplay, type Viewer } from '@hub/core';
+import { sortSkillsForDisplay, type GuildFeedFilter, type Viewer } from '@hub/core';
 import { users, type DbOrTx } from '@hub/db';
 import { and, eq, inArray } from 'drizzle-orm';
 import type { FeedEvent } from '../feed';
+import { getGuildFeedFilter } from '../settings/guild-feed';
 import { feedForAccounts } from './list-feed';
 import {
   loadPresence,
@@ -41,6 +42,8 @@ export interface GuildMember {
 export interface GuildOverview {
   members: GuildMember[];
   feed: FeedEvent[];
+  /** The admin's guild feed filter (D-81) the feed was read with; live events are checked against it. */
+  feedFilter: GuildFeedFilter;
   leaderboards: Record<LeaderboardPeriod, Leaderboard[]>;
 }
 
@@ -51,7 +54,8 @@ export interface GuildOverview {
  *   (non-blocked) contributors too only for viewers who may read its contributor list, i.e. the same
  *   rule as the sharing settings (owner, contributors, admins; D-68). A plain member can't learn from
  *   this page who else plays an account;
- * - feed: the newest GUILD_FEED_EVENTS events the viewer may see (listFeed rules, redacted);
+ * - feed: the newest GUILD_FEED_EVENTS events the viewer may see (listFeed rules, redacted) that
+ *   pass the admin's guild feed filter (D-81);
  * - leaderboards: per period (day = since local midnight in `timezone`, week = 7 days, month = 30
  *   days), Overall first and then every skill in grid order that anyone gained XP in, each with the
  *   top LEADERBOARD_SIZE accounts whose stats the viewer may see. Special-world XP is never sampled,
@@ -65,9 +69,13 @@ export async function getGuildOverview(
 ): Promise<GuildOverview> {
   const visible = await loadVisibleAccounts(db, viewer);
   const members = await loadMembers(db, visible, opts.now);
-  const feed = await feedForAccounts(db, visible, { limit: GUILD_FEED_EVENTS });
+  const feedFilter = await getGuildFeedFilter(db);
+  const feed = await feedForAccounts(db, visible, {
+    limit: GUILD_FEED_EVENTS,
+    guildFilter: feedFilter,
+  });
   const leaderboards = await loadLeaderboards(db, visible, opts);
-  return { members, feed, leaderboards };
+  return { members, feed, feedFilter, leaderboards };
 }
 
 async function loadMembers(

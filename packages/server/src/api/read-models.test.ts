@@ -7,6 +7,7 @@ import { osrsAccounts } from '@hub/db';
 import { createTestDatabase, type TestDatabase } from '@hub/db/testing';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { seedSharing } from '../accounts/test-support';
 import {
   createHarness,
   newHash,
@@ -83,6 +84,13 @@ beforeAll(async () => {
   const death = wire('event-death-dangerous', { freshEventIds: true });
   await send(ironDevice, death, t0 + 10 * MIN);
   iron = await publicIdOf(death.player?.accountHash as string);
+  // Iron Mira keeps her live location private (the default is guild, D-82).
+  const [ironRow] = await t.db
+    .select({ id: osrsAccounts.id })
+    .from(osrsAccounts)
+    .where(eq(osrsAccounts.publicId, iron));
+  if (!ironRow) throw new Error('account missing');
+  await seedSharing(t.db, ironRow.id, 'location_live', 'private');
 
   const bareHash = newHash();
   await send(
@@ -305,7 +313,13 @@ describe('apiGetAccount', () => {
 
   it('answers null for accounts the key cannot see', async () => {
     expect(await apiGetAccount(t.db, memberKey.principal, 'unknown1234', NOW)).toBeNull();
-    expect((await detail(memberKey, zezima)).categories).toEqual(['stats', 'events', 'activity']);
+    // A member's defaults, live location included (D-82).
+    expect((await detail(memberKey, zezima)).categories).toEqual([
+      'stats',
+      'events',
+      'activity',
+      'location_live',
+    ]);
   });
 });
 

@@ -1,6 +1,7 @@
 export * from './config';
 export * from './crypto';
 export * from './format';
+export * from './guild-feed';
 export * from './http';
 export * from './json';
 export * from './names';

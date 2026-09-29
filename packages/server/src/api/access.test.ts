@@ -52,6 +52,11 @@ beforeAll(async () => {
       inventoryUpdatedAt: NOW,
     });
   }
+  // Both keep their live location private (the default is guild, D-82): a category a member's key
+  // can ask for but not get.
+  for (const account of [zezima, other]) {
+    await seedSharing(t.db, account.id, 'location_live', 'private');
+  }
 });
 
 afterAll(async () => {
@@ -177,7 +182,7 @@ describe('the creator’s visibility, evaluated on every request', () => {
     const account = await seedAccount(t.db, { name: 'Changing', owner: owner.id });
     const { principal } = await makeKey(t.db, watcher.id, {}, NOW);
     expect((await loadApiAccounts(t.db, principal)).map((e) => e.account.id)).toContain(account.id);
-    for (const c of ['stats', 'events', 'activity'] as const)
+    for (const c of ['stats', 'events', 'activity', 'location_live'] as const)
       await setAudience(account.id, c, 'private');
     expect((await loadApiAccounts(t.db, principal)).map((e) => e.account.id)).not.toContain(
       account.id,
@@ -217,8 +222,9 @@ describe('the creator’s visibility, evaluated on every request', () => {
     await seedLink(t.db, account.id, blocked.id, { blocked: true });
     const { principal } = await makeKey(t.db, blocked.id, {}, NOW);
     const detail = present(await apiGetAccount(t.db, principal, account.publicId, NOW));
-    expect(detail.categories).toEqual(['stats', 'events', 'activity']);
-    for (const c of ['stats', 'events', 'activity'] as const)
+    // A member's defaults, live location included (D-82).
+    expect(detail.categories).toEqual(['stats', 'events', 'activity', 'location_live']);
+    for (const c of ['stats', 'events', 'activity', 'location_live'] as const)
       await setAudience(account.id, c, 'private');
     expect(await apiGetAccount(t.db, principal, account.publicId, NOW)).toBeNull();
     await t.db
@@ -316,12 +322,12 @@ describe('restrictAccess', () => {
 });
 
 describe('seeded sharing rows', () => {
-  it('uses the defaults when there are none (sanity check for the fixtures above)', async () => {
+  it('uses the defaults when there are none, live location guild (D-82; sanity check for the fixtures above)', async () => {
     const fresh = await seedAccount(t.db, { name: 'Defaults', owner: owner.id });
     await seedSharing(t.db, fresh.id, 'inventory', 'guild');
     const { principal } = await makeKey(t.db, member.id, {}, NOW);
     expect(
       present(await loadApiAccount(t.db, principal, fresh.publicId)).access.categories,
-    ).toEqual(new Set(['stats', 'events', 'activity', 'inventory']));
+    ).toEqual(new Set(['stats', 'events', 'activity', 'location_live', 'inventory']));
   });
 });

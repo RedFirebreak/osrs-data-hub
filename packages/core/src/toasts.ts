@@ -1,3 +1,4 @@
+import { LOOT_EVENT_TYPES } from './events/types';
 import { TOAST_MAX_AGE_MS } from './time';
 
 export interface ToastFilter {
@@ -17,7 +18,7 @@ export const DEFAULT_TOAST_FILTER: ToastFilter = {
 };
 
 /** Stored event types that minLootValue applies to. */
-const LOOT_TYPES: ReadonlySet<string> = new Set(['loot', 'pk_loot']);
+const LOOT_TYPES: ReadonlySet<string> = new Set(LOOT_EVENT_TYPES);
 
 /**
  * Whether to show a toast for an event the viewer is already allowed to see (permission is checked

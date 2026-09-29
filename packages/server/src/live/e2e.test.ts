@@ -16,7 +16,7 @@ import { LiveHub } from './hub';
 import { startLiveListener, type LiveListener, type LiveSink } from './listener';
 import type { DeviceMessage, LiveEventMessage, PresenceMessage } from './messages';
 import { replayEvents } from './replay';
-import { captureLogger, fakeSubscriber } from './test-support';
+import { captureLogger, fakeSubscriber, seedAccount, share } from './test-support';
 
 const EVENT_FIXTURES = FIXTURES.filter((name) => name.startsWith('event-')).sort(
   (a, b) => timestampOf(a) - timestampOf(b),
@@ -56,6 +56,19 @@ beforeAll(async () => {
   });
   device = await h.seedDevice();
   memberId = await h.seedUser();
+  // Live location is shared with the guild by default (D-82). The fixture accounts keep it private,
+  // so the member has no location category: created bare ahead of ingest, which fills them in.
+  const names = new Map<string, string>();
+  for (const name of FIXTURES) {
+    const player = fixtureJson<{ player?: { accountHash?: string; name?: string } }>(name).player;
+    if (player?.accountHash && !names.get(player.accountHash)) {
+      names.set(player.accountHash, player.name ?? '');
+    }
+  }
+  for (const [accountHash, name] of names) {
+    const account = await seedAccount(t.db, { name: name || 'Unknown', accountHash });
+    await share(t.db, account.id, 'location_live', 'private');
+  }
   owner = fakeSubscriber({ userId: device.userId, status: 'active', isAdmin: false });
   member = fakeSubscriber({ userId: memberId, status: 'active', isAdmin: false });
   hub.subscribe(owner);

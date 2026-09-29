@@ -377,6 +377,7 @@ Other rules:
 - **Live map:**
   - poll `/snapshot?since=` (1/s at most; every 2–10 s is plenty) with a key holding `location_live` and
     `activity`. Browsers can call it directly (CORS).
-  - Only accounts whose owner shared `location_live` with you, and whose players send their location,
-    have a `location`. Grey out `stale: true` positions.
+  - Only accounts that share `location_live` with you (the guild by default, D-82; accounts the hub
+    knew before that default keep `private` until their owner changes it), and whose players send
+    their location, have a `location`. Grey out `stale: true` positions.
   - Fetch without `since` now and then to drop accounts that left.
