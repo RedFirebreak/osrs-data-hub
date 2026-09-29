@@ -3,6 +3,10 @@
  * RSC/server code are separate module instances and would otherwise register twice (NEXT-3).
  */
 import { Counter, Gauge, Histogram, Registry, collectDefaultMetrics } from 'prom-client';
+import { RecentMinuteCounts } from './recent-counts';
+
+/** Minutes of unarchived ingest responses kept for the ingest health chart (HEALTH_MINUTES). */
+export const RECENT_REJECTION_MINUTES = 60;
 
 function create() {
   const registry = new Registry();
@@ -65,6 +69,11 @@ function create() {
       help: 'Open live (SSE) connections',
       registers: [registry],
     }),
+    /**
+     * Ingest responses whose body was never archived (401, 410, 413, 429, outdated plugin), per
+     * minute and status, for the ingest health chart (D-83). Not exported to Prometheus.
+     */
+    ingestUnarchived: new RecentMinuteCounts(RECENT_REJECTION_MINUTES),
     discordVerifyFailures: new Counter({
       name: 'hub_discord_verify_failures_total',
       help: 'Discord membership checks that failed (errors, not "not a member")',
@@ -77,10 +86,20 @@ function create() {
 
 export type HubMetrics = ReturnType<typeof create>;
 
-const g = globalThis as unknown as { __hubMetrics?: HubMetrics };
+/**
+ * Bump whenever create() gains or changes a member. `next dev` re-evaluates this module on a hot
+ * reload but keeps globalThis, so without it the old object (missing the new member) would be
+ * handed to the new code until the dev server restarts. A new version starts fresh counters.
+ */
+const METRICS_VERSION = 2;
+
+const g = globalThis as unknown as { __hubMetrics?: HubMetrics; __hubMetricsVersion?: number };
 
 export function getMetrics(): HubMetrics {
-  g.__hubMetrics ??= create();
+  if (!g.__hubMetrics || g.__hubMetricsVersion !== METRICS_VERSION) {
+    g.__hubMetrics = create();
+    g.__hubMetricsVersion = METRICS_VERSION;
+  }
   return g.__hubMetrics;
 }
 
