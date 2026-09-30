@@ -57,7 +57,7 @@ jobs:
     timeout-minutes: 20
     services:
       db:
-        image: timescale/timescaledb:2.30.1-pg18
+        image: timescale/timescaledb:2.30.2-pg18
         env:
           POSTGRES_USER: hub
           POSTGRES_PASSWORD: hub
@@ -117,7 +117,7 @@ jobs:
     timeout-minutes: 20
     services:
       db:
-        image: timescale/timescaledb:2.30.1-pg18
+        image: timescale/timescaledb:2.30.2-pg18
         env:
           POSTGRES_USER: hub
           POSTGRES_PASSWORD: hub

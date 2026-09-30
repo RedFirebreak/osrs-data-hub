@@ -11,7 +11,7 @@ services:
   db:
     # Pinned to a Postgres major that TimescaleDB supports. Community features (hypertables,
     # compression, retention, continuous aggregates) are included in this (non -oss) image.
-    image: timescale/timescaledb:2.30.1-pg18
+    image: timescale/timescaledb:2.30.2-pg18
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-hub}
@@ -73,7 +73,7 @@ services:
   # Optional nightly pg_dump: docker compose --profile backup up -d
   backup:
     profiles: ['backup']
-    image: timescale/timescaledb:2.30.1-pg18
+    image: timescale/timescaledb:2.30.2-pg18
     restart: unless-stopped
     env_file: .env
     environment:
