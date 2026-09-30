@@ -8,6 +8,7 @@ export * from './leaderboards';
 export * from './limits';
 export * from './me';
 export * from './params';
+export * from './service-keys';
 export * from './skills';
 export * from './snapshot';
 export * from './state';

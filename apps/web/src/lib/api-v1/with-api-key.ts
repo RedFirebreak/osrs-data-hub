@@ -12,8 +12,9 @@
  *    Retry-After before anything touches the database, so keys can't be guessed.
  * 3. authenticateApiKey: every failure is the same 401 (`WWW-Authenticate: Bearer`), whatever was
  *    wrong, and every one but a missing header counts towards the IP's limit.
- * 4. The per-key limits (120/min, plus 1/s on /snapshot): 429 + Retry-After; the X-RateLimit-* headers
- *    go on every authenticated response, errors included.
+ * 4. The per-key limits (the key's own requests per minute: 120 for a user key, 600 or the admin's
+ *    figure for a service key (D-87), plus 1/s on /snapshot): 429 + Retry-After; the X-RateLimit-*
+ *    headers go on every authenticated response, errors included.
  * 5. The handler, inside handleApi's error mapping (ZodError/ServerApiError → 400/404, database outage
  *    → 503 + Retry-After, anything else → 500 that leaks nothing).
  * Every response gets the CORS headers (cors.ts), and every request counts in the hub_api_* metrics
@@ -89,7 +90,10 @@ export async function withApiKey(
       return v1Error(401, 'unauthorized', UNAUTHORIZED_MESSAGE, { 'WWW-Authenticate': 'Bearer' });
     }
 
-    const limit = checkApiRate(limits, auth.principal.keyId, { snapshot: opts.snapshot === true });
+    const limit = checkApiRate(limits, auth.principal.keyId, {
+      snapshot: opts.snapshot === true,
+      limit: auth.principal.rateLimitPerMinute,
+    });
     rate.headers = limit.headers;
     if (!limit.ok) return rateLimited(limit.limit ?? 'key', limit.retryAfterSeconds);
     return handler({ db, principal: auth.principal });

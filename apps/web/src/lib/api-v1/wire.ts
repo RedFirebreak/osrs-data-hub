@@ -21,7 +21,9 @@ import type {
   ApiLeaderboards,
   ApiLocation,
   ApiLocations,
+  ApiLocationsMulti,
   ApiMe,
+  ApiOwner,
   ApiPresence,
   ApiSection,
   ApiSessions,
@@ -41,7 +43,9 @@ import type {
   WireItem,
   WireLeaderboards,
   WireLocations,
+  WireLocationsMulti,
   WireMe,
+  WireOwner,
   WireSessions,
   WireSkills,
   WireSnapshotAccount,
@@ -112,23 +116,36 @@ export function wireMe(me: ApiMe): WireMe {
   return {
     key: {
       id: me.key.id,
+      kind: me.key.kind,
       name: me.key.name,
       prefix: me.key.prefix,
       categories: me.key.categories,
       account_scope: me.key.accountScope,
+      rate_limit_per_minute: me.key.rateLimitPerMinute,
       expires_at: me.key.expiresAt,
     },
-    user: { name: me.user.name },
+    user: me.user === null ? null : { name: me.user.name },
     visible_accounts: me.visibleAccounts,
   };
+}
+
+function wireOwner(owner: ApiOwner | null): WireOwner | null {
+  return owner === null ? null : { name: owner.name, discord_id: owner.discordId };
+}
+
+/** `account_hash` only when the read model has it (service keys, D-90): omitted, never null. */
+function accountHash(a: { accountHash?: string }): { account_hash?: string } {
+  return a.accountHash === undefined ? {} : { account_hash: a.accountHash };
 }
 
 export function wireAccountSummary(a: ApiAccountSummary): WireAccountSummary {
   return {
     id: a.id,
     name: a.name,
+    ...accountHash(a),
     type: a.type,
     type_label: a.typeLabel,
+    owner: wireOwner(a.owner),
     online: a.online,
     world: a.world,
     last_seen: a.lastSeen,
@@ -139,8 +156,10 @@ export function wireAccountDetail(d: ApiAccountDetail): WireAccountDetail {
   const out: WireAccountDetail = {
     id: d.id,
     name: d.name,
+    ...accountHash(d),
     type: d.type,
     type_label: d.typeLabel,
+    owner: wireOwner(d.owner),
     first_seen: d.firstSeen,
     categories: d.categories,
   };
@@ -157,8 +176,10 @@ export function wireSnapshotAccount(a: ApiSnapshotAccount): WireSnapshotAccount 
   const out: WireSnapshotAccount = {
     id: a.id,
     name: a.name,
+    ...accountHash(a),
     type: a.type,
     type_label: a.typeLabel,
+    owner: wireOwner(a.owner),
     categories: a.categories,
   };
   if (a.online !== undefined) out.online = a.online;
@@ -275,18 +296,33 @@ export function wireWealth(h: ApiWealth): WireWealth {
   };
 }
 
+function wireLocationPoints(points: ApiLocations['points']): WireLocations['points'] {
+  return points.map((p) => ({
+    at: p.at,
+    x: p.x,
+    y: p.y,
+    plane: p.plane,
+    world: p.world,
+    is_on_boat: p.isOnBoat,
+  }));
+}
+
 export function wireLocations(h: ApiLocations): WireLocations {
   return {
     account: { id: h.account.id, name: h.account.name },
     from: h.from,
     to: h.to,
-    points: h.points.map((p) => ({
-      at: p.at,
-      x: p.x,
-      y: p.y,
-      plane: p.plane,
-      world: p.world,
-      is_on_boat: p.isOnBoat,
+    points: wireLocationPoints(h.points),
+  };
+}
+
+export function wireLocationsMulti(m: ApiLocationsMulti): WireLocationsMulti {
+  return {
+    from: m.from,
+    to: m.to,
+    accounts: m.accounts.map((a) => ({
+      account: { id: a.account.id, name: a.account.name },
+      points: wireLocationPoints(a.points),
     })),
   };
 }

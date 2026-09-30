@@ -11,6 +11,16 @@ export interface ApiAccountRef {
   name: string;
 }
 
+/**
+ * An account's owner as the guild page shows them to every member (D-68, D-89): display name and
+ * Discord user id, for a consumer that links hub accounts to people. Never a contributor.
+ */
+export interface ApiOwner {
+  name: string;
+  /** The owner's Discord user id; null for a user without one. */
+  discordId: string | null;
+}
+
 /** A meter (HP, prayer): the current value (boosted, so it can exceed max) and the maximum. */
 export interface ApiMeter {
   current: number;

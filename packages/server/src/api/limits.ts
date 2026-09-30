@@ -1,13 +1,19 @@
 /**
  * Rate limits of the public API (handoff §13, D-72), in memory in the single web process (D-5): per
- * key 120 requests per sliding minute plus 1 per second on /snapshot, and failed key authentications
- * per client IP (30 per minute) so keys can't be guessed. The host keeps one ApiLimits on globalThis
+ * key its own requests per sliding minute (120 for a user key, 600 for a service key unless the
+ * admin set another, D-87) plus 1 per second on /snapshot, and failed key authentications per
+ * client IP (30 per minute) so keys can't be guessed. The host keeps one ApiLimits on globalThis
  * (D-37, NEXT-3).
  */
 import { WindowLimiter, type Clock, type LimitResult } from '@hub/core';
 import { pairRateKey } from '../pairing/limits';
 
+/** Requests per minute of a user key (D-72). */
 export const API_RATE_LIMIT = 120;
+/** Requests per minute of a service key without its own limit (D-87). */
+export const SERVICE_KEY_RATE_LIMIT = 600;
+/** The most an admin may give one service key. */
+export const MAX_KEY_RATE_LIMIT = 6000;
 export const API_RATE_WINDOW_MS = 60_000;
 export const SNAPSHOT_RATE_LIMIT = 1;
 export const SNAPSHOT_RATE_WINDOW_MS = 1_000;
@@ -15,7 +21,7 @@ export const FAILED_AUTH_LIMIT = 30;
 export const FAILED_AUTH_WINDOW_MS = 60_000;
 
 export interface ApiLimits {
-  /** Every authenticated request, per key id. */
+  /** Every authenticated request, per key id, judged by the key's own limit (checkApiRate). */
   perKey: WindowLimiter;
   /** /snapshot requests, per key id. */
   snapshot: WindowLimiter;
@@ -43,7 +49,7 @@ export function createApiLimits(opts: { clock?: Clock } = {}): ApiLimits {
 
 /** The X-RateLimit-* headers, as strings of whole numbers. */
 export interface ApiRateHeaders {
-  /** Requests per window (120). */
+  /** Requests per window: the key's own limit (120 for user keys, D-72; per service key, D-87). */
   'X-RateLimit-Limit': string;
   /** Requests left in the current sliding window, this one counted. */
   'X-RateLimit-Remaining': string;
@@ -66,42 +72,48 @@ export interface ApiRateResult {
 
 /**
  * Counts one request of key `keyId` (`snapshot` for /snapshot) and says whether it may proceed. The
- * per-key window is checked first, then the snapshot limit; a request refused by either counts
- * towards neither (as /pair, D-59), so a client polling /snapshot too fast doesn't also use up its
- * minute.
+ * per-key window is checked first against the key's own `limit` per minute (default
+ * API_RATE_LIMIT), then the snapshot limit; a request refused by either counts towards neither (as
+ * /pair, D-59), so a client polling /snapshot too fast doesn't also use up its minute.
  */
 export function checkApiRate(
   limits: ApiLimits,
   keyId: string,
-  opts: { snapshot: boolean },
+  opts: { snapshot: boolean; limit?: number },
 ): ApiRateResult {
-  const minute = limits.perKey.peek(keyId);
-  if (!minute.ok) return refused(limits, keyId, minute, 'key');
+  const limit = opts.limit ?? API_RATE_LIMIT;
+  const minute = limits.perKey.peek(keyId, limit);
+  if (!minute.ok) return refused(limits, keyId, limit, minute, 'key');
   if (opts.snapshot) {
     const second = limits.snapshot.hit(keyId);
-    if (!second.ok) return refused(limits, keyId, second, 'snapshot');
+    if (!second.ok) return refused(limits, keyId, limit, second, 'snapshot');
   }
-  limits.perKey.hit(keyId);
-  return { ok: true, headers: rateHeaders(limits, keyId), retryAfterSeconds: 0 };
+  limits.perKey.hit(keyId, limit);
+  return { ok: true, headers: rateHeaders(limits, keyId, limit), retryAfterSeconds: 0 };
 }
 
 function refused(
   limits: ApiLimits,
   keyId: string,
+  perMinute: number,
   result: LimitResult,
   limit: 'key' | 'snapshot',
 ): ApiRateResult {
   return {
     ok: false,
-    headers: rateHeaders(limits, keyId),
+    headers: rateHeaders(limits, keyId, perMinute),
     retryAfterSeconds: Math.max(1, result.retryAfterSeconds),
     limit,
   };
 }
 
-/** The per-key window's X-RateLimit-* headers, without counting anything. */
-export function rateHeaders(limits: ApiLimits, keyId: string): ApiRateHeaders {
-  const usage = limits.perKey.usage(keyId);
+/** The per-key window's X-RateLimit-* headers for a key limited to `limit` per minute, without counting anything. */
+export function rateHeaders(
+  limits: ApiLimits,
+  keyId: string,
+  limit: number = API_RATE_LIMIT,
+): ApiRateHeaders {
+  const usage = limits.perKey.usage(keyId, limit);
   return {
     'X-RateLimit-Limit': String(usage.limit),
     'X-RateLimit-Remaining': String(usage.remaining),

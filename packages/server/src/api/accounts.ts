@@ -5,7 +5,7 @@
 import { CATEGORIES, accountTypeLabel, floorTo, normalizeName, type Category } from '@hub/core';
 import type { DbOrTx } from '@hub/db';
 import { loadPresence, toPresence, type AccountWithAccess } from '../accounts/load';
-import { loadApiAccount, loadApiAccounts } from './access';
+import { apiAccountHash, loadApiAccount, loadApiAccounts, loadApiOwners } from './access';
 import type { ApiPrincipal } from './keys';
 import { listParam } from './params';
 import {
@@ -24,7 +24,7 @@ import {
   type ApiVitals,
   type LatestRow,
 } from './state';
-import type { ApiSection } from './types';
+import type { ApiOwner, ApiSection } from './types';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -32,10 +32,14 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 export interface ApiAccountSummary {
   id: string;
   name: string;
+  /** The plugin's salted accountHash; only for service keys, omitted otherwise (D-90). */
+  accountHash?: string;
   /** IRONMAN varbit: 0 normal, 1 IM, 2 UIM, 3 HCIM, 4 GIM, 5 HCGIM, 6 UGIM; null when never sent. */
   type: number | null;
   /** "Normal", "Ironman", … ("Unknown" for null). */
   typeLabel: string;
+  /** The account's owner as the guild page shows them; null without an active owner (D-89). */
+  owner: ApiOwner | null;
   /** In game now; null when the key can't read the account's `activity`. */
   online: boolean | null;
   /** Last known world; null without `activity` (or when never sent). */
@@ -80,6 +84,7 @@ export async function apiListAccounts(
     db,
     selected.filter((e) => e.access.categories.has('activity')).map((e) => e.account.id),
   );
+  const owners = await loadApiOwners(db, selected);
   const out: ApiAccountSummary[] = [];
   for (const entry of selected) {
     const { account } = entry;
@@ -87,11 +92,14 @@ export async function apiListAccounts(
     const row = activity ? presence.get(account.id) : undefined;
     const online = activity ? (row ? toPresence(row, now).online : false) : null;
     if (params.online !== undefined && online !== params.online) continue;
+    const accountHash = apiAccountHash(principal, entry);
     out.push({
       id: account.publicId,
       name: account.name,
+      ...(accountHash !== undefined ? { accountHash } : {}),
       type: account.accountType,
       typeLabel: accountTypeLabel(account.accountType),
+      owner: owners.get(account.id) ?? null,
       online,
       world: row?.world ?? null,
       lastSeen: activity ? (row?.lastSeen ?? account.lastSeen).toISOString() : null,
@@ -108,8 +116,12 @@ export async function apiListAccounts(
 export interface ApiAccountDetail {
   id: string;
   name: string;
+  /** The plugin's salted accountHash; only for service keys, omitted otherwise (D-90). */
+  accountHash?: string;
   type: number | null;
   typeLabel: string;
+  /** The account's owner as the guild page shows them; null without an active owner (D-89). */
+  owner: ApiOwner | null;
   /** When the hub first saw the account. */
   firstSeen: string;
   /** What this key may read on this account: its categories ∩ what the owner shares with its creator. */
@@ -149,13 +161,18 @@ export async function apiGetAccount(
     equipment: can('equipment'),
     inventory: can('inventory'),
   });
-  return accountDetail(entry, rows.get(entry.account.id), now);
+  const owners = await loadApiOwners(db, [entry]);
+  return accountDetail(entry, rows.get(entry.account.id), now, {
+    owner: owners.get(entry.account.id) ?? null,
+    accountHash: apiAccountHash(principal, entry),
+  });
 }
 
 function accountDetail(
   entry: AccountWithAccess,
   row: LatestRow | undefined,
   now: Date,
+  identity: { owner: ApiOwner | null; accountHash: string | undefined },
 ): ApiAccountDetail {
   const { account, access } = entry;
   const can = (c: Category) => access.categories.has(c);
@@ -164,8 +181,10 @@ function accountDetail(
   const out: ApiAccountDetail = {
     id: account.publicId,
     name: account.name,
+    ...(identity.accountHash !== undefined ? { accountHash: identity.accountHash } : {}),
     type: account.accountType,
     typeLabel: accountTypeLabel(account.accountType),
+    owner: identity.owner,
     firstSeen: account.firstSeen.toISOString(),
     categories: CATEGORIES.filter(can),
   };

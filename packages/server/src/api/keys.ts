@@ -1,6 +1,7 @@
 /**
  * API keys for the public, pull-only REST API (handoff §13, D-69, D-70, D-76): create, list, revoke,
- * and authenticate a request's bearer key into an ApiPrincipal.
+ * and authenticate a request's bearer key into an ApiPrincipal. Service keys (D-87) share the table,
+ * the format and the authentication; their management is in service-keys.ts.
  *
  * A key is `ohub_<prefix>_<secret>`: a 10-character base62 prefix, unique and stored in clear so a
  * lookup is an index hit and the owner can recognise the key, and a 43-character base62 secret
@@ -9,13 +10,22 @@
 import { randomBytes } from 'node:crypto';
 import {
   CATEGORIES,
+  GUILD_AUDIENCE,
   constantTimeEqual,
   isCategory,
   sha256Hex,
   type Category,
-  type Viewer,
+  type Principal,
 } from '@hub/core';
-import { apiKeys, osrsAccounts, pgErrorCode, users, type Db, type DbOrTx } from '@hub/db';
+import {
+  apiKeys,
+  osrsAccounts,
+  pgErrorCode,
+  users,
+  type ApiKeyKind,
+  type Db,
+  type DbOrTx,
+} from '@hub/db';
 import { and, count, desc, eq, gt, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
 import { z } from 'zod';
 import { loadViewer } from '../accounts/access';
@@ -23,6 +33,7 @@ import { loadVisibleAccounts } from '../accounts/load';
 import { audit } from '../audit';
 import { isUuid } from '../devices/util';
 import { getLogger } from '../logger';
+import { API_RATE_LIMIT, SERVICE_KEY_RATE_LIMIT } from './limits';
 
 /** Every key starts with this; the part after it is `<prefix>_<secret>`. */
 export const API_KEY_PREFIX = 'ohub_';
@@ -70,6 +81,8 @@ export interface ApiKeyAccount {
 /** A key as its owner sees it on the API keys page. Never contains the secret or its hash. */
 export interface ApiKeyInfo {
   id: string;
+  /** `user` (a member's own key) or `service` (an admin-created integration key, D-87). */
+  kind: ApiKeyKind;
   name: string;
   /** The 10-character prefix; the page shows the key as `ohub_<prefix>_…`. */
   prefix: string;
@@ -81,6 +94,8 @@ export interface ApiKeyInfo {
    * 'all_visible'.
    */
   accounts: ApiKeyAccount[] | null;
+  /** Requests per sliding minute: the key's own limit, or the default of its kind (D-72, D-87). */
+  rateLimitPerMinute: number;
   expiresAt: string | null;
   createdAt: string;
   lastUsedAt: string | null;
@@ -116,6 +131,25 @@ function normalizeKeyName(name: string): string {
   return name.replace(/\p{Cc}/gu, ' ').trim();
 }
 
+/** The fields user and service keys share (D-69): name, categories, expiry. */
+export const KEY_FIELD_SCHEMAS = {
+  name: z
+    .string()
+    .max(1024)
+    .transform(normalizeKeyName)
+    .refine((name) => name.length > 0, 'name must not be empty')
+    .refine(
+      (name) => Array.from(name).length <= API_KEY_NAME_MAX,
+      `name must be at most ${API_KEY_NAME_MAX} characters`,
+    ),
+  categories: z
+    .array(z.enum(CATEGORIES))
+    .min(1, 'choose at least one category')
+    .max(64)
+    .transform((list) => CATEGORIES.filter((c) => list.includes(c))),
+  expiresInDays: z.number().int().min(1).max(API_KEY_MAX_EXPIRY_DAYS).nullable().optional(),
+};
+
 /**
  * The body of "create a key" (D-69, D-10: strict, unknown keys rejected):
  * - `name`: 1–64 characters after trimming (control characters become spaces);
@@ -128,20 +162,8 @@ function normalizeKeyName(name: string): string {
  */
 export const CreateApiKeySchema = z
   .strictObject({
-    name: z
-      .string()
-      .max(1024)
-      .transform(normalizeKeyName)
-      .refine((name) => name.length > 0, 'name must not be empty')
-      .refine(
-        (name) => Array.from(name).length <= API_KEY_NAME_MAX,
-        `name must be at most ${API_KEY_NAME_MAX} characters`,
-      ),
-    categories: z
-      .array(z.enum(CATEGORIES))
-      .min(1, 'choose at least one category')
-      .max(64)
-      .transform((list) => CATEGORIES.filter((c) => list.includes(c))),
+    name: KEY_FIELD_SCHEMAS.name,
+    categories: KEY_FIELD_SCHEMAS.categories,
     accountScope: z.enum(['all_visible', 'list']),
     accountPublicIds: z
       .array(z.string().regex(/^[0-9A-Za-z]{1,64}$/, 'not an account id'))
@@ -149,7 +171,7 @@ export const CreateApiKeySchema = z
       .max(MAX_KEY_ACCOUNTS)
       .transform((ids) => [...new Set(ids)])
       .optional(),
-    expiresInDays: z.number().int().min(1).max(API_KEY_MAX_EXPIRY_DAYS).nullable().optional(),
+    expiresInDays: KEY_FIELD_SCHEMAS.expiresInDays,
   })
   .superRefine((body, ctx) => {
     if (body.accountScope === 'list' && body.accountPublicIds === undefined) {
@@ -173,7 +195,14 @@ export type CreateApiKeyInput = z.input<typeof CreateApiKeySchema>;
 /** The body after validation. */
 export type CreateApiKey = z.output<typeof CreateApiKeySchema>;
 
-type KeyRow = typeof apiKeys.$inferSelect;
+export type KeyRow = typeof apiKeys.$inferSelect;
+
+/** The key's requests per minute: its own, else the default of its kind (D-72, D-87). */
+export function keyRateLimit(row: Pick<KeyRow, 'kind' | 'rateLimitPerMinute'>): number {
+  return (
+    row.rateLimitPerMinute ?? (row.kind === 'service' ? SERVICE_KEY_RATE_LIMIT : API_RATE_LIMIT)
+  );
+}
 
 /** revoked, else expired (expiresAt at or before now), else active. */
 export function apiKeyStatus(
@@ -198,9 +227,10 @@ function randomBase62(length: number): string {
   return out;
 }
 
-function parseCreateInput(input: unknown): CreateApiKey {
-  const parsed = CreateApiKeySchema.safeParse(input);
-  if (parsed.success) return parsed.data;
+/** `schema.parse(input)`, but a failure is ApiKeyError 'invalid' with the field issues. */
+export function parseKeyInput<S extends z.ZodType>(schema: S, input: unknown): z.output<S> {
+  const parsed = schema.safeParse(input);
+  if (parsed.success) return parsed.data as z.output<S>;
   const issues = parsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message }));
   const first = issues[0];
   const message = first ? (first.path ? `${first.path}: ${first.message}` : first.message) : '';
@@ -228,7 +258,7 @@ export async function createApiKey(
   input: unknown,
   now: Date = new Date(),
 ): Promise<{ key: string; info: ApiKeyInfo }> {
-  const body = parseCreateInput(input);
+  const body = parseKeyInput(CreateApiKeySchema, input);
   return db.transaction(async (tx) => {
     await tx.execute(sql`SELECT set_config('lock_timeout', '3s', true)`);
     const [user] = await tx
@@ -255,13 +285,12 @@ export async function createApiKey(
         ? await visibleListAccounts(tx, userId, body.accountPublicIds ?? [])
         : null;
 
-    const secret = randomBase62(SECRET_LENGTH);
-    const expiresAt =
-      body.expiresInDays === undefined || body.expiresInDays === null
-        ? null
-        : new Date(now.getTime() + body.expiresInDays * DAY_MS);
+    const secret = newKeySecret();
+    const expiresAt = expiryFrom(body.expiresInDays, now);
     const row = await insertWithFreshPrefix(tx, {
+      kind: 'user',
       userId,
+      createdByUserId: userId,
       name: body.name,
       secretHash: sha256Hex(secret),
       categories: body.categories,
@@ -286,14 +315,31 @@ export async function createApiKey(
     });
     const listed = accounts?.map(({ publicId, name }) => ({ publicId, name, visible: true }));
     return {
-      key: `${API_KEY_PREFIX}${row.prefix}_${secret}`,
-      info: toInfo(row, listed ?? null, now),
+      key: formatKey(row.prefix, secret),
+      info: keyInfoOf(row, listed ?? null, now),
     };
   });
 }
 
+/** The secret part of a new key. */
+export function newKeySecret(): string {
+  return randomBase62(SECRET_LENGTH);
+}
+
+/** `ohub_<prefix>_<secret>`. */
+export function formatKey(prefix: string, secret: string): string {
+  return `${API_KEY_PREFIX}${prefix}_${secret}`;
+}
+
+/** `expiresInDays` from now, or null for "never". */
+export function expiryFrom(expiresInDays: number | null | undefined, now: Date): Date | null {
+  return expiresInDays === undefined || expiresInDays === null
+    ? null
+    : new Date(now.getTime() + expiresInDays * DAY_MS);
+}
+
 /** Not revoked and not expired at `now`. */
-function activeKeyFilter(now: Date): SQL | undefined {
+export function activeKeyFilter(now: Date): SQL | undefined {
   return and(isNull(apiKeys.revokedAt), or(isNull(apiKeys.expiresAt), gt(apiKeys.expiresAt, now)));
 }
 
@@ -335,7 +381,7 @@ async function visibleListAccounts(
  * Inserts the key under a fresh random prefix. A prefix collision (62^10 possibilities, so in
  * practice never) takes another one; ON CONFLICT keeps the transaction usable for the retry.
  */
-async function insertWithFreshPrefix(
+export async function insertWithFreshPrefix(
   tx: DbOrTx,
   values: Omit<typeof apiKeys.$inferInsert, 'prefix'>,
 ): Promise<KeyRow> {
@@ -350,14 +396,17 @@ async function insertWithFreshPrefix(
   throw new Error('createApiKey: no free key prefix');
 }
 
-function toInfo(row: KeyRow, accounts: ApiKeyAccount[] | null, now: Date): ApiKeyInfo {
+/** A row as its page shows it (never the hash). */
+export function keyInfoOf(row: KeyRow, accounts: ApiKeyAccount[] | null, now: Date): ApiKeyInfo {
   return {
     id: row.id,
+    kind: row.kind,
     name: row.name,
     prefix: row.prefix,
     categories: CATEGORIES.filter((c) => row.categories.includes(c)),
     accountScope: row.accountScope,
     accounts: row.accountScope === 'list' ? (accounts ?? []) : null,
+    rateLimitPerMinute: keyRateLimit(row),
     expiresAt: row.expiresAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
     lastUsedAt: row.lastUsedAt?.toISOString() ?? null,
@@ -389,7 +438,7 @@ export async function listApiKeys(
       .map((id) => accounts.get(id))
       .filter((a): a is ApiKeyAccount => a !== undefined)
       .sort(byNameThenHidden);
-    return toInfo(row, listed, now);
+    return keyInfoOf(row, listed, now);
   });
 }
 
@@ -432,11 +481,12 @@ function byNameThenHidden(a: ApiKeyAccount, b: ApiKeyAccount): number {
 }
 
 /**
- * Revokes a key: the user's own, or any key when `asAdmin` (the caller checks that the actor is an
- * admin). The next request with it gets 401. Idempotent: revoking a revoked key keeps its time,
- * writes no second audit entry and still returns true. False when the key doesn't exist, isn't the
- * user's (and not `asAdmin`), or `keyId` isn't a uuid, so the route answers 404 without revealing
- * other users' keys. A key revoked by offboarding stays revoked when the user is restored.
+ * Revokes a user key: the user's own, or any user's when `asAdmin` (the caller checks that the actor
+ * is an admin; service keys are revoked through revokeServiceKey, D-87). The next request with it
+ * gets 401. Idempotent: revoking a revoked key keeps its time, writes no second audit entry and
+ * still returns true. False when the key doesn't exist, isn't the user's (and not `asAdmin`), or
+ * `keyId` isn't a uuid, so the route answers 404 without revealing other users' keys. A key revoked
+ * by offboarding stays revoked when the user is restored.
  * Audit: 'api_key.revoked' with the owner and the prefix.
  */
 export async function revokeApiKey(
@@ -445,7 +495,10 @@ export async function revokeApiKey(
 ): Promise<boolean> {
   if (!isUuid(opts.keyId)) return false;
   const now = opts.now ?? new Date();
-  const scope = opts.asAdmin === true ? undefined : eq(apiKeys.userId, opts.userId);
+  const scope = and(
+    eq(apiKeys.kind, 'user'),
+    opts.asAdmin === true ? undefined : eq(apiKeys.userId, opts.userId),
+  );
   return db.transaction(async (tx) => {
     const [revoked] = await tx
       .update(apiKeys)
@@ -476,24 +529,29 @@ export async function revokeApiKey(
 }
 
 /**
- * Who a request acts as: the key and its creator. `viewer` is the creator as the resolver sees them,
- * with isAdmin always false (no admin override through the API, D-70). `categories` are the key's;
- * `accountIds` its explicit account list (internal ids), or null for 'all_visible'. What the key may
- * read is evaluated on every request from these (api/access.ts).
+ * Who a request acts as: the key and whom the resolver evaluates for it. For a user key, `viewer` is
+ * the creator as the resolver sees them, with isAdmin always false (no admin override through the
+ * API, D-70) and `userId` the creator; for a service key (D-87), `viewer` is the guild audience
+ * (GUILD_AUDIENCE, D-88) and `userId` is null. `categories` are the key's; `accountIds` its explicit
+ * account list (internal ids), or null for 'all_visible' (always null for service keys). What the
+ * key may read is evaluated on every request from these (api/access.ts).
  */
 export interface ApiPrincipal {
   keyId: string;
-  userId: string;
-  viewer: Viewer;
+  kind: ApiKeyKind;
+  userId: string | null;
+  viewer: Principal;
   categories: ReadonlySet<Category>;
   accountIds: ReadonlySet<number> | null;
+  /** Requests per sliding minute this key may make (D-72, D-87). */
+  rateLimitPerMinute: number;
 }
 
 /**
  * Why a request's key was refused (all answered 401; the web doesn't tell them apart):
  * missing (no Authorization header), malformed (not `Bearer ohub_<prefix>_<secret>`), unknown (no key
  * with that prefix, or a wrong secret: indistinguishable on purpose), revoked, expired, inactive_user
- * (the creator is in grace or gone).
+ * (a user key whose creator is in grace or gone; never a service key, which has no user).
  */
 export type ApiAuthFailure =
   'missing' | 'malformed' | 'unknown' | 'revoked' | 'expired' | 'inactive_user';
@@ -535,7 +593,26 @@ export async function authenticateApiKey(
   if (row.expiresAt !== null && row.expiresAt.getTime() <= now.getTime()) {
     return { ok: false, reason: 'expired' };
   }
-  const viewer = await loadViewer(db, row.userId);
+  const categories = new Set(row.categories.filter(isCategory));
+  const rateLimitPerMinute = keyRateLimit(row);
+  if (row.kind === 'service') {
+    // Belongs to no user (D-87): nothing to load, and no offboarding can have touched it.
+    await touchLastUsed(db, row, now);
+    return {
+      ok: true,
+      principal: {
+        keyId: row.id,
+        kind: 'service',
+        userId: null,
+        viewer: GUILD_AUDIENCE,
+        categories,
+        accountIds: null,
+        rateLimitPerMinute,
+      },
+    };
+  }
+  // A user key always has its user (the table's check constraint); fail closed otherwise.
+  const viewer = row.userId === null ? null : await loadViewer(db, row.userId);
   if (!viewer || viewer.status !== 'active') return { ok: false, reason: 'inactive_user' };
 
   await touchLastUsed(db, row, now);
@@ -543,10 +620,12 @@ export async function authenticateApiKey(
     ok: true,
     principal: {
       keyId: row.id,
-      userId: row.userId,
+      kind: 'user',
+      userId: viewer.userId,
       viewer: { ...viewer, isAdmin: false },
-      categories: new Set(row.categories.filter(isCategory)),
+      categories,
       accountIds: row.accountScope === 'list' ? new Set(row.accountIds ?? []) : null,
+      rateLimitPerMinute,
     },
   };
 }

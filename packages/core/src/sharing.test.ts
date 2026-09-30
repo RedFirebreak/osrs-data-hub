@@ -5,8 +5,12 @@ import {
   CATEGORIES,
   CATEGORY_LABELS,
   DEFAULT_AUDIENCE,
+  GUILD_AUDIENCE,
   effectiveAudience,
+  isActivePrincipal,
+  isAdminPrincipal,
   isCategory,
+  isGuildAudience,
   redactEventData,
   resolveAccess,
   type AccountAccess,
@@ -295,6 +299,58 @@ describe('resolveAccess', () => {
         ],
       });
       expect(resolveAccess(viewer(CONTRIB), acc).relation).toBe('contributor');
+    });
+  });
+
+  describe('guild audience (D-88)', () => {
+    it('sees exactly the guild categories, as a member, and never manages', () => {
+      const r = resolveAccess(GUILD_AUDIENCE, account());
+      expect(r.relation).toBe('member');
+      expect(sorted(r.categories)).toEqual(DEFAULT_GUILD);
+      expect(r.visible).toBe(true);
+      expect(r.canManage).toBe(false);
+    });
+
+    it('gets nothing from selected audiences, whatever the grants say', () => {
+      const r = resolveAccess(
+        GUILD_AUDIENCE,
+        account({
+          sharing: { ...all('selected'), stats: 'guild' },
+          grants: CATEGORIES.map((category) => ({ category, userId: MEMBER })),
+        }),
+      );
+      expect(sorted(r.categories)).toEqual(['stats']);
+    });
+
+    it('is invisible when everything is private, and for hidden accounts', () => {
+      const closed = resolveAccess(GUILD_AUDIENCE, account({ sharing: all('private') }));
+      expect(closed.visible).toBe(false);
+      expect(closed.categories.size).toBe(0);
+      expect(closed.relation).toBe('member');
+      const hidden = resolveAccess(GUILD_AUDIENCE, account({ status: 'hidden' }));
+      expect(hidden).toEqual({
+        visible: false,
+        categories: new Set(),
+        relation: 'none',
+        canManage: false,
+      });
+    });
+
+    it('is never an owner or contributor: links and ownership give it nothing extra', () => {
+      const r = resolveAccess(
+        GUILD_AUDIENCE,
+        account({ ownerUserId: OWNER, sharing: { ...all('private'), events: 'guild' } }),
+      );
+      expect(sorted(r.categories)).toEqual(['events']);
+    });
+
+    it('is active and never an admin', () => {
+      expect(isGuildAudience(GUILD_AUDIENCE)).toBe(true);
+      expect(isGuildAudience(viewer(MEMBER))).toBe(false);
+      expect(isActivePrincipal(GUILD_AUDIENCE)).toBe(true);
+      expect(isActivePrincipal(viewer(MEMBER, { status: 'grace' }))).toBe(false);
+      expect(isAdminPrincipal(GUILD_AUDIENCE)).toBe(false);
+      expect(isAdminPrincipal(viewer(ADMIN, { isAdmin: true }))).toBe(true);
     });
   });
 

@@ -25,7 +25,10 @@ export const KEY_STATUS_LABELS: Readonly<Record<ApiKeyStatus, string>> = {
 export const HIDDEN_ACCOUNT_LABEL = 'An account you can no longer see';
 
 /** One-line description of a key's account scope. */
-export function scopeText(info: Pick<ApiKeyInfo, 'accountScope' | 'accounts'>): string {
+export function scopeText(
+  info: Pick<ApiKeyInfo, 'accountScope' | 'accounts'> & { kind?: ApiKeyInfo['kind'] },
+): string {
+  if (info.kind === 'service') return 'Every account shared with the guild, now and later';
   if (info.accountScope === 'all_visible') return 'Every account you can see, now and later';
   const count = info.accounts?.length ?? 0;
   if (count === 0) return 'No accounts: the ones it listed no longer exist';

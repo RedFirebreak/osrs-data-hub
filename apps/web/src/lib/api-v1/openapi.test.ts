@@ -7,7 +7,12 @@
 import { readdirSync } from 'node:fs';
 import path from 'node:path';
 import { parseConfig, setConfigForTests } from '@hub/core';
-import { API_RATE_LIMIT, EVENTS_MAX_LIMIT, MAX_XP_ACCOUNTS } from '@hub/server';
+import {
+  API_RATE_LIMIT,
+  EVENTS_MAX_LIMIT,
+  MAX_XP_ACCOUNTS,
+  MAX_XP_ACCOUNTS_SERVICE,
+} from '@hub/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GET, OPTIONS } from '@/app/api/v1/openapi.json/route';
 import { OPERATIONS, buildOpenApiDocument } from './openapi';
@@ -117,6 +122,8 @@ describe('the OpenAPI document', () => {
     const accounts = params('/xp').find((q) => q.name === 'accounts');
     expect(accounts).toMatchObject({ required: true });
     expect(accounts?.description).toContain(String(MAX_XP_ACCOUNTS));
+    expect(accounts?.description).toContain(String(MAX_XP_ACCOUNTS_SERVICE));
+    expect(params('/locations').map((q) => q.name)).toEqual(['accounts', 'from', 'to']);
     expect(params('/snapshot').map((q) => q.name)).toEqual(['since']);
     expect((doc().info as Json).description).toContain(`${API_RATE_LIMIT} requests`);
   });

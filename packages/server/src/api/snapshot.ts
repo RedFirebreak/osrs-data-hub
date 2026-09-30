@@ -14,7 +14,7 @@ import {
 } from '@hub/core';
 import type { DbOrTx } from '@hub/db';
 import type { AccountWithAccess } from '../accounts/load';
-import { loadApiAccounts } from './access';
+import { apiAccountHash, loadApiAccounts, loadApiOwners } from './access';
 import type { ApiPrincipal } from './keys';
 import { assertDate } from './params';
 import {
@@ -30,7 +30,7 @@ import {
   type ApiSkills,
   type LatestRow,
 } from './state';
-import type { ApiMeter } from './types';
+import type { ApiMeter, ApiOwner } from './types';
 
 /**
  * `since` also returns accounts that changed up to this long before it. latest_state.updated_at is
@@ -47,15 +47,20 @@ export interface ApiSnapshotLocation extends ApiLocation {
 }
 
 /**
- * One account in a snapshot. `id`, `name`, `type`, `typeLabel` and `categories` are always present;
- * every other field belongs to one category and is OMITTED when the key can't read that category on
- * the account (null means "readable, but the plugin never sent it").
+ * One account in a snapshot. `id`, `name`, `type`, `typeLabel`, `owner` and `categories` are always
+ * present (`accountHash` for service keys, D-90); every other field belongs to one category and is
+ * OMITTED when the key can't read that category on the account (null means "readable, but the
+ * plugin never sent it").
  */
 export interface ApiSnapshotAccount {
   id: string;
   name: string;
+  /** The plugin's salted accountHash; only for service keys, omitted otherwise (D-90). */
+  accountHash?: string;
   type: number | null;
   typeLabel: string;
+  /** The account's owner as the guild page shows them; null without an active owner (D-89). */
+  owner: ApiOwner | null;
   /** What this key may read on this account. */
   categories: Category[];
   /** `activity`: in game now (D-28). */
@@ -127,6 +132,7 @@ export async function apiSnapshot(
     { skills: anyHas('stats'), equipment: anyHas('equipment'), inventory: anyHas('inventory') },
   );
 
+  const owners = await loadApiOwners(db, visible);
   const sinceMs =
     params.since === undefined ? null : params.since.getTime() - SNAPSHOT_SINCE_OVERLAP_MS;
   let newest: number | null = null;
@@ -136,7 +142,12 @@ export async function apiSnapshot(
     const changed = entry.access.categories.has('activity') ? changedAt(entry, row, now) : null;
     if (changed !== null) newest = Math.max(newest ?? changed, changed);
     if (sinceMs !== null && changed !== null && changed <= sinceMs) continue;
-    accounts.push(snapshotAccount(entry, row, now));
+    accounts.push(
+      snapshotAccount(entry, row, now, {
+        owner: owners.get(entry.account.id) ?? null,
+        accountHash: apiAccountHash(principal, entry),
+      }),
+    );
   }
   const lastModified = newest === null ? null : new Date(newest).toISOString();
   return { accounts, etag: snapshotEtag(principal.keyId, accounts, lastModified), lastModified };
@@ -146,14 +157,17 @@ function snapshotAccount(
   entry: AccountWithAccess,
   row: LatestRow | undefined,
   now: Date,
+  identity: { owner: ApiOwner | null; accountHash: string | undefined },
 ): ApiSnapshotAccount {
   const { account, access } = entry;
   const can = (c: Category) => access.categories.has(c);
   const out: ApiSnapshotAccount = {
     id: account.publicId,
     name: account.name,
+    ...(identity.accountHash !== undefined ? { accountHash: identity.accountHash } : {}),
     type: account.accountType,
     typeLabel: accountTypeLabel(account.accountType),
+    owner: identity.owner,
     categories: CATEGORIES.filter(can),
   };
   if (can('activity')) {

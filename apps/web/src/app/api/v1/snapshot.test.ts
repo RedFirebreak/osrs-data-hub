@@ -112,6 +112,7 @@ describe('GET /api/v1/snapshot', () => {
         'location',
         'name',
         'online',
+        'owner',
         'prayer',
         'special_world',
         'spellbook',

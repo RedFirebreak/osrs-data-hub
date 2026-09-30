@@ -17,6 +17,9 @@ import {
   FAILED_AUTH_LIMIT,
   FAILED_AUTH_WINDOW_MS,
   HISTORY_DEFAULT_DAYS,
+  MAX_BULK_ACCOUNTS,
+  MAX_BULK_ACCOUNTS_SERVICE,
+  SERVICE_KEY_RATE_LIMIT,
   SNAPSHOT_RATE_LIMIT,
   SNAPSHOT_RATE_WINDOW_MS,
   SNAPSHOT_SINCE_OVERLAP_MS,
@@ -54,7 +57,7 @@ export const OPERATIONS: readonly OperationSpec[] = [
     tag: 'Key',
     summary: 'The key and its creator',
     description:
-      'The key behind the request (name, prefix, categories, scope, expiry), its creator’s display name and how many accounts it can see right now. Handy as a connection test.',
+      'The key behind the request (kind, name, prefix, categories, scope, rate limit, expiry), its creator’s display name (`user`, null for a service key) and how many accounts it can see right now. Handy as a connection test.',
     response: 'MeResponse',
   },
   {
@@ -63,7 +66,7 @@ export const OPERATIONS: readonly OperationSpec[] = [
     tag: 'Accounts',
     summary: 'List visible accounts',
     description:
-      'Every account the key may see, sorted by name. `online`, `world` and `last_seen` are null for accounts whose `activity` the key can’t read. `meta.count` is the number returned.',
+      'Every account the key may see, sorted by name, each with its `owner` (the active owner as the guild page shows them, or null) and, for service keys, its `account_hash`. `online`, `world` and `last_seen` are null for accounts whose `activity` the key can’t read. `meta.count` is the number returned.',
     response: 'AccountsResponse',
     query: S.AccountsQuery,
   },
@@ -86,7 +89,7 @@ export const OPERATIONS: readonly OperationSpec[] = [
     description: [
       `Built for polling every 2–10 s (the live map, Home Assistant). Limited to ${SNAPSHOT_RATE_LIMIT} request per ${SECONDS(SNAPSHOT_RATE_WINDOW_MS)} s per key, on top of the general limit.`,
       '',
-      'Each account carries `id`, `name`, `type`, `type_label` and `categories`; every other field belongs to one category and is **omitted** when the key can’t read that category on the account, and **null** when it can but the plugin never sent it.',
+      'Each account carries `id`, `name`, `type`, `type_label`, `owner` and `categories` (and `account_hash` for service keys); every other field belongs to one category and is **omitted** when the key can’t read that category on the account, and **null** when it can but the plugin never sent it.',
       '',
       'Send the last `ETag` as `If-None-Match`: while nothing you would see has changed, the answer is `304 Not Modified` without a body (it still counts towards the rate limits). With `since` (the previous `meta.last_modified`), only accounts that changed after it are returned, re-sending those that changed up to ' +
         `${SECONDS(SNAPSHOT_SINCE_OVERLAP_MS)} s before it; accounts whose \`activity\` the key can’t read are always returned, and an account that leaves the key’s scope simply stops appearing, so fetch without \`since\` now and then. A location older than 2 minutes has \`stale: true\`.`,
@@ -111,8 +114,7 @@ export const OPERATIONS: readonly OperationSpec[] = [
     operationId: 'getXp',
     tag: 'XP and gains',
     summary: 'XP series of several accounts',
-    description:
-      'The same series for several accounts at once, in request order (`stats`). An account the key can’t read makes the whole request 404, exactly like an unknown id.',
+    description: `The same series for several accounts at once, in request order (\`stats\`): up to ${MAX_BULK_ACCOUNTS} accounts with a user key, ${MAX_BULK_ACCOUNTS_SERVICE} with a service key. An account the key can’t read makes the whole request 404, exactly like an unknown id.`,
     response: 'XpMultiResponse',
     query: S.XpMultiQuery,
     notFound: true,
@@ -190,6 +192,16 @@ export const OPERATIONS: readonly OperationSpec[] = [
     notFound: true,
   },
   {
+    path: '/locations',
+    operationId: 'getLocations',
+    tag: 'Histories',
+    summary: 'Location trails of several accounts',
+    description: `The location trails of several accounts in one call, in request order (\`location_history\`): up to ${MAX_BULK_ACCOUNTS} accounts with a user key, ${MAX_BULK_ACCOUNTS_SERVICE} with a service key, each trail exactly what \`/accounts/{id}/locations\` returns for the same range (at most one point per minute, oldest first, kept 30 days). An account the key can’t read makes the whole request 404. Default: the last ${HISTORY_DEFAULT_DAYS} days.`,
+    response: 'LocationsMultiResponse',
+    query: S.LocationsMultiQuery,
+    notFound: true,
+  },
+  {
     path: '/leaderboards/gains',
     operationId: 'getGainsLeaderboards',
     tag: 'Leaderboards',
@@ -207,6 +219,8 @@ export const OPENAPI_PATH = '/openapi.json';
 /** Response shapes under components.schemas; nested ones become `$ref`s. */
 const COMPONENTS: readonly [string, z.ZodType][] = [
   ['AccountRef', S.AccountRef],
+  ['Owner', S.Owner],
+  ['AccountLocations', S.AccountLocations],
   ['Item', S.Item],
   ['Meter', S.Meter],
   ['Skill', S.Skill],
@@ -230,6 +244,7 @@ const COMPONENTS: readonly [string, z.ZodType][] = [
   ['EquipmentHistoryResponse', S.EquipmentHistoryResponse],
   ['WealthResponse', S.WealthResponse],
   ['LocationsResponse', S.LocationsResponse],
+  ['LocationsMultiResponse', S.LocationsMultiResponse],
   ['LeaderboardsResponse', S.LeaderboardsResponse],
   ['Error', S.ErrorResponse],
 ];
@@ -359,6 +374,11 @@ Create a key on the hub's **API keys** page and send it on every request:
 
 A key is shown once. It reads only the categories chosen for it (stats, events, activity, live location, location history, equipment, inventory), only its account scope (every account its creator can see, or an explicit list), and only what its creator may see **right now**: the owners' sharing settings are evaluated on every request. A missing, malformed, unknown, revoked or expired key, or one whose creator left the guild, gets the same \`401 unauthorized\`. Cookies are never read.
 
+**Service keys** (Admin → Integrations) are for the guild's own integrations, such as its live map. A service key belongs to no user: it reads what the guild audience sees, i.e. the accounts and categories whose sharing audience is *guild* (never *private* or *selected*), it survives every offboarding, and it has its own rate limit (${SERVICE_KEY_RATE_LIMIT} requests per minute unless the admin set another). Only service keys see \`account_hash\`, and they may name ${MAX_BULK_ACCOUNTS_SERVICE} accounts per bulk request instead of ${MAX_BULK_ACCOUNTS}. \`/me\` tells the kinds apart (\`key.kind\`, \`user\` null).
+
+## Owner identity
+Accounts carry \`owner\` (\`{ name, discord_id }\`): the account's owner as the hub's guild page shows them to every member, or null when the account has no active owner. Contributors are never exposed.
+
 ## Conventions
 - Success: \`{ "data": …, "meta": { "generated_at": …, … } }\`. Lists carry \`meta.count\`.
 - Errors: \`{ "error": { "code": "…", "message": "…" } }\`, plus \`details\` (field errors) on a 400.
@@ -377,7 +397,7 @@ A live location older than 2 minutes has \`stale: true\`: the player may be else
 \`/events\` is a cursor feed: start with \`cursor=now\` (or without a cursor for the newest events), then always pass the previous \`meta.next_cursor\`. Cursors are opaque strings and only move forward. The feed serves events stored at least ${SECONDS(API_EVENTS_SETTLE_MS)} s ago, so a cursor never skips one that is still being committed: expect an event 10–15 s after it happened.
 
 ## Rate limits
-Per key: ${API_RATE_LIMIT} requests per sliding ${SECONDS(API_RATE_WINDOW_MS)} s, and ${SNAPSHOT_RATE_LIMIT} request per ${SECONDS(SNAPSHOT_RATE_WINDOW_MS)} s on \`/snapshot\`. Every authenticated response carries \`X-RateLimit-Limit\`, \`X-RateLimit-Remaining\` and \`X-RateLimit-Reset\` (seconds until the window frees a request: a delta, not a timestamp). Over a limit: \`429 rate_limited\` with an integer \`Retry-After\` in seconds. Failed authentications are limited to ${FAILED_AUTH_LIMIT} per ${SECONDS(FAILED_AUTH_WINDOW_MS)} s per client IP; past that, every request from that IP gets 429 until the window passes.
+Per key: ${API_RATE_LIMIT} requests per sliding ${SECONDS(API_RATE_WINDOW_MS)} s for a user key (a service key: ${SERVICE_KEY_RATE_LIMIT}, or the limit its admin set; \`/me\` reports it), and ${SNAPSHOT_RATE_LIMIT} request per ${SECONDS(SNAPSHOT_RATE_WINDOW_MS)} s on \`/snapshot\` for every key. Every authenticated response carries \`X-RateLimit-Limit\`, \`X-RateLimit-Remaining\` and \`X-RateLimit-Reset\` (seconds until the window frees a request: a delta, not a timestamp). Over a limit: \`429 rate_limited\` with an integer \`Retry-After\` in seconds. Failed authentications are limited to ${FAILED_AUTH_LIMIT} per ${SECONDS(FAILED_AUTH_WINDOW_MS)} s per client IP; past that, every request from that IP gets 429 until the window passes.
 
 ## CORS
 Every response, errors included, has \`Access-Control-Allow-Origin: *\` and exposes \`ETag\`, \`Retry-After\` and the \`X-RateLimit-*\` headers, so browser apps can call the API directly. No credentials: send the key in the Authorization header.
@@ -443,7 +463,7 @@ export function buildOpenApiDocument(): Json {
       schemas: componentSchemas(),
       headers: {
         'X-RateLimit-Limit': {
-          description: `Requests allowed per key per sliding ${SECONDS(API_RATE_WINDOW_MS)} s (${API_RATE_LIMIT}).`,
+          description: `Requests allowed for this key per sliding ${SECONDS(API_RATE_WINDOW_MS)} s (${API_RATE_LIMIT} for a user key; a service key’s own limit).`,
           schema: integer,
         },
         'X-RateLimit-Remaining': {

@@ -352,6 +352,10 @@ const AUDIT_ACTION_LABELS: Readonly<Record<string, string>> = {
   'raw_payload.viewed': 'Raw payload viewed',
   'hub.decommissioned': 'Decommission switch',
   'hub.guild_feed_changed': 'Guild feed settings changed',
+  'api_key.created': 'API key created',
+  'api_key.revoked': 'API key revoked',
+  'service_key.created': 'Service key created',
+  'service_key.revoked': 'Service key revoked',
 };
 
 /** A readable label for an audit action; the action itself when this version doesn't know it. */
@@ -389,6 +393,11 @@ export function adminUserActionPath(userId: string, action: 'offboard' | 'restor
 }
 
 /** DELETE path that revokes any device. */
+/** The admin API path of one service key (D-87). */
+export function adminServiceKeyPath(keyId: string): string {
+  return `/api/app/admin/service-keys/${encodeURIComponent(keyId)}`;
+}
+
 export function adminDevicePath(deviceId: string): string {
   return `/api/app/admin/devices/${encodeURIComponent(deviceId)}`;
 }

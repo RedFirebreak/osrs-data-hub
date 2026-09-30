@@ -4,12 +4,15 @@
  * permission resolver (@hub/core resolveAccess, D-22) before touching data.
  */
 import {
+  isActivePrincipal,
+  isAdminPrincipal,
+  isGuildAudience,
   isOnline,
   resolveAccess,
   type AccountAccess,
   type Category,
+  type Principal,
   type ResolvedAccess,
-  type Viewer,
 } from '@hub/core';
 import { latestState, osrsAccounts, type AccountStatus, type DbOrTx } from '@hub/db';
 import { and, eq, inArray, sql, type SQL } from 'drizzle-orm';
@@ -22,6 +25,8 @@ const MAX_PUBLIC_ID_LENGTH = 64;
 export interface AccountRow {
   id: number;
   publicId: string;
+  /** The plugin's salted SHA-224 accountHash: the account's identity for ingest (D-90). */
+  accountHash: string;
   name: string;
   accountType: number | null;
   ownerUserId: string | null;
@@ -72,6 +77,7 @@ export function restrictAccess(
 const accountColumns = {
   id: osrsAccounts.id,
   publicId: osrsAccounts.publicId,
+  accountHash: osrsAccounts.accountHash,
   name: osrsAccounts.currentName,
   accountType: osrsAccounts.accountType,
   ownerUserId: osrsAccounts.ownerUserId,
@@ -86,10 +92,12 @@ const accountColumns = {
  * viewers, nothing shared with them). Callers answer null with a 404, so existence never leaks.
  * With `restrict` (the public API, D-70), also null when the account is outside its scope or none of
  * its categories is granted; `access` is then the narrowed one (see AccessRestriction).
+ * The viewer may be the guild audience (GUILD_AUDIENCE, D-88): then the account is visible iff some
+ * category's audience is `guild`.
  */
 export async function loadVisibleAccount(
   db: DbOrTx,
-  viewer: Viewer,
+  viewer: Principal,
   publicId: string,
   restrict?: AccessRestriction,
 ): Promise<AccountWithAccess | null> {
@@ -111,24 +119,25 @@ export async function loadVisibleAccount(
  */
 export async function loadVisibleAccounts(
   db: DbOrTx,
-  viewer: Viewer,
+  viewer: Principal,
   restrict?: AccessRestriction,
 ): Promise<AccountWithAccess[]> {
-  if (viewer.status !== 'active') return [];
-  const admin = viewer.isAdmin === true && restrict === undefined;
+  if (!isActivePrincipal(viewer)) return [];
+  const admin = isAdminPrincipal(viewer) && restrict === undefined;
   const scope = admin ? undefined : eq(osrsAccounts.status, 'active');
   return loadAccountsWithAccess(db, viewer, scope, restrict);
 }
 
 async function loadAccountsWithAccess(
   db: DbOrTx,
-  viewer: Viewer,
+  viewer: Principal,
   where: SQL | undefined,
   restrict?: AccessRestriction,
 ): Promise<AccountWithAccess[]> {
-  if (viewer.status !== 'active') return [];
-  // The admin override never applies through a restriction (D-70).
-  const effective: Viewer = restrict ? { ...viewer, isAdmin: false } : viewer;
+  if (!isActivePrincipal(viewer)) return [];
+  // The admin override never applies through a restriction (D-70); the guild audience has none.
+  const effective: Principal =
+    restrict && !isGuildAudience(viewer) ? { ...viewer, isAdmin: false } : viewer;
   let filter = where;
   if (restrict?.accountIds) {
     if (restrict.accountIds.size === 0) return [];

@@ -4,6 +4,37 @@ Changes are consolidated per pull request, newest first. Each entry names the PR
 open), what changed, and any decision (`D-n`, see [ARCHITECTURE.md](ARCHITECTURE.md#decision-log)) or
 gotcha (`AREA-n`, see [gotchas](gotchas/README.md)) it introduced.
 
+## Integration keys for the guild live map (branch `red/osrs-hub-integration-keys-9b5b99`)
+
+API additions for [ha-osrs-map](https://github.com/RedFirebreak/ha-osrs-map), which mirrors the hub's
+`/api/v1` server-side. v1 stays additive (D-71).
+
+- **Service keys** (D-87): admins create and revoke integration keys on the new **Admin → Integrations**
+  page (`/admin/integrations`, `/api/app/admin/service-keys`, audited `service_key.created` /
+  `service_key.revoked`). Same `ohub_<prefix>_<secret>` format and `api_keys` table as user keys, told
+  apart by `kind`; no `user_id`, so offboarding anyone (the creating admin included) never revokes one and
+  it counts towards no user's limit. Per-key rate limit (`rate_limit_per_minute`, default 600; user keys
+  keep 120; `/snapshot` stays at 1/s). `/me` reports `key.kind`, `key.rate_limit_per_minute` and
+  `user: null`. Migration `0005_service_keys`.
+- **The guild audience as a resolver principal** (D-88): `resolveAccess` and the shared loaders take
+  `GUILD_AUDIENCE` besides a user; a service key sees exactly the accounts and categories shared with the
+  guild, never `private` or `selected`, with no admin override (D-70). No parallel code path.
+- **Owner identity** (D-89): `owner: { name, discord_id } | null` on `/snapshot`, `/accounts` and
+  `/accounts/{id}` for every key, as the guild page shows the owner to every member (D-68); contributors
+  never.
+- **`account_hash`** (D-90): the plugin's salted `accountHash`, for service keys only. A member's key
+  never sees it: the hash is ingest's identity, and knowing another account's hash would let a member
+  report data for it and become a contributor.
+- **Bulk history** (D-91): `/xp?accounts=` takes 50 accounts with a service key (10 with a user key), and
+  the new `GET /locations?accounts=a,b&from=&to=` returns every account's trail in one call, with the
+  same points and thinning as `/accounts/{id}/locations`.
+- **Push for keys deferred** (D-92): a key-authenticated SSE stream (handoff §18.3) would need its own
+  subscriber model in the live hub; polling meets the map's freshness need. Recorded, not built.
+- **Lower layers:** `WindowLimiter.hit/peek/usage` take a per-call limit; `AccountRow` carries
+  `accountHash`; the API's route groups gain `locations`.
+- **Docs:** ARCHITECTURE §9, §12, §14, D-87 … D-92; API.md (service keys, owner identity, `/locations`,
+  the limits table, the live map consumer); handoff §18.3 status.
+
 ## Inventory slots from plugin 1.5.1 (branch `red/tender-curie-n2va8s`)
 
 HA Exporter 1.5.1 (`@9835dbe`) sends `inventorySlot` (0..27) on each inventory item, so the account

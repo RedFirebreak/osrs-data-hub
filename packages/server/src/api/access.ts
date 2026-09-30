@@ -1,12 +1,14 @@
 /**
  * What an API key may read (D-70), implemented once on top of the shared loaders (accounts/load.ts):
  * an account is visible to a principal iff it is in the key's account scope AND resolveAccess gives
- * the key's creator at least one category that the key also has; the principal's categories on it
- * are that intersection. Evaluated on every request, so a sharing change or the creator losing
- * access applies at once. The admin override never applies through the API.
+ * the key's viewer (its creator, or the guild audience for a service key, D-87/D-88) at least one
+ * category that the key also has; the principal's categories on it are that intersection.
+ * Evaluated on every request, so a sharing change or the creator losing access applies at once. The
+ * admin override never applies through the API.
  */
-import type { Category, Viewer } from '@hub/core';
-import type { DbOrTx } from '@hub/db';
+import { isGuildAudience, type Category, type Principal } from '@hub/core';
+import { users, type DbOrTx } from '@hub/db';
+import { and, eq, inArray } from 'drizzle-orm';
 import {
   loadVisibleAccount,
   loadVisibleAccounts,
@@ -16,11 +18,64 @@ import {
 import { ApiError } from './errors';
 import type { ApiPrincipal } from './keys';
 import { MAX_LIST_PARAM, isPublicIdLike, listParam } from './params';
-import type { ApiAccountRef } from './types';
+import type { ApiAccountRef, ApiOwner } from './types';
 
-/** The principal's creator as a viewer, never an admin (D-70). */
-export function apiViewer(principal: ApiPrincipal): Viewer {
-  return { ...principal.viewer, isAdmin: false };
+/** Most accounts one bulk request (`/xp`, `/locations`) may name with a user key (D-91). */
+export const MAX_BULK_ACCOUNTS = 10;
+/** … and with a service key (D-91): the live map polls its whole guild in one call. */
+export const MAX_BULK_ACCOUNTS_SERVICE = 50;
+
+/** Whom the resolver evaluates for this key: its creator, never an admin (D-70), or the guild audience. */
+export function apiViewer(principal: ApiPrincipal): Principal {
+  return isGuildAudience(principal.viewer)
+    ? principal.viewer
+    : { ...principal.viewer, isAdmin: false };
+}
+
+/** How many accounts a bulk request may name for this key (D-91). */
+export function bulkAccountLimit(principal: ApiPrincipal): number {
+  return principal.kind === 'service' ? MAX_BULK_ACCOUNTS_SERVICE : MAX_BULK_ACCOUNTS;
+}
+
+/**
+ * The account's `accountHash` for the response, or undefined (the field is omitted): only service
+ * keys get it (D-90). The hash is the plugin's identity for ingest: a member who knew another
+ * account's hash could report data for it from their own device and become a contributor who sees
+ * everything, so user keys never see it.
+ */
+export function apiAccountHash(
+  principal: ApiPrincipal,
+  entry: AccountWithAccess,
+): string | undefined {
+  return principal.kind === 'service' ? entry.account.accountHash : undefined;
+}
+
+/**
+ * The owners of `entries` as the API shows them (D-89): the guild page lists every visible account
+ * under its owner for every member (D-68), so an account the key may see always carries its owner
+ * when that owner is an active user; accounts without an owner, or whose owner is in grace or gone,
+ * get null. Contributors are never included. One query for all entries.
+ */
+export async function loadApiOwners(
+  db: DbOrTx,
+  entries: readonly AccountWithAccess[],
+): Promise<Map<number, ApiOwner | null>> {
+  const out = new Map<number, ApiOwner | null>();
+  const ownerIds = new Set<string>();
+  for (const e of entries) if (e.raw.ownerUserId !== null) ownerIds.add(e.raw.ownerUserId);
+  const owners = new Map<string, ApiOwner>();
+  if (ownerIds.size > 0) {
+    const rows = await db
+      .select({ id: users.id, name: users.name, discordId: users.discordId })
+      .from(users)
+      .where(and(inArray(users.id, [...ownerIds]), eq(users.status, 'active')));
+    for (const r of rows) owners.set(r.id, { name: r.name, discordId: r.discordId });
+  }
+  for (const e of entries) {
+    const owner = e.raw.ownerUserId === null ? undefined : owners.get(e.raw.ownerUserId);
+    out.set(e.account.id, owner ?? null);
+  }
+  return out;
 }
 
 /** The principal's key as a restriction for the shared loaders. */

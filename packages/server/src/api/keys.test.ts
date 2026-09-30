@@ -208,11 +208,13 @@ describe('the key shown once', () => {
     );
     expect(info).toEqual({
       id: row.id,
+      kind: 'user',
       name: 'Home Assistant',
       prefix,
       categories: ['stats'],
       accountScope: 'all_visible',
       accounts: null,
+      rateLimitPerMinute: 120,
       expiresAt: null,
       createdAt: NOW.toISOString(),
       lastUsedAt: null,
@@ -407,10 +409,12 @@ describe('authenticateApiKey', () => {
       ok: true,
       principal: {
         keyId: info.id,
+        kind: 'user',
         userId: alice.id,
         viewer: { userId: alice.id, status: 'active', isAdmin: false },
         categories: new Set(['stats', 'events']),
         accountIds: null,
+        rateLimitPerMinute: 120,
       },
     });
     // The scheme name is case-insensitive; more than one space is allowed.
@@ -432,7 +436,7 @@ describe('authenticateApiKey', () => {
   it('never makes an admin creator an admin', async () => {
     const admin = await seedUser(t.db, { isAdmin: true });
     const { principal } = await makeKey(t.db, admin.id, {}, NOW);
-    expect(principal.viewer.isAdmin).toBe(false);
+    expect(principal.viewer).toMatchObject({ userId: admin.id, isAdmin: false });
   });
 
   it('refuses a missing header as missing', async () => {

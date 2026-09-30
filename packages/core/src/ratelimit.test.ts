@@ -438,6 +438,46 @@ describe('WindowLimiter', () => {
     });
   });
 
+  describe('a limit per call (D-87)', () => {
+    it('judges each key by the limit given, with the constructor’s as the default', () => {
+      const clock = new FakeClock();
+      const limiter = new WindowLimiter({ limit: 2, windowMs: 60 * SEC, clock });
+      for (let i = 0; i < 5; i++) expect(limiter.hit('service', 5).ok).toBe(true);
+      expect(limiter.hit('service', 5)).toEqual({ ok: false, retryAfterSeconds: 60 });
+      expect(limiter.usage('service', 5)).toEqual({
+        limit: 5,
+        count: 5,
+        remaining: 0,
+        resetMs: 60 * SEC,
+      });
+      expect(limiter.peek('service', 5).ok).toBe(false);
+      // The default limit still applies to keys that don't give one.
+      expect(limiter.hit('user').ok).toBe(true);
+      expect(limiter.hit('user').ok).toBe(true);
+      expect(limiter.hit('user').ok).toBe(false);
+      expect(limiter.usage('user').limit).toBe(2);
+    });
+
+    it('a lowered limit counts the hits already made', () => {
+      const clock = new FakeClock();
+      const limiter = new WindowLimiter({ limit: 10, windowMs: 60 * SEC, clock });
+      for (let i = 0; i < 4; i++) limiter.hit('k', 10);
+      expect(limiter.peek('k', 3)).toEqual({ ok: false, retryAfterSeconds: 60 });
+      expect(limiter.usage('k', 3)).toMatchObject({ limit: 3, count: 4, remaining: 0 });
+      clock.advance(60 * SEC);
+      expect(limiter.hit('k', 3).ok).toBe(true);
+    });
+
+    it('refuses a limit that is not a positive integer', () => {
+      const limiter = new WindowLimiter({ limit: 2, windowMs: 60 * SEC });
+      for (const bad of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+        expect(() => limiter.hit('k', bad)).toThrow(RangeError);
+        expect(() => limiter.peek('k', bad)).toThrow(RangeError);
+        expect(() => limiter.usage('k', bad)).toThrow(RangeError);
+      }
+    });
+  });
+
   it('evicts the least recently hit key beyond maxKeys', () => {
     const clock = new FakeClock();
     const limiter = new WindowLimiter({ limit: 1, windowMs: HOUR, clock, maxKeys: 2 });

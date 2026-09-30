@@ -36,6 +36,13 @@
       "when": 1790706497655,
       "tag": "0004_location_live_keep_private",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790749484327,
+      "tag": "0005_service_keys",
+      "breakpoints": true
     }
   ]
 }

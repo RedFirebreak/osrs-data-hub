@@ -38,6 +38,7 @@ const ATTACK_GAIN = 5_000;
 let t: TestDatabase;
 let h: Harness;
 let ownerId: string;
+let ironId: string;
 let memberId: string;
 let ownerDevice: SeededDevice;
 let normal: Wire;
@@ -71,7 +72,7 @@ beforeAll(async () => {
   h = createHarness(t);
   ownerId = await h.seedUser();
   memberId = await h.seedUser();
-  const ironId = await h.seedUser();
+  ironId = await h.seedUser();
   ownerDevice = await h.seedDevice(ownerId);
   const ironDevice = await h.seedDevice(ironId);
 
@@ -139,10 +140,12 @@ describe('apiMe', () => {
     expect(me).toEqual({
       key: {
         id: statsKey.info.id,
+        kind: 'user',
         name: 'stats',
         prefix: statsKey.info.prefix,
         categories: ['stats'],
         accountScope: 'all_visible',
+        rateLimitPerMinute: 120,
         expiresAt: null,
       },
       user: { name: memberId },
@@ -154,12 +157,15 @@ describe('apiMe', () => {
 describe('apiListAccounts', () => {
   it('lists the visible accounts by name, with presence only for activity', async () => {
     const list = await apiListAccounts(t.db, memberKey.principal, {}, NOW);
+    // Owners as the guild page shows them (D-89): the seeded users have no Discord id.
+    const ownerOf = (name: string) => ({ name, discordId: null });
     expect(list).toEqual([
       {
         id: bare,
         name: 'Bare Bones',
         type: 0,
         typeLabel: 'Normal',
+        owner: ownerOf(ownerId),
         online: false,
         world: 302,
         lastSeen: new Date(t0 + 20 * MIN).toISOString(),
@@ -169,6 +175,7 @@ describe('apiListAccounts', () => {
         name: 'Iron Mira',
         type: 1,
         typeLabel: 'Ironman',
+        owner: ownerOf(ironId),
         online: false,
         world: 319,
         lastSeen: new Date(t0 + 10 * MIN).toISOString(),
@@ -178,6 +185,7 @@ describe('apiListAccounts', () => {
         name: 'Zezima',
         type: 0,
         typeLabel: 'Normal',
+        owner: ownerOf(ownerId),
         online: true,
         world: 302,
         lastSeen: new Date(t0 + HOUR + SEC).toISOString(),
@@ -303,7 +311,7 @@ describe('apiGetAccount', () => {
   it('gives keys without activity only the day of sections sent with every update (D-50)', async () => {
     const d = await detail(statsKey, zezima);
     expect(Object.keys(d).sort()).toEqual(
-      ['categories', 'firstSeen', 'id', 'name', 'skills', 'type', 'typeLabel'].sort(),
+      ['categories', 'firstSeen', 'id', 'name', 'owner', 'skills', 'type', 'typeLabel'].sort(),
     );
     expect(d.skills?.updatedAt).toBe('2026-09-21T00:00:00.000Z');
     // The member's key has activity, so the exact time.
@@ -357,6 +365,7 @@ describe('apiSnapshot', () => {
       name: 'Iron Mira',
       type: 1,
       typeLabel: 'Ironman',
+      owner: { name: ironId, discordId: null },
       categories: ['stats', 'events', 'activity'],
       online: false,
       world: 319,
@@ -385,6 +394,7 @@ describe('apiSnapshot', () => {
         'location',
         'name',
         'online',
+        'owner',
         'prayer',
         'specialWorld',
         'spellbook',
@@ -451,6 +461,7 @@ describe('apiSnapshot', () => {
       name: 'Bare Bones',
       type: 0,
       typeLabel: 'Normal',
+      owner: { name: ownerId, discordId: null },
       categories: ['stats'],
       skills: expect.any(Object) as unknown,
     });
@@ -468,7 +479,8 @@ describe('apiSnapshot', () => {
     const forOne = counted.reset();
     await apiSnapshot(counted.db, memberKey.principal, {}, NOW);
     expect(counted.reset()).toBe(forOne);
-    expect(forOne).toBeLessThanOrEqual(6);
+    // Accounts, their access (4 tables), latest_state, and the owners (D-89).
+    expect(forOne).toBeLessThanOrEqual(7);
   });
 
   it('refuses an invalid since', async () => {
