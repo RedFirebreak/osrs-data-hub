@@ -4,6 +4,21 @@ Changes are consolidated per pull request, newest first. Each entry names the PR
 open), what changed, and any decision (`D-n`, see [ARCHITECTURE.md](ARCHITECTURE.md#decision-log)) or
 gotcha (`AREA-n`, see [gotchas](gotchas/README.md)) it introduced.
 
+## Cut release button (branch `red/cut-release-workflow`)
+
+Releases stay manual, one per feature or fix rather than one per merge, but no longer need a version
+typed by hand (D-87 extended).
+
+- **`.github/workflows/cut-release.yml`:** `workflow_dispatch` on `main` with a `patch` / `minor` /
+  `major` choice. Computes the next `v*` tag from the latest one, creates the annotated tag and a GitHub
+  Release with generated notes (`--notes-start-tag` the previous release), then publishes both images by
+  calling the Release workflow. Refuses another branch, an already tagged head, or a head with no
+  successful CI run on `main`.
+- **`.github/workflows/release.yml`:** gains `workflow_call` with a `tag` input; the image tags come from
+  that tag (or the pushed ref, as before) through metadata-action's `value=`. Concurrency moved to the
+  job so it works when called. Manual tags and the branch dry run behave as before.
+- **Docs:** OPERATIONS §10 Releases (the button, by hand, which bump, dry run); D-87.
+
 ## Integration keys for the guild live map (branch `red/osrs-hub-integration-keys-9b5b99`)
 
 API additions for [ha-osrs-map](https://github.com/RedFirebreak/ha-osrs-map), which mirrors the hub's

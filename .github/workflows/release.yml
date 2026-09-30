@@ -4,8 +4,14 @@ name: Release
 #   ghcr.io/redfirebreak/osrs-data-hub-web:<version>
 #   ghcr.io/redfirebreak/osrs-data-hub-worker:<version>
 # Git tag `v0.1.0` becomes image tag `0.1.0` (and `0.1`). No `latest`, no `main`: the deployment pins
-# an exact version and Renovate bumps it, so a floating tag would only be noise. A `workflow_dispatch`
-# from a branch builds both images without pushing (a dry run); from a tag it publishes again.
+# an exact version and Renovate bumps it, so a floating tag would only be noise.
+#
+# Three ways in:
+#   - cut-release.yml calls this (`workflow_call`) with the tag it just created. A tag pushed with the
+#     workflow token never triggers another workflow, hence the direct call;
+#   - a tag pushed by hand (`git push origin v0.2.0`, or a GitHub Release created in the UI);
+#   - `workflow_dispatch`: from a branch it builds both images without pushing (a dry run), from a
+#     tag it publishes that tag again.
 #
 # The actions are pinned by commit SHA (this workflow has packages: write); the comment is the release
 # the SHA belongs to, which Renovate (helpers:pinGitHubActionDigests) keeps in step with the SHA.
@@ -17,20 +23,30 @@ on:
   push:
     tags: ['v*']
   workflow_dispatch:
-
-concurrency:
-  group: release-${{ github.ref }}
-  cancel-in-progress: false
+  workflow_call:
+    inputs:
+      tag:
+        description: The git tag to publish, with its v prefix (v0.1.2); it must point at this commit.
+        required: true
+        type: string
 
 permissions:
   contents: read
   packages: write
+
+env:
+  # The tag the images are named after: the caller's, else the ref that triggered this run.
+  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
 
 jobs:
   publish:
     name: Publish ${{ matrix.target }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # One publish per image and tag at a time; a re-run queues behind, never cancels.
+    concurrency:
+      group: publish-${{ matrix.target }}-${{ inputs.tag || github.ref_name }}
+      cancel-in-progress: false
     strategy:
       fail-fast: false
       matrix:
@@ -51,6 +67,7 @@ jobs:
       # Tags and OCI labels (org.opencontainers.image.source/revision/version/…) from the git tag.
       # GHCR wants a lowercase owner, so the image name is spelled out rather than derived from
       # github.repository. `latest=false`: metadata-action adds `latest` to semver tags by default.
+      # A value that is not a semver tag (a dispatch from a branch) yields no tags, and nothing is pushed.
       - name: Image tags and labels
         id: meta
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
@@ -58,8 +75,8 @@ jobs:
           images: ghcr.io/redfirebreak/osrs-data-hub-${{ matrix.target }}
           flavor: latest=false
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{version}},value=${{ env.RELEASE_TAG }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ env.RELEASE_TAG }}
           labels: |
             org.opencontainers.image.title=osrs-data-hub-${{ matrix.target }}
             org.opencontainers.image.description=osrs-data-hub ${{ matrix.target }} image (see docs/OPERATIONS.md)
@@ -72,7 +89,7 @@ jobs:
           context: .
           target: ${{ matrix.target }}
           platforms: linux/amd64
-          push: ${{ startsWith(github.ref, 'refs/tags/v') }}
+          push: ${{ inputs.tag != '' || startsWith(github.ref, 'refs/tags/v') }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=${{ matrix.target }}
