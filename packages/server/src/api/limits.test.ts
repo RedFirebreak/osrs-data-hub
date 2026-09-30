@@ -104,6 +104,31 @@ describe('checkApiRate', () => {
   });
 });
 
+describe('a limit per key (D-88)', () => {
+  it('judges the key by its own limit and reports it in the headers', () => {
+    const { clock, limits } = setup();
+    for (let i = 0; i < 600; i++) {
+      const r = checkApiRate(limits, 'service', { snapshot: false, limit: 600 });
+      expect(r.ok, String(i)).toBe(true);
+      expect(r.headers['X-RateLimit-Limit']).toBe('600');
+    }
+    const refused = checkApiRate(limits, 'service', { snapshot: false, limit: 600 });
+    expect(refused).toMatchObject({
+      ok: false,
+      limit: 'key',
+      retryAfterSeconds: 60,
+      headers: { 'X-RateLimit-Limit': '600', 'X-RateLimit-Remaining': '0' },
+    });
+    expect(rateHeaders(limits, 'service', 600)['X-RateLimit-Limit']).toBe('600');
+    // A user key on the same limiter keeps the default.
+    expect(checkApiRate(limits, 'user', { snapshot: false }).headers['X-RateLimit-Limit']).toBe(
+      String(API_RATE_LIMIT),
+    );
+    clock.t += 60 * SEC;
+    expect(checkApiRate(limits, 'service', { snapshot: false, limit: 600 }).ok).toBe(true);
+  });
+});
+
 describe('failed authentications per IP', () => {
   it('refuses an IP after 30 failures a minute, before any database work', () => {
     const { clock, limits } = setup();

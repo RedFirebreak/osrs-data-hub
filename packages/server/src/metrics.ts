@@ -30,6 +30,7 @@ export const API_ROUTE_GROUPS = [
   'events',
   'snapshot',
   'xp',
+  'locations',
   'leaderboards',
   'openapi',
   'unknown',

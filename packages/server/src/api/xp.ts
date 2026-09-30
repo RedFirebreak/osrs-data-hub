@@ -16,9 +16,12 @@ import {
 } from '../accounts/xp';
 import { getUserSettings } from '../settings/user-settings';
 import {
+  MAX_BULK_ACCOUNTS,
+  MAX_BULK_ACCOUNTS_SERVICE,
   accountRef,
   apiRestriction,
   apiViewer,
+  bulkAccountLimit,
   loadApiAccount,
   requireApiAccounts,
 } from './access';
@@ -32,8 +35,10 @@ export const XP_RESOLUTIONS = ['auto', '5m', '1h', '1d'] as const;
 export type ApiXpResolution = (typeof XP_RESOLUTIONS)[number];
 /** The range of an XP request without `from`: the last 7 days (the raw 5-minute tier). */
 export const XP_DEFAULT_DAYS = 7;
-/** Most accounts one GET /xp may name. */
-export const MAX_XP_ACCOUNTS = 10;
+/** Most accounts one GET /xp may name with a user key (D-92). */
+export const MAX_XP_ACCOUNTS = MAX_BULK_ACCOUNTS;
+/** ... and with a service key (D-92). */
+export const MAX_XP_ACCOUNTS_SERVICE = MAX_BULK_ACCOUNTS_SERVICE;
 /** Most skills one XP request may name. */
 export const MAX_XP_SKILLS = MAX_SERIES_SKILLS;
 
@@ -121,9 +126,9 @@ export async function apiXp(
 }
 
 /**
- * XP series of several accounts (GET /xp?accounts=a,b): at most MAX_XP_ACCOUNTS, each of which the
- * key must be able to read `stats` of, else ApiError 'not_found' naming it (D-70). One series request
- * per account, in request order.
+ * XP series of several accounts (GET /xp?accounts=a,b): at most MAX_XP_ACCOUNTS (a service key:
+ * MAX_XP_ACCOUNTS_SERVICE, D-92), each of which the key must be able to read `stats` of, else
+ * ApiError 'not_found' naming it (D-70). One series request per account, in request order.
  */
 export async function apiXpMulti(
   db: DbOrTx,
@@ -138,7 +143,7 @@ export async function apiXpMulti(
     params.ids,
     'stats',
     'accounts',
-    MAX_XP_ACCOUNTS,
+    bulkAccountLimit(principal),
   );
   const accounts: ApiXpSeries[] = [];
   for (const entry of entries) {
@@ -157,6 +162,16 @@ export async function apiXpMulti(
   return { resolution, from: req.from.toISOString(), to: req.to.toISOString(), accounts };
 }
 
+/** The creator's time zone (their settings); undefined (UTC) for a service key (D-88). */
+export async function principalTimezone(
+  db: DbOrTx,
+  principal: ApiPrincipal,
+): Promise<string | undefined> {
+  return principal.userId === null
+    ? undefined
+    : (await getUserSettings(db, principal.userId)).timezone;
+}
+
 function pickFallback(resolution: ApiXpResolution): Resolution {
   return resolution === 'auto' ? '5m' : resolution;
 }
@@ -166,8 +181,9 @@ export type ApiGainsPeriod = (typeof GAINS_PERIODS)[number];
 
 export interface ApiGainsParams {
   /**
-   * day = since local midnight in the key creator's time zone (their settings), week/month/year =
-   * the last 7/30/365 days. Default 'day' when neither `period` nor `from` is given.
+   * day = since local midnight in the key creator's time zone (their settings; UTC for a service
+   * key, which has no creator, D-88), week/month/year = the last 7/30/365 days. Default 'day' when
+   * neither `period` nor `from` is given.
    */
   period?: ApiGainsPeriod;
   /** An explicit range instead of `period` (not both). */
@@ -221,8 +237,7 @@ export async function apiGains(
     ({ from, to } = resolveRange(params, now, 0));
     if (params.to === undefined) to = undefined; // now = the current XP (latest_state)
   } else {
-    const timezone =
-      period === 'day' ? (await getUserSettings(db, principal.userId)).timezone : undefined;
+    const timezone = period === 'day' ? await principalTimezone(db, principal) : undefined;
     const starts = periodStarts(now, timezone);
     from = { day: starts.today, week: starts.week, month: starts.month, year: starts.year }[period];
   }

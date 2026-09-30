@@ -1,8 +1,10 @@
 /**
- * One key on the API keys page (D-76): name and status, the key as `ohub_<prefix>_…` (the secret is
- * never shown again after creation), the categories it reads, its account scope (listed accounts
- * the owner can no longer see are named "An account you can no longer see"), when it was created
- * and last used, when it expires, and Revoke for an active key.
+ * One key on the API keys page (D-76) and on Admin → Integrations (service keys, D-88): name and
+ * status, the key as `ohub_<prefix>_…` (the secret is never shown again after creation), the
+ * categories it reads, its account scope (listed accounts the owner can no longer see are named "An
+ * account you can no longer see"; a service key reads the guild audience), its rate limit, who
+ * created it (service keys), when it was created and last used, when it expires, and Revoke for an
+ * active key (`actions` replaces the user's Revoke button on the admin page).
  *
  * A server component; Revoke and the relative times are client components. `now` is the page's render
  * time, so relative times hydrate without a mismatch; `timezone` is the viewer's (Settings).
@@ -63,14 +65,16 @@ function Field({
 }
 
 export interface ApiKeyCardProps {
-  apiKey: ApiKeyInfo;
+  apiKey: ApiKeyInfo & { createdBy?: { id: string; name: string } | null };
   /** The page's render time (ISO). */
   now: string;
   /** The viewer's time zone for absolute dates. */
   timezone: string;
+  /** The footer's action for an active key; default: the user's own Revoke button. */
+  actions?: React.ReactNode;
 }
 
-export function ApiKeyCard({ apiKey, now, timezone }: ApiKeyCardProps) {
+export function ApiKeyCard({ apiKey, now, timezone, actions }: ApiKeyCardProps) {
   const active = apiKey.status === 'active';
   const expiresOn = apiKey.expiresAt
     ? formatInZone(apiKey.expiresAt, timezone, DATE_OPTIONS)
@@ -109,6 +113,19 @@ export function ApiKeyCard({ apiKey, now, timezone }: ApiKeyCardProps) {
               <span className="text-muted-foreground">Never</span>
             )}
           </Field>
+          <Field label="Rate limit">
+            <span className="tabular-nums">{apiKey.rateLimitPerMinute}</span>
+            <span className="text-muted-foreground"> / min</span>
+          </Field>
+          {apiKey.createdBy !== undefined && (
+            <Field label="Created by" className="col-span-2 sm:col-span-3">
+              {apiKey.createdBy ? (
+                apiKey.createdBy.name
+              ) : (
+                <span className="text-muted-foreground">A deleted user</span>
+              )}
+            </Field>
+          )}
           <Field label="Reads" className="col-span-2 sm:col-span-4">
             <ul className="flex flex-wrap gap-1.5" aria-label="Categories">
               {apiKey.categories.map((c) => (
@@ -140,7 +157,7 @@ export function ApiKeyCard({ apiKey, now, timezone }: ApiKeyCardProps) {
       </CardContent>
       <CardFooter className="flex flex-wrap items-center justify-end gap-2">
         {active ? (
-          <RevokeApiKeyButton keyId={apiKey.id} name={apiKey.name} />
+          (actions ?? <RevokeApiKeyButton keyId={apiKey.id} name={apiKey.name} />)
         ) : apiKey.status === 'revoked' && apiKey.revokedAt ? (
           <p className="mr-auto text-sm text-muted-foreground">
             Revoked <RelativeTime date={apiKey.revokedAt} now={now} />. Apps using it get 401.

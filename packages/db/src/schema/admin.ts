@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import {
   bigint,
+  check,
   index,
   integer,
   jsonb,
@@ -14,16 +15,30 @@ import { users } from './auth';
 
 const tstz = (name: string) => timestamp(name, { withTimezone: true });
 
-/** Public API keys (Milestone 3). Shown once as ohub_<prefix>_<secret>; only sha256(secret) stored. */
+/**
+ * `user`: a member's own key, reading what its creator may see (D-69, D-70). `service`: an
+ * integration key an admin created, belonging to no user and reading the guild audience (D-88).
+ */
+export const API_KEY_KINDS = ['user', 'service'] as const;
+export type ApiKeyKind = (typeof API_KEY_KINDS)[number];
+
+/**
+ * Public API keys (Milestone 3). Shown once as ohub_<prefix>_<secret>; only sha256(secret) stored.
+ * A user key has its creator in `user_id` (cascade: the key goes with the user); a service key has
+ * none (D-88) and records who created it in `created_by_user_id`, which offboarding leaves alone.
+ */
 export const apiKeys = pgTable(
   'api_keys',
   {
     id: uuid('id')
       .primaryKey()
       .default(sql`uuidv7()`),
-    userId: text('user_id')
-      .notNull()
-      .references(() => users.id, { onDelete: 'cascade' }),
+    kind: text('kind', { enum: API_KEY_KINDS }).default('user').notNull(),
+    userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
+    /** Who created it, for the admin page and the audit trail; null once that user is deleted. */
+    createdByUserId: text('created_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
     name: text('name').notNull(),
     prefix: text('prefix').notNull(),
     secretHash: text('secret_hash').notNull(),
@@ -32,6 +47,8 @@ export const apiKeys = pgTable(
       .default('all_visible')
       .notNull(),
     accountIds: integer('account_ids').array(),
+    /** Requests per sliding minute; null = the default of its kind (D-72, D-88). */
+    rateLimitPerMinute: integer('rate_limit_per_minute'),
     expiresAt: tstz('expires_at'),
     createdAt: tstz('created_at').defaultNow().notNull(),
     lastUsedAt: tstz('last_used_at'),
@@ -40,6 +57,8 @@ export const apiKeys = pgTable(
   (t) => [
     uniqueIndex('api_keys_prefix_uidx').on(t.prefix),
     index('api_keys_user_idx').on(t.userId),
+    // A user key always has its user; a service key never has one.
+    check('api_keys_kind_user_check', sql`(${t.kind} = 'user') = (${t.userId} IS NOT NULL)`),
   ],
 );
 

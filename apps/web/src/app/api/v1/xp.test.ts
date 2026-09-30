@@ -3,7 +3,7 @@
  * fixtures: the documented shapes, skill names canonicalised (data keys unchanged), the `stats`
  * gate (the one 404, D-70) and 400 for bad parameters.
  */
-import { MAX_XP_ACCOUNTS } from '@hub/server';
+import { MAX_XP_ACCOUNTS, MAX_XP_ACCOUNTS_SERVICE } from '@hub/server';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   GainsResponse,
@@ -159,14 +159,25 @@ describe('GET /api/v1/xp', () => {
   });
 
   it('400 without accounts, with too many, or with a malformed id', async () => {
-    const tooMany = Array.from({ length: MAX_XP_ACCOUNTS + 1 }, (_, i) => `acc${i}`).join(',');
-    for (const query of ['', '?accounts=', `?accounts=${tooMany}`, '?accounts=bad!id']) {
+    const ids = (n: number) => Array.from({ length: n }, (_, i) => `acc${i}`).join(',');
+    for (const query of [
+      '',
+      '?accounts=',
+      `?accounts=${ids(MAX_XP_ACCOUNTS_SERVICE + 1)}`,
+      '?accounts=bad!id',
+    ]) {
       const res = await getXp(v1Request(ctx, `/xp${query}`, { key: ownerKey.key }));
       expect(res.status, query).toBe(400);
       expect(((await res.json()) as ErrorBody).error.details?.[0]?.path, query).toMatch(
         /^accounts(\.\d+)?$/,
       );
     }
+    // Between the two caps (D-92): parsed, then refused for a user key by the read model.
+    const overUser = await getXp(
+      v1Request(ctx, `/xp?accounts=${ids(MAX_XP_ACCOUNTS + 1)}`, { key: ownerKey.key }),
+    );
+    expect(overUser.status).toBe(400);
+    expect(((await overUser.json()) as ErrorBody).error.message).toContain(String(MAX_XP_ACCOUNTS));
   });
 });
 

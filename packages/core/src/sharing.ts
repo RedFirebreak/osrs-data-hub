@@ -48,6 +48,35 @@ export interface Viewer {
   isAdmin: boolean;
 }
 
+/**
+ * The guild audience itself as a principal (D-89): what an active guild member who is neither the
+ * owner, a contributor nor a grantee of an account sees, i.e. exactly the categories whose audience
+ * is `guild`. Service keys (D-88) act as this principal; it never owns, manages or is granted
+ * anything, and the admin override never applies to it.
+ */
+export interface GuildAudience {
+  readonly kind: 'guild_audience';
+}
+
+export const GUILD_AUDIENCE: GuildAudience = Object.freeze({ kind: 'guild_audience' as const });
+
+/** Whom the resolver evaluates: a signed-in user, or the guild audience. */
+export type Principal = Viewer | GuildAudience;
+
+export function isGuildAudience(principal: Principal): principal is GuildAudience {
+  return (principal as GuildAudience).kind === 'guild_audience';
+}
+
+/** Whether the principal may see anything at all: an active user, or the guild audience. */
+export function isActivePrincipal(principal: Principal): boolean {
+  return isGuildAudience(principal) || principal.status === 'active';
+}
+
+/** Only a signed-in user with isAdmin === true (fails closed); the guild audience never is. */
+export function isAdminPrincipal(principal: Principal): boolean {
+  return !isGuildAudience(principal) && principal.isAdmin === true;
+}
+
 /** Everything about an account that decides who may see what. */
 export interface AccountAccess {
   status: 'active' | 'hidden';
@@ -72,6 +101,9 @@ export interface ResolvedAccess {
 
 /**
  * The one permission resolver (handoff §10, D-22), used by the UI, the SSE filter and the API:
+ * - The guild audience (GUILD_AUDIENCE, D-89) is an active member with no relation to any account:
+ *   it gets the categories whose effective audience is `guild`, relation 'member', never canManage,
+ *   and hidden accounts stay invisible to it.
  * - A viewer whose status isn't 'active' sees nothing (visible false, no categories, canManage false,
  *   relation 'none').
  * - relation: owner if ownerUserId === viewer; contributor if a NON-blocked link exists; else member.
@@ -88,7 +120,9 @@ export interface ResolvedAccess {
  * always implies visible. Fails closed on malformed input: only isAdmin === true is an admin, and
  * only blocked === false is a non-blocked link.
  */
-export function resolveAccess(viewer: Viewer, account: AccountAccess): ResolvedAccess {
+export function resolveAccess(principal: Principal, account: AccountAccess): ResolvedAccess {
+  if (isGuildAudience(principal)) return resolveGuildAudience(account);
+  const viewer = principal;
   const isAdmin = viewer.isAdmin === true;
   if (viewer.status !== 'active') return noAccess();
   if (account.status !== 'active' && !isAdmin) return noAccess();
@@ -110,6 +144,14 @@ export function resolveAccess(viewer: Viewer, account: AccountAccess): ResolvedA
     relation,
     canManage: relation === 'owner' || isAdmin,
   };
+}
+
+/** The guild audience's access (D-89): the `guild` categories of an active account, nothing else. */
+function resolveGuildAudience(account: AccountAccess): ResolvedAccess {
+  if (account.status !== 'active') return noAccess();
+  const categories = new Set<Category>();
+  for (const c of CATEGORIES) if (effectiveAudience(account, c) === 'guild') categories.add(c);
+  return { visible: categories.size > 0, categories, relation: 'member', canManage: false };
 }
 
 function noAccess(): ResolvedAccess {

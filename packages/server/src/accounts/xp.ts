@@ -16,7 +16,7 @@
  * ~1.3 ms per lookup at 1500 hourly rows, against ~0.01 ms on the raw hypertable).
  * Special-world payloads never write XP samples, so gains never include them.
  */
-import { OVERALL, floorTo, overallXp, type Viewer } from '@hub/core';
+import { OVERALL, floorTo, overallXp, type Principal } from '@hub/core';
 import { latestState, skills as skillsTable, type DbOrTx } from '@hub/db';
 import { and, inArray, isNotNull, sql } from 'drizzle-orm';
 import { loadVisibleAccount, type AccessRestriction } from './load';
@@ -327,7 +327,7 @@ export interface XpSeries {
  */
 export async function getXpSeries(
   db: DbOrTx,
-  viewer: Viewer,
+  viewer: Principal,
   publicId: string,
   opts: { skills: readonly string[]; from: Date; to: Date; resolution: Resolution | 'auto' },
   restrict?: AccessRestriction,

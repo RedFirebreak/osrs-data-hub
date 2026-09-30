@@ -5,7 +5,13 @@
  */
 import { randomUUID } from 'node:crypto';
 import { auditLog, devices, rawPayloads, users } from '@hub/db';
-import { getMetrics, setDecommissioned, setGuildFeedFilter } from '@hub/server';
+import {
+  createServiceKey,
+  getMetrics,
+  revokeServiceKey,
+  setDecommissioned,
+  setGuildFeedFilter,
+} from '@hub/server';
 import { eq } from 'drizzle-orm';
 import { renderToReadableStream } from 'react-dom/server';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -16,6 +22,7 @@ import ConfigPage from './config/page';
 import DecommissionPage from './decommission/page';
 import DevicesPage from './devices/page';
 import IngestPage from './ingest/page';
+import IntegrationsPage from './integrations/page';
 import AdminLayout from './layout';
 import UsersPage from './page';
 import PayloadsPage from './payloads/page';
@@ -89,6 +96,7 @@ const PAGES: [string, () => Promise<React.ReactNode>][] = [
   ['users', () => UsersPage()],
   ['devices', () => DevicesPage(searchParams() as PageProps<'/admin/devices'>)],
   ['ingest', () => IngestPage()],
+  ['integrations', () => IntegrationsPage()],
   ['payloads', () => PayloadsPage(searchParams() as PageProps<'/admin/payloads'>)],
   ['audit', () => AuditPage()],
   ['config', () => ConfigPage()],
@@ -295,5 +303,38 @@ describe('audit, configuration, settings and decommission pages', () => {
     const after = await render(() => SettingsPage());
     expect(after).toContain('value="25000"');
     expect(after).toMatch(/role="switch"[^>]*aria-checked="true"/);
+  });
+});
+
+describe('integrations page', () => {
+  it('lists service keys masked with their creator and rate limit, active ones with Revoke', async () => {
+    const empty = await render(() => IntegrationsPage());
+    expect(empty).toContain('No integration keys yet');
+    expect(empty).toContain('Create integration key');
+
+    const actor = { userId: adminId, status: 'active' as const, isAdmin: true };
+    const live = await createServiceKey(ctx.t.db, {
+      actor,
+      input: { name: 'Guild live map', categories: ['activity', 'location_live'] },
+    });
+    const old = await createServiceKey(ctx.t.db, {
+      actor,
+      input: { name: 'Old bot', categories: ['events'], rateLimitPerMinute: 60 },
+    });
+    await revokeServiceKey(ctx.t.db, { actor, keyId: old.info.id });
+
+    const out = await render(() => IntegrationsPage());
+    expect(out).toContain('Guild live map');
+    expect(out).toContain(`ohub_${live.info.prefix}_…`);
+    expect(out).not.toContain(live.key.slice(16));
+    expect(out).not.toContain(old.key.slice(16));
+    expect(out).toContain('Ada Admin');
+    expect(out).toContain('Every account shared with the guild');
+    expect(out).toContain('Active keys');
+    expect(out).toContain('Revoked and expired keys');
+    expect(out).toContain('Old bot');
+    expect(out).toContain('Revoke');
+    expect(out).toContain('600');
+    expect(out).toContain('60');
   });
 });

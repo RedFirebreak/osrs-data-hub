@@ -4,7 +4,7 @@
  * Each reuses the account page's read model (accounts/history.ts) with the key's restriction, and
  * returns null when the key can't read that category on the account (the web answers 404, D-70).
  */
-import type { Category, Viewer } from '@hub/core';
+import type { Category, Principal } from '@hub/core';
 import type { DbOrTx, SessionEndReason } from '@hub/db';
 import {
   getEquipmentHistory,
@@ -14,7 +14,15 @@ import {
   type HistoryRange,
 } from '../accounts/history';
 import type { AccessRestriction } from '../accounts/load';
-import { accountRef, apiRestriction, apiViewer, loadApiAccount } from './access';
+import {
+  accountRef,
+  apiRestriction,
+  apiViewer,
+  bulkAccountLimit,
+  loadApiAccount,
+  requireApiAccounts,
+} from './access';
+import { ApiError } from './errors';
 import type { ApiPrincipal } from './keys';
 import { resolveRange } from './params';
 import { toApiItems, type ApiAccountRef, type ApiItem } from './types';
@@ -97,9 +105,30 @@ export interface ApiLocations extends ApiHistory {
   points: ApiLocationPoint[];
 }
 
+/** Several accounts' trails in one call (GET /locations?accounts=a,b, D-92). */
+export interface ApiLocationsMulti {
+  from: string;
+  to: string;
+  /** In request order, each with the same points as GET /accounts/{id}/locations. */
+  accounts: { account: ApiAccountRef; points: ApiLocationPoint[] }[];
+}
+
+type LocationPointRow = NonNullable<Awaited<ReturnType<typeof getLocationHistory>>>[number];
+
+function toLocationPoints(rows: readonly LocationPointRow[]): ApiLocationPoint[] {
+  return rows.map((p) => ({
+    at: p.ts,
+    x: p.x,
+    y: p.y,
+    plane: p.plane,
+    world: p.world,
+    isOnBoat: p.onBoat,
+  }));
+}
+
 type HistoryReader<T> = (
   db: DbOrTx,
-  viewer: Viewer,
+  viewer: Principal,
   publicId: string,
   range: HistoryRange,
   restrict?: AccessRestriction,
@@ -204,17 +233,43 @@ export async function apiLocations(
     'location_history',
     getLocationHistory,
   );
-  return (
-    found && {
-      ...found.head,
-      points: found.rows.map((p) => ({
-        at: p.ts,
-        x: p.x,
-        y: p.y,
-        plane: p.plane,
-        world: p.world,
-        isOnBoat: p.onBoat,
-      })),
-    }
+  return found && { ...found.head, points: toLocationPoints(found.rows) };
+}
+
+/**
+ * The location trails of several accounts (GET /locations?accounts=a,b, D-92): at most
+ * bulkAccountLimit(principal) accounts, each of which the key must be able to read
+ * `location_history` of, else ApiError 'not_found' naming it (D-70). Each trail is exactly what
+ * GET /accounts/{id}/locations returns for the same range (same thinning and cap), in request order.
+ */
+export async function apiLocationsMulti(
+  db: DbOrTx,
+  principal: ApiPrincipal,
+  params: ApiHistoryParams & { ids: string[] },
+  now: Date = new Date(),
+): Promise<ApiLocationsMulti> {
+  const range = resolveRange(params, now, HISTORY_DEFAULT_DAYS);
+  const entries = await requireApiAccounts(
+    db,
+    principal,
+    params.ids,
+    'location_history',
+    'accounts',
+    bulkAccountLimit(principal),
   );
+  const accounts: ApiLocationsMulti['accounts'] = [];
+  for (const entry of entries) {
+    const rows = await getLocationHistory(
+      db,
+      apiViewer(principal),
+      entry.account.publicId,
+      range,
+      apiRestriction(principal),
+    );
+    if (rows === null) {
+      throw new ApiError('not_found', `account ${entry.account.publicId} not found`);
+    }
+    accounts.push({ account: accountRef(entry), points: toLocationPoints(rows) });
+  }
+  return { from: range.from.toISOString(), to: range.to.toISOString(), accounts };
 }

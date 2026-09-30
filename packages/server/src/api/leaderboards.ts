@@ -9,12 +9,12 @@ import {
   leaderboardStarts,
   type LeaderboardPeriod,
 } from '../accounts/guild';
-import { getUserSettings } from '../settings/user-settings';
 import { apiRestriction, apiViewer } from './access';
 import type { ApiPrincipal } from './keys';
 import { enumParam } from './params';
 import { canonicalSkills } from './skills';
 import type { ApiAccountRef } from './types';
+import { principalTimezone } from './xp';
 
 export const LEADERBOARD_PERIODS = ['day', 'week', 'month'] as const;
 export type ApiLeaderboardPeriod = LeaderboardPeriod;
@@ -35,7 +35,7 @@ export interface ApiLeaderboard {
 
 export interface ApiLeaderboards {
   period: ApiLeaderboardPeriod;
-  /** Where the period starts: day = local midnight in the key creator's time zone; week/month = the last 7/30 days. */
+  /** Where the period starts: day = local midnight in the key creator's time zone (UTC for a service key); week/month = the last 7/30 days. */
   from: string;
   to: string;
   /**
@@ -58,8 +58,7 @@ export async function apiLeaderboardGains(
 ): Promise<ApiLeaderboards> {
   const period = enumParam(params.period, 'period', LEADERBOARD_PERIODS, 'day');
   const [skill] = params.skill === undefined ? [] : await canonicalSkills(db, [params.skill]);
-  const timezone =
-    period === 'day' ? (await getUserSettings(db, principal.userId)).timezone : undefined;
+  const timezone = period === 'day' ? await principalTimezone(db, principal) : undefined;
   const boards = await getGainsLeaderboards(
     db,
     apiViewer(principal),

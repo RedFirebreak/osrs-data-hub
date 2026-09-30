@@ -7,7 +7,7 @@ the hub. It is **pull-only**: poll `/snapshot` and the `/events` cursor feed; th
 - Interactive reference: `https://<your hub>/docs/api`
 - OpenAPI 3.1 document: `https://<your hub>/api/v1/openapi.json` (public, no key needed)
 
-Design decisions: D-69 … D-77 in [ARCHITECTURE.md](ARCHITECTURE.md).
+Design decisions: D-69 … D-77 and D-88 … D-93 in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Authentication
 
@@ -30,6 +30,24 @@ keys stop seeing it immediately. Admin rights never apply through the API. Cooki
 
 These all get the same `401 unauthorized` (with `WWW-Authenticate: Bearer`): a missing, malformed,
 unknown, revoked or expired key, or a key whose creator left the guild.
+
+### Service keys (integration keys)
+
+For the guild's own services (its live map, a shared bot) an admin creates a **service key** on
+**Admin → Integrations** (`/admin/integrations`). Same format, categories and expiry as a user key, but
+(D-88):
+
+- it belongs to **no user**: offboarding anyone, the admin who created it included, never revokes it,
+  and it counts towards nobody's limit of 10 keys;
+- it reads what the **guild audience** sees (D-89): the accounts and categories whose sharing audience is
+  *guild*. Accounts and categories set to *private* or *selected* stay hidden, exactly as for a member
+  who is neither owner, contributor nor grantee. There is no admin override;
+- its rate limit is its own: **600 requests per minute** unless the admin set another (1–6000);
+  `/snapshot` stays at 1 per second;
+- it alone sees `account_hash` (D-91), and it may name 50 accounts per bulk request instead of 10 (D-92);
+- day-based periods (`period=day` on gains and leaderboards) use UTC, since it has no creator settings.
+
+`/me` tells the kinds apart: `key.kind` is `user` or `service`, and `user` is `null` for a service key.
 
 | Category | Covers |
 |---|---|
@@ -73,13 +91,13 @@ unknown, revoked or expired key, or a key whose creator left the guild.
 
 | Limit | Value | On excess |
 |---|---|---|
-| Per key, all endpoints | 120 requests per sliding minute | `429 rate_limited` + `Retry-After` |
+| Per key, all endpoints | 120 requests per sliding minute for a user key; 600 for a service key, or the limit its admin set (`/me` reports it) | `429 rate_limited` + `Retry-After` |
 | Per key, `/snapshot` | 1 request per second | `429` + `Retry-After: 1` |
 | Failed authentications per client IP | 30 per minute | every request from that IP gets `429` until the window passes |
 
 Every authenticated response carries these headers:
 
-- `X-RateLimit-Limit`: 120;
+- `X-RateLimit-Limit`: the key's requests per minute (120 for a user key);
 - `X-RateLimit-Remaining`;
 - `X-RateLimit-Reset`: seconds until the window frees a request (a delta, **not** a timestamp).
 
@@ -122,13 +140,27 @@ Examples are shortened with `…`.
 
 ### GET /me
 
-The key, its creator and how many accounts it can see. Useful as a connection test.
+The key (kind, name, prefix, categories, scope, rate limit, expiry), its creator (`null` for a service
+key) and how many accounts it can see. Useful as a connection test.
 
     GET /api/v1/me
 
-    {"data":{"key":{"id":"01a0ed84-1852-7784-9a43-157469f2bddc","name":"Home Assistant","prefix":"NM5kHo1WTn",
-     "categories":["stats","events","activity","location_live"],"account_scope":"all_visible","expires_at":null},
+    {"data":{"key":{"id":"01a0ed84-1852-7784-9a43-157469f2bddc","kind":"user","name":"Home Assistant","prefix":"NM5kHo1WTn",
+     "categories":["stats","events","activity","location_live"],"account_scope":"all_visible","rate_limit_per_minute":120,"expires_at":null},
      "user":{"name":"Owner"},"visible_accounts":2},"meta":{"generated_at":"2026-09-29T14:14:12.330Z"}}
+
+    {"data":{"key":{"id":"…","kind":"service","name":"Guild live map","prefix":"…","categories":["activity","location_live"],
+     "account_scope":"all_visible","rate_limit_per_minute":600,"expires_at":null},"user":null,"visible_accounts":14},"meta":{…}}
+
+### Owner identity and `account_hash`
+
+`/snapshot`, `/accounts` and `/accounts/{id}` carry, on every account:
+
+- `owner`: `{ "name", "discord_id" }`, the account's owner as the hub's guild page shows them to every
+  member, or `null` when the account has no active owner (D-90). Contributors are never exposed.
+- `account_hash` (**service keys only**, omitted for user keys, D-91): the plugin's salted SHA-224
+  `accountHash`, the value the plugin sends to any endpoint it is paired with. A service that players
+  also pair with directly can match a hub account to the same player without relying on the name.
 
 ### GET /accounts?names=&ids=&online=
 
@@ -145,8 +177,11 @@ With `names` and/or `ids`, only matching accounts are returned. `online`, `world
 
     GET /api/v1/accounts?online=true
 
-    {"data":[{"id":"oC8RsqiTuyak","name":"Alpha Main","type":0,"type_label":"Normal","online":true,"world":302,
+    {"data":[{"id":"oC8RsqiTuyak","name":"Alpha Main","account_hash":"3f0c…","type":0,"type_label":"Normal",
+     "owner":{"name":"Owner","discord_id":"100000000000000042"},"online":true,"world":302,
      "last_seen":"2026-09-29T14:13:42.046Z"}],"meta":{"generated_at":"…","count":1}}
+
+(`account_hash` appears for a service key only.)
 
 ### GET /accounts/{id}
 
@@ -164,7 +199,8 @@ Each section sent by the plugin carries `shared: true` and `updated_at`.
 
     GET /api/v1/accounts/oC8RsqiTuyak
 
-    {"data":{"id":"oC8RsqiTuyak","name":"Alpha Main","type":0,"type_label":"Normal","first_seen":"2026-09-29T13:24:12.046Z",
+    {"data":{"id":"oC8RsqiTuyak","name":"Alpha Main","type":0,"type_label":"Normal",
+     "owner":{"name":"Owner","discord_id":"100000000000000042"},"first_seen":"2026-09-29T13:24:12.046Z",
      "categories":["stats","events","activity","location_live"],
      "presence":{"shared":true,"updated_at":"2026-09-29T14:13:42.046Z","online":true,"world":302,"special_world":false,
                  "game_state":"LOGGED_IN","last_seen":"2026-09-29T14:13:42.046Z"},
@@ -194,8 +230,8 @@ older plugin, whose items are in the order the plugin sent them (D-86).
 Every visible account in one response, built for polling every 2–10 s. Limited to 1 request per second
 per key.
 
-Each account has `id`, `name`, `type`, `type_label` and `categories`. The other fields depend on the
-key's categories on that account:
+Each account has `id`, `name`, `type`, `type_label`, `owner` and `categories` (and `account_hash` for a
+service key). The other fields depend on the key's categories on that account:
 
 - `activity`: `online`, `world`, `special_world`, `last_seen`, `hp`, `prayer`, `spellbook`;
 - `location_live`: `location` (with `stale` and `updated_at`);
@@ -208,7 +244,8 @@ A field is omitted without its category, and `null` when readable but never sent
     GET /api/v1/snapshot
     → 200, ETag: W/"iJSsXZ1wy4SjrMLJMHceEMf2oLc", Last-Modified: Tue, 29 Sep 2026 14:13:42 GMT
 
-    {"data":[{"id":"oC8RsqiTuyak","name":"Alpha Main","type":0,"type_label":"Normal","categories":["stats","events","activity","location_live"],
+    {"data":[{"id":"oC8RsqiTuyak","name":"Alpha Main","type":0,"type_label":"Normal",
+      "owner":{"name":"Owner","discord_id":"100000000000000042"},"categories":["stats","events","activity","location_live"],
       "online":true,"world":302,"special_world":false,"last_seen":"2026-09-29T14:13:42.046Z",
       "hp":{"current":99,"max":99},"prayer":{"current":99,"max":99},"spellbook":"lunar",
       "location":{"x":3164,"y":3487,"plane":0,"is_on_boat":false,"stale":false,"updated_at":"2026-09-29T14:13:42.046Z"},
@@ -252,8 +289,9 @@ effect at `from` is carried in as the first point.
 
 ### GET /xp?accounts=a,b&skills=&from=&to=&resolution=
 
-The same series for 1–10 accounts, in request order. If any account isn't readable (`stats`), the whole
-request is a 404 naming it, as if it didn't exist.
+The same series for several accounts, in request order: 1–10 accounts with a user key, 1–50 with a
+service key (D-92). If any account isn't readable (`stats`), the whole request is a 404 naming it, as if
+it didn't exist; more accounts than the key's cap is a 400.
 
     GET /api/v1/xp?accounts=oC8RsqiTuyak,jHSfP5UICcQt&skills=overall&resolution=1d
 
@@ -335,6 +373,19 @@ Default: 30 days.
 
     {"data":{"account":{…},"from":"…","to":"…","points":[{"at":"2026-09-29T13:24:00.000Z","x":3164,"y":3487,"plane":0,"world":302,"is_on_boat":false},…]},"meta":{…}}
 
+### GET /locations?accounts=a,b&from=&to=
+
+The location trails of several accounts in one call (`location_history`), in request order, each
+exactly what `/accounts/{id}/locations` returns for the same range: at most one point per minute,
+oldest first, kept 30 days. 1–10 accounts with a user key, 1–50 with a service key (D-92). If any
+account isn't readable, the whole request is a 404 naming it. Default: 30 days.
+
+    GET /api/v1/locations?accounts=oC8RsqiTuyak,jHSfP5UICcQt
+
+    {"data":{"from":"…","to":"…","accounts":[
+      {"account":{"id":"oC8RsqiTuyak","name":"Alpha Main"},"points":[{"at":"2026-09-29T13:24:00.000Z","x":3164,"y":3487,"plane":0,"world":302,"is_on_boat":false},…]},
+      {"account":{"id":"jHSfP5UICcQt","name":"Bravo Alt"},"points":[]}]},"meta":{…}}
+
 ### GET /leaderboards/gains?skill=&period=day|week|month
 
 The guild's gains leaderboards over accounts whose `stats` the key reads: the top 10 per skill, only
@@ -385,10 +436,15 @@ Other rules:
   - `/leaderboards/gains?period=day|week|month`;
   - `/accounts?online=true` for "who's online".
   - Suggested key: `events`, `stats`, `activity`.
-- **Live map:**
+- **Live map** ([ha-osrs-map](https://github.com/RedFirebreak/ha-osrs-map), polling the hub
+  server-side with a **service key**, D-88):
   - poll `/snapshot?since=` (1/s at most; every 2–10 s is plenty) with a key holding `location_live` and
-    `activity`. Browsers can call it directly (CORS).
-  - Only accounts that share `location_live` with you (the guild by default, D-82; accounts the hub
+    `activity`, and a full refresh without `since` now and then to drop accounts that left. Browsers
+    could call it directly too (CORS).
+  - Only accounts that share `location_live` with the guild (the default since D-82; accounts the hub
     knew before that default keep `private` until their owner changes it), and whose players send
     their location, have a `location`. Grey out `stale: true` positions.
-  - Fetch without `since` now and then to drop accounts that left.
+  - `owner.discord_id` and `account_hash` link a hub account to the player who paired with the map
+    directly (D-90, D-91); `/xp?accounts=` and `/locations?accounts=` take 50 accounts per call
+    (D-92).
+  - There is no push for keys yet (D-93): polling is the contract.

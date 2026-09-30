@@ -13,16 +13,17 @@
  * re-validate everything anyway.
  */
 import { CATEGORIES } from '@hub/core';
-import { SESSION_END_REASONS } from '@hub/db';
+import { API_KEY_KINDS, SESSION_END_REASONS } from '@hub/db';
 import {
   EVENTS_DEFAULT_LIMIT,
   EVENTS_MAX_LIMIT,
   GAINS_PERIODS,
   HISTORY_DEFAULT_DAYS,
   LEADERBOARD_PERIODS,
+  MAX_BULK_ACCOUNTS,
+  MAX_BULK_ACCOUNTS_SERVICE,
   MAX_LIST_PARAM,
   MAX_SERIES_POINTS,
-  MAX_XP_ACCOUNTS,
   MAX_XP_SKILLS,
   SNAPSHOT_SINCE_OVERLAP_MS,
   XP_DEFAULT_DAYS,
@@ -137,11 +138,19 @@ export const XpQuery = z.object({
   ...rangeShape(XP_DEFAULT_DAYS),
 });
 
+/**
+ * The `accounts` list of a bulk request (`/xp`, `/locations`, D-92): parsed up to the service
+ * keys' cap; the read model refuses more than MAX_BULK_ACCOUNTS for a user key (400).
+ */
+function bulkAccountsParam(category: string) {
+  return csv(accountIdItem, MAX_BULK_ACCOUNTS_SERVICE, 1).meta({
+    description: `Comma-separated account ids: 1 to ${MAX_BULK_ACCOUNTS} with a user key, 1 to ${MAX_BULK_ACCOUNTS_SERVICE} with a service key. Each must be one whose \`${category}\` the key may read, else 404.`,
+  });
+}
+
 /** GET /xp. */
 export const XpMultiQuery = z.object({
-  accounts: csv(accountIdItem, MAX_XP_ACCOUNTS, 1).meta({
-    description: `Comma-separated account ids, 1 to ${MAX_XP_ACCOUNTS}. Each must be one whose \`stats\` the key may read, else 404.`,
-  }),
+  accounts: bulkAccountsParam('stats'),
   skills: skillsParam,
   resolution: resolutionParam,
   ...rangeShape(XP_DEFAULT_DAYS),
@@ -190,6 +199,12 @@ export const EventsQuery = z.object({
 /** GET /accounts/{id}/sessions, /equipment-history, /wealth, /locations. */
 export const HistoryQuery = z.object(rangeShape(HISTORY_DEFAULT_DAYS));
 
+/** GET /locations. */
+export const LocationsMultiQuery = z.object({
+  accounts: bulkAccountsParam('location_history'),
+  ...rangeShape(HISTORY_DEFAULT_DAYS),
+});
+
 /** GET /leaderboards/gains. */
 export const LeaderboardQuery = z.object({
   skill: z.string().min(1, 'empty value').optional().meta({
@@ -214,6 +229,19 @@ export const AccountRef = z
     name: z.string().meta({ description: 'Current display name.' }),
   })
   .meta({ description: 'An account: its public id and current display name.' });
+
+export const Owner = z
+  .object({
+    name: z.string().meta({ description: 'The owner’s display name on the hub.' }),
+    discord_id: z
+      .string()
+      .nullable()
+      .meta({ description: 'The owner’s Discord user id; null for a user without one.' }),
+  })
+  .meta({
+    description:
+      'The account’s owner, as the guild page shows them to every member: for linking hub accounts to people. Never a contributor.',
+  });
 
 export const Meter = z.object({ current: int, max: int }).meta({
   description: 'HP or prayer: the current (boosted, so it can exceed max) and the maximum.',
@@ -315,10 +343,18 @@ function section<S extends z.core.$ZodLooseShape>(shape: S, description: string)
 const accountHead = {
   id: z.string(),
   name: z.string(),
+  account_hash: z.string().optional().meta({
+    description:
+      'The plugin’s salted SHA-224 `accountHash`, the account’s identity for anything the plugin sends to. **Service keys only**; omitted for user keys.',
+  }),
   type: int.nullable().meta({
     description: '0 normal, 1 IM, 2 UIM, 3 HCIM, 4 GIM, 5 HCGIM, 6 UGIM; null never sent.',
   }),
   type_label: z.string().meta({ description: '"Normal", "Ironman", … ("Unknown" for null).' }),
+  owner: Owner.nullable().meta({
+    description:
+      'The account’s owner; null when it has none or the owner is no longer an active member.',
+  }),
 };
 
 const categoriesField = z
@@ -329,16 +365,26 @@ const categoriesField = z
 export const MeData = z.object({
   key: z.object({
     id: z.uuid(),
+    kind: z.enum(API_KEY_KINDS).meta({
+      description:
+        '`user`: a member’s own key, reading what its creator may see. `service`: an integration key an admin created; it belongs to nobody and reads what the guild audience sees (accounts and categories shared with the guild).',
+    }),
     name: z.string(),
     prefix: z.string().meta({ description: 'The key is `ohub_<prefix>_<secret>`.' }),
     categories: z.array(category),
     account_scope: z.enum(['all_visible', 'list']).meta({
       description:
-        '`all_visible`: every account the creator can see, evaluated on every request; `list`: an explicit list.',
+        '`all_visible`: every account the creator can see, evaluated on every request; `list`: an explicit list. Always `all_visible` for a service key.',
+    }),
+    rate_limit_per_minute: int.min(1).meta({
+      description: 'Requests this key may make per sliding minute (`X-RateLimit-Limit`).',
     }),
     expires_at: timestamp.nullable(),
   }),
-  user: z.object({ name: z.string() }).meta({ description: 'The key’s creator.' }),
+  user: z
+    .object({ name: z.string() })
+    .nullable()
+    .meta({ description: 'The key’s creator; null for a service key.' }),
   visible_accounts: int.min(0).meta({ description: 'Accounts the key can see right now.' }),
 });
 
@@ -513,20 +559,32 @@ export const WealthData = z.object({
     .meta({ description: 'Oldest first.' }),
 });
 
+const LocationPoint = z.object({
+  at: timestamp,
+  x: int,
+  y: int,
+  plane: int,
+  world: int.nullable(),
+  is_on_boat: z.boolean(),
+});
+
+const locationPoints = z
+  .array(LocationPoint)
+  .meta({ description: 'At most one point per minute, oldest first.' });
+
 export const LocationsData = z.object({
   ...historyHead,
-  points: z
-    .array(
-      z.object({
-        at: timestamp,
-        x: int,
-        y: int,
-        plane: int,
-        world: int.nullable(),
-        is_on_boat: z.boolean(),
-      }),
-    )
-    .meta({ description: 'At most one point per minute, oldest first.' }),
+  points: locationPoints,
+});
+
+// GET /locations
+export const AccountLocations = z.object({ account: AccountRef, points: locationPoints });
+export const LocationsMultiData = z.object({
+  from: timestamp,
+  to: timestamp,
+  accounts: z.array(AccountLocations).meta({
+    description: 'In request order; each trail is what `/accounts/{id}/locations` returns.',
+  }),
 });
 
 export const LeaderboardsData = z.object({
@@ -577,6 +635,7 @@ export const SessionsResponse = envelope(SessionsData, Meta);
 export const EquipmentHistoryResponse = envelope(EquipmentHistoryData, Meta);
 export const WealthResponse = envelope(WealthData, Meta);
 export const LocationsResponse = envelope(LocationsData, Meta);
+export const LocationsMultiResponse = envelope(LocationsMultiData, Meta);
 export const LeaderboardsResponse = envelope(LeaderboardsData, Meta);
 
 export const ErrorResponse = z.object({
@@ -605,6 +664,8 @@ export type WireSessions = z.infer<typeof SessionsData>;
 export type WireEquipmentHistory = z.infer<typeof EquipmentHistoryData>;
 export type WireWealth = z.infer<typeof WealthData>;
 export type WireLocations = z.infer<typeof LocationsData>;
+export type WireLocationsMulti = z.infer<typeof LocationsMultiData>;
+export type WireOwner = z.infer<typeof Owner>;
 export type WireLeaderboards = z.infer<typeof LeaderboardsData>;
 export type WireItem = z.infer<typeof Item>;
 export type WireSkills = z.infer<typeof Skills>;

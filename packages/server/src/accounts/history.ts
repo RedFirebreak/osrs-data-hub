@@ -5,7 +5,7 @@
  * Each takes an optional `restrict` that narrows the viewer's access (the public API, D-70; see
  * loadVisibleAccount).
  */
-import { utcDay, type Category, type ItemData, type Viewer } from '@hub/core';
+import { utcDay, type Category, type ItemData, type Principal } from '@hub/core';
 import {
   equipmentChanges,
   locationSamples,
@@ -69,7 +69,7 @@ export interface LocationPoint {
  */
 export async function getSessions(
   db: DbOrTx,
-  viewer: Viewer,
+  viewer: Principal,
   publicId: string,
   range: HistoryRange,
   restrict?: AccessRestriction,
@@ -119,7 +119,7 @@ export async function getSessions(
  */
 export async function getEquipmentHistory(
   db: DbOrTx,
-  viewer: Viewer,
+  viewer: Principal,
   publicId: string,
   range: HistoryRange,
   restrict?: AccessRestriction,
@@ -150,7 +150,7 @@ export async function getEquipmentHistory(
  */
 export async function getWealthHistory(
   db: DbOrTx,
-  viewer: Viewer,
+  viewer: Principal,
   publicId: string,
   range: HistoryRange,
   restrict?: AccessRestriction,
@@ -182,7 +182,7 @@ export async function getWealthHistory(
  */
 export async function getLocationHistory(
   db: DbOrTx,
-  viewer: Viewer,
+  viewer: Principal,
   publicId: string,
   range: HistoryRange,
   restrict?: AccessRestriction,
@@ -214,7 +214,7 @@ export async function getLocationHistory(
 /** The account id when the viewer may read `category` of the account, else null. */
 async function gate(
   db: DbOrTx,
-  viewer: Viewer,
+  viewer: Principal,
   publicId: string,
   category: Category,
   range: HistoryRange,

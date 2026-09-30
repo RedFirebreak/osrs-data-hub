@@ -10,6 +10,7 @@ describe('apiRouteGroup', () => {
     expect(apiRouteGroup(`${base}/api/v1/events?after=5`)).toBe('events');
     expect(apiRouteGroup(`${base}/api/v1/snapshot`)).toBe('snapshot');
     expect(apiRouteGroup(`${base}/api/v1/xp`)).toBe('xp');
+    expect(apiRouteGroup(`${base}/api/v1/locations?accounts=a,b`)).toBe('locations');
     expect(apiRouteGroup(`${base}/api/v1/leaderboards/gains`)).toBe('leaderboards');
     expect(apiRouteGroup(`${base}/api/v1/openapi.json`)).toBe('openapi');
   });

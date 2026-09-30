@@ -161,12 +161,17 @@ export class TokenBucketLimiter {
  * minute globally (handoff §6.2.7). Bounded to `maxKeys` keys (least recently hit evicted first).
  * A hit counts for exactly `windowMs`: one at t no longer counts at t + windowMs. When rejected,
  * retryAfterSeconds is when the oldest counted hit expires.
+ *
+ * `hit`, `peek` and `usage` take an optional `limit` for that key (a positive integer), so one
+ * limiter can serve keys with different allowances (API keys with their own rate limit, D-88); the
+ * constructor's `limit` is the default. The hits kept per key are bounded by the window, not the
+ * limit, so a key whose limit is lowered is judged by its real recent hits.
  */
 export class WindowLimiter {
   readonly #limit: number;
   readonly #windowMs: number;
   readonly #clock: Clock;
-  /** Ascending hit times per key, at most `limit` of them. */
+  /** Ascending hit times per key within the window. */
   readonly #hits: LruMap<number[]>;
 
   constructor(opts: { limit: number; windowMs: number; clock?: Clock; maxKeys?: number }) {
@@ -180,11 +185,12 @@ export class WindowLimiter {
     this.#hits = new LruMap(maxKeys);
   }
 
-  hit(key: string): LimitResult {
+  hit(key: string, limit: number = this.#limit): LimitResult {
+    assertPositiveInt('limit', limit);
     const now = this.#clock.now();
     const hits = this.#hits.peek(key) ?? [];
     pruneBefore(hits, now - this.#windowMs);
-    const result = this.#check(hits, now);
+    const result = this.#check(hits, now, limit);
     if (result.ok) hits.push(monotonic(hits, now));
     // A rejected hit still makes the key recently used, so a hammering client isn't evicted first.
     this.#hits.set(key, hits);
@@ -192,11 +198,12 @@ export class WindowLimiter {
   }
 
   /** Check without recording. */
-  peek(key: string): LimitResult {
+  peek(key: string, limit: number = this.#limit): LimitResult {
+    assertPositiveInt('limit', limit);
     const now = this.#clock.now();
     const cutoff = now - this.#windowMs;
     const hits = (this.#hits.peek(key) ?? []).filter((t) => t > cutoff);
-    return this.#check(hits, now);
+    return this.#check(hits, now, limit);
   }
 
   /**
@@ -206,24 +213,28 @@ export class WindowLimiter {
    * (0 when nothing is counted). When the key is at its limit, `resetMs` rounded up to whole seconds
    * is peek's retryAfterSeconds. For X-RateLimit-* headers.
    */
-  usage(key: string): { limit: number; count: number; remaining: number; resetMs: number } {
+  usage(
+    key: string,
+    limit: number = this.#limit,
+  ): { limit: number; count: number; remaining: number; resetMs: number } {
+    assertPositiveInt('limit', limit);
     const now = this.#clock.now();
     const cutoff = now - this.#windowMs;
     const hits = (this.#hits.peek(key) ?? []).filter((t) => t > cutoff);
     const oldest = hits[0];
     return {
-      limit: this.#limit,
+      limit,
       count: hits.length,
-      remaining: Math.max(0, this.#limit - hits.length),
+      remaining: Math.max(0, limit - hits.length),
       resetMs: oldest === undefined ? 0 : Math.max(0, oldest + this.#windowMs - now),
     };
   }
 
   /** `hits` must already be pruned to the window. */
-  #check(hits: readonly number[], now: number): LimitResult {
-    if (hits.length < this.#limit) return allowed();
+  #check(hits: readonly number[], now: number, limit: number): LimitResult {
+    if (hits.length < limit) return allowed();
     // The hit whose expiry brings the count back below the limit.
-    const oldest = hits[hits.length - this.#limit] ?? now;
+    const oldest = hits[hits.length - limit] ?? now;
     return rejected(oldest + this.#windowMs - now);
   }
 }

@@ -2,7 +2,7 @@
  * The guild page (handoff §12): members with their visible accounts, the activity feed and simple
  * gains leaderboards (day, week, month).
  */
-import { sortSkillsForDisplay, type GuildFeedFilter, type Viewer } from '@hub/core';
+import { sortSkillsForDisplay, type GuildFeedFilter, type Principal, type Viewer } from '@hub/core';
 import { users, type DbOrTx } from '@hub/db';
 import { and, eq, inArray } from 'drizzle-orm';
 import type { FeedEvent } from '../feed';
@@ -163,7 +163,7 @@ export function leaderboardStarts(now: Date, timezone?: string): Record<Leaderbo
  */
 export async function getGainsLeaderboards(
   db: DbOrTx,
-  viewer: Viewer,
+  viewer: Principal,
   opts: { period: LeaderboardPeriod; now: Date; timezone?: string },
   restrict?: AccessRestriction,
 ): Promise<Leaderboard[]> {

@@ -16,6 +16,7 @@ describe('wireAccountDetail', () => {
     name: 'Zezima',
     type: 0,
     typeLabel: 'Normal',
+    owner: { name: 'Owner', discordId: '100000000000000001' },
     firstSeen: AT,
     categories: ['stats', 'equipment', 'location_live'],
     skills: {
@@ -55,6 +56,7 @@ describe('wireAccountDetail', () => {
       name: 'Zezima',
       type: 0,
       type_label: 'Normal',
+      owner: { name: 'Owner', discord_id: '100000000000000001' },
       first_seen: AT,
       categories: ['stats', 'equipment', 'location_live'],
       skills: {
@@ -97,6 +99,7 @@ describe('wireSnapshotAccount', () => {
       name: 'Zezima',
       type: null,
       typeLabel: 'Unknown',
+      owner: null,
       categories: ['activity', 'location_live'],
       online: false,
       world: null,
@@ -114,6 +117,7 @@ describe('wireSnapshotAccount', () => {
       name: 'Zezima',
       type: null,
       type_label: 'Unknown',
+      owner: null,
       categories: ['activity', 'location_live'],
       online: false,
       world: null,
@@ -124,9 +128,13 @@ describe('wireSnapshotAccount', () => {
       spellbook: null,
       location: null,
     });
-    for (const omitted of ['skills', 'equipment', 'inventory']) {
+    for (const omitted of ['skills', 'equipment', 'inventory', 'account_hash']) {
       expect(wire).not.toHaveProperty(omitted);
     }
+    // The hash only when the read model carries it (service keys, D-91).
+    const hashed = wireSnapshotAccount({ ...account, accountHash: 'a'.repeat(56) });
+    expect(SnapshotAccount.parse(hashed)).toEqual(hashed);
+    expect(hashed.account_hash).toBe('a'.repeat(56));
 
     const located = wireSnapshotAccount({
       ...account,

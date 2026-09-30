@@ -84,10 +84,12 @@ describe('GET /api/v1/me', () => {
     expect(body.data).toEqual({
       key: {
         id: listKey.info.id,
+        kind: 'user',
         name: 'main only',
         prefix: listKey.info.prefix,
         categories: listKey.info.categories,
         account_scope: 'list',
+        rate_limit_per_minute: 120,
         expires_at: null,
       },
       user: { name: 'Owner' },
@@ -230,6 +232,7 @@ describe('GET /api/v1/accounts/{id}', () => {
         'first_seen',
         'id',
         'name',
+        'owner',
         'presence',
         'skills',
         'type',

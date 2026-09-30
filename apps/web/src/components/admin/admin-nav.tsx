@@ -7,6 +7,7 @@ import {
   ActivityIcon,
   FileJsonIcon,
   MonitorSmartphoneIcon,
+  PlugZapIcon,
   PowerIcon,
   ScrollTextIcon,
   Settings2Icon,
@@ -23,6 +24,7 @@ import { isAdminTabActive } from './admin-model';
 export const ADMIN_TABS: readonly { href: Route; label: string; icon: LucideIcon }[] = [
   { href: '/admin', label: 'Users', icon: UsersIcon },
   { href: '/admin/devices', label: 'Devices', icon: MonitorSmartphoneIcon },
+  { href: '/admin/integrations', label: 'Integrations', icon: PlugZapIcon },
   { href: '/admin/ingest', label: 'Ingest health', icon: ActivityIcon },
   { href: '/admin/payloads', label: 'Raw payloads', icon: FileJsonIcon },
   { href: '/admin/audit', label: 'Audit log', icon: ScrollTextIcon },
