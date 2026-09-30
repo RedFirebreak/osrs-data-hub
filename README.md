@@ -27,7 +27,7 @@ What the plugin sends is decided in the plugin's own settings; the hub stores on
 
 TypeScript monorepo (pnpm): Next.js 16 (App Router, Node runtime), Better Auth (Discord), Drizzle ORM,
 PostgreSQL 18 + TimescaleDB (hypertables, compression, retention, continuous aggregates), pg-boss,
-Tailwind + shadcn/ui, Vitest. Docker Compose on one VM.
+Tailwind + shadcn/ui, Vitest. Docker Compose on one VM, or Kubernetes with the published images.
 
 ```
 apps/web            Next.js: UI, plugin endpoints, live stream (SSE)

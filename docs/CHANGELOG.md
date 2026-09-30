@@ -34,6 +34,19 @@ API additions for [ha-osrs-map](https://github.com/RedFirebreak/ha-osrs-map), wh
   `accountHash`; the API's route groups gain `locations`.
 - **Docs:** ARCHITECTURE §9, §12, §14, D-88 … D-93; API.md (service keys, owner identity, `/locations`,
   the limits table, the live map consumer); handoff §18.3 status.
+## Document the Kubernetes target (branch `red/k8s-target-docs-b1c403`)
+
+Docs only, for the deployment that pulls the GHCR images (D-87) from a cluster.
+
+- **OPERATIONS §9 Kubernetes:** the facts the cluster manifests rely on, so a change to any of them is
+  caught in review: image users, PID 1 and ports; `GET /api/health` as readiness and liveness probe;
+  `dist/migrate.js` as a one-shot initContainer; the shared `timescale/timescaledb` tag and its tuning
+  variables; `TRUST_PROXY_HOPS=2` behind Cloudflare → cloudflared → Traefik; in-cluster scraping under
+  the `hub-web` / `hub-worker` job names; the dashboard JSON and `alerts.yml` loaded verbatim.
+- **`TRUST_PROXY_HOPS`** (OPERATIONS §3, `.env.example`): count from the right, one hop per proxy that
+  appends, with what too low and too high do.
+- D-85 notes that the dashboard and alert files are a contract with the cluster as well.
+
 ## Publish images to GHCR (branch `red/ghcr-publishing-k8s-onboard-b1c403`)
 
 The web and worker images are now published, so a deployment outside the VM (the operator's Kubernetes
