@@ -4,6 +4,22 @@ Changes are consolidated per pull request, newest first. Each entry names the PR
 open), what changed, and any decision (`D-n`, see [ARCHITECTURE.md](ARCHITECTURE.md#decision-log)) or
 gotcha (`AREA-n`, see [gotchas](gotchas/README.md)) it introduced.
 
+## Publish images to GHCR (branch `red/ghcr-publishing-k8s-onboard-b1c403`)
+
+The web and worker images are now published, so a deployment outside the VM (the operator's Kubernetes
+cluster, whose manifests live in its own repository) can pull them by exact tag (D-87).
+
+- **`.github/workflows/release.yml`:** on a `v*` tag (and `workflow_dispatch`, which only pushes when run
+  from a tag) builds the Dockerfile's `web` and `worker` targets for `linux/amd64` and pushes
+  `ghcr.io/redfirebreak/osrs-data-hub-web` and `-worker` tagged `<x.y.z>` and `<x.y>`; no `latest`.
+  OCI labels link the packages back to this repository; the layer cache is the Actions cache, one
+  scope per target; the actions are pinned by commit SHA because the workflow has `packages: write`.
+  One-time step after the first publish: make both GHCR packages public.
+- **`renovate.json`:** `config:recommended` plus GitHub Action digest pinning. The three
+  `timescale/timescaledb` references (`compose.yaml`, `compose.dev.yaml`, `ci.yml`) are one group, so
+  they cannot drift; Node major bumps in the Dockerfile are off (TOOL-6). No automerge.
+- The Compose path, the Dockerfile targets, users, ports, entrypoints and `/api/health` are unchanged.
+
 ## Inventory slots from plugin 1.5.1 (branch `red/tender-curie-n2va8s`)
 
 HA Exporter 1.5.1 (`@9835dbe`) sends `inventorySlot` (0..27) on each inventory item, so the account
