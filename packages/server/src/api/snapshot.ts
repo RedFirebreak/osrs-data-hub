@@ -69,6 +69,8 @@ export interface ApiSnapshotAccount {
   world?: number | null;
   /** `activity`: the last known world is a special one. */
   specialWorld?: boolean;
+  /** `activity`: the last game state as sent (LOGGED_IN, LOGIN_SCREEN, HOPPING, …), as on /accounts/{id}. */
+  gameState?: string | null;
   /** `activity`: when the hub last heard from the account. */
   lastSeen?: string;
   /** `activity`. */
@@ -176,6 +178,7 @@ function snapshotAccount(
     out.online = presence?.online ?? false;
     out.world = presence?.world ?? null;
     out.specialWorld = presence?.specialWorld ?? false;
+    out.gameState = presence?.gameState ?? null;
     out.lastSeen = (row?.lastSeen ?? account.lastSeen).toISOString();
     out.hp = vitals?.hp ?? null;
     out.prayer = vitals?.prayer ?? null;

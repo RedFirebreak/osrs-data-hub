@@ -12,7 +12,7 @@ import type { DbOrTx } from '@hub/db';
 import { events } from '@hub/db';
 import { and, asc, desc, gt, gte, inArray, lte, sql, type SQL } from 'drizzle-orm';
 import type { AccountWithAccess } from '../accounts/load';
-import { toFeedEvent, type FeedEvent } from '../feed';
+import { toFeedEvent, type EventRowLike, type FeedEvent } from '../feed';
 import { EVENT_ROW_COLUMNS } from '../live/load';
 import { LIVE_POLL_SETTLE_MS, seqFloor, settledCeiling } from '../live/replay';
 import { loadApiAccounts, requireApiAccounts } from './access';
@@ -153,7 +153,7 @@ export async function apiEvents(
     return { events: [], nextCursor: encodeEventsCursor(await settledSeqAfter(db, 0, now)) };
   }
 
-  const accounts = await readableAccounts(db, principal, params.accountIds);
+  const accounts = await eventReadableAccounts(db, principal, params.accountIds);
   const settled = await settledSeqAfter(db, after ?? 0, now);
   if (accounts.size === 0) return { events: [], nextCursor: encodeEventsCursor(settled) };
 
@@ -175,13 +175,7 @@ export async function apiEvents(
   const last = rows.at(-1);
   // A full page may have more after it; otherwise every settled row up to `settled` was considered.
   const next = after !== null && rows.length === limit && last ? last.seq : settled;
-  return {
-    events: rows.flatMap((row) => {
-      const entry = accounts.get(row.accountId);
-      return entry ? [toApiEvent(toFeedEvent(row, feedRef(entry), entry.access.categories))] : [];
-    }),
-    nextCursor: encodeEventsCursor(next),
-  };
+  return { events: toApiEvents(rows, accounts), nextCursor: encodeEventsCursor(next) };
 }
 
 function parseCursor(cursor: string | undefined): number | null {
@@ -191,8 +185,11 @@ function parseCursor(cursor: string | undefined): number | null {
   return seq;
 }
 
-/** The accounts whose events the key may read, by internal id (only `accountIds` when given). */
-async function readableAccounts(
+/**
+ * The accounts whose events the key may read (D-70), by internal id (only `accountIds` when given).
+ * Shared with the loot leaderboard, so both serve exactly the same accounts.
+ */
+export async function eventReadableAccounts(
   db: DbOrTx,
   principal: ApiPrincipal,
   accountIds: readonly string[] | undefined,
@@ -218,6 +215,21 @@ async function settledSeqAfter(db: DbOrTx, afterSeq: number, now: Date): Promise
     WHERE ${events.seq} > ${afterSeq} AND ${events.seq} < ${ceiling}`);
   const settled = result.rows[0]?.settled;
   return settled === null || settled === undefined ? afterSeq : Number(settled);
+}
+
+/**
+ * Stored rows → API events, each redacted for the key's categories on its account (handoff §10);
+ * rows of an account not in `accounts` are dropped. Shared with the loot leaderboard, so an event
+ * reads the same there as on /events.
+ */
+export function toApiEvents(
+  rows: readonly (EventRowLike & { accountId: number })[],
+  accounts: ReadonlyMap<number, AccountWithAccess>,
+): ApiEvent[] {
+  return rows.flatMap((row) => {
+    const entry = accounts.get(row.accountId);
+    return entry ? [toApiEvent(toFeedEvent(row, feedRef(entry), entry.access.categories))] : [];
+  });
 }
 
 function feedRef(entry: AccountWithAccess): { publicId: string; name: string } {

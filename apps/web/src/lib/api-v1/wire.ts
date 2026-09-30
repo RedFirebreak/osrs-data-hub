@@ -22,6 +22,7 @@ import type {
   ApiLocation,
   ApiLocations,
   ApiLocationsMulti,
+  ApiLootLeaderboard,
   ApiMe,
   ApiOwner,
   ApiPresence,
@@ -44,6 +45,7 @@ import type {
   WireLeaderboards,
   WireLocations,
   WireLocationsMulti,
+  WireLootLeaderboard,
   WireMe,
   WireOwner,
   WireSessions,
@@ -185,6 +187,7 @@ export function wireSnapshotAccount(a: ApiSnapshotAccount): WireSnapshotAccount 
   if (a.online !== undefined) out.online = a.online;
   if (a.world !== undefined) out.world = a.world;
   if (a.specialWorld !== undefined) out.special_world = a.specialWorld;
+  if (a.gameState !== undefined) out.game_state = a.gameState;
   if (a.lastSeen !== undefined) out.last_seen = a.lastSeen;
   if (a.hp !== undefined) out.hp = a.hp;
   if (a.prayer !== undefined) out.prayer = a.prayer;
@@ -340,5 +343,14 @@ export function wireLeaderboards(l: ApiLeaderboards): WireLeaderboards {
         gain: e.gain,
       })),
     })),
+  };
+}
+
+export function wireLootLeaderboard(l: ApiLootLeaderboard): WireLootLeaderboard {
+  return {
+    period: l.period,
+    from: l.from,
+    to: l.to,
+    entries: l.entries.map((e) => ({ rank: e.rank, event: wireEvent(e.event) })),
   };
 }

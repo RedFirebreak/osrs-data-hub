@@ -21,6 +21,7 @@ import * as accountXpRoute from './accounts/[id]/xp/route';
 import * as accountsRoute from './accounts/route';
 import * as eventsRoute from './events/route';
 import * as leaderboardRoute from './leaderboards/gains/route';
+import * as lootLeaderboardRoute from './leaderboards/loot/route';
 import * as meRoute from './me/route';
 import * as openapiRoute from './openapi.json/route';
 import * as snapshotRoute from './snapshot/route';
@@ -111,6 +112,7 @@ describe('CORS', () => {
       xpRoute,
       eventsRoute,
       leaderboardRoute,
+      lootLeaderboardRoute,
       openapiRoute,
       catchAll,
     ];

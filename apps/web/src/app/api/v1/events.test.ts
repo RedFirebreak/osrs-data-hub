@@ -2,12 +2,14 @@
  * GET /api/v1/events (D-73): the cursor feed end to end over ingested fixtures — the first page,
  * `cursor=now`, following the cursor, events younger than the settle margin held back, paging with
  * `limit`, the filters, the `events` gate and 400s. Event `data` passes through unchanged (D-77).
+ * Also GET /api/v1/leaderboards/loot (D-94), whose entries are these same events.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { EventsResponse } from '@/lib/api-v1/schemas';
+import { EventsResponse, LootLeaderboardResponse } from '@/lib/api-v1/schemas';
 import { setApiLimitsForTests } from '@/lib/api-v1/with-api-key';
 import { withTestDb, type WebTestContext } from '@/lib/test-utils';
 import { GET } from './events/route';
+import { GET as getLootLeaderboard } from './leaderboards/loot/route';
 import {
   ATTACK_GAIN,
   RANDOM_ID,
@@ -167,6 +169,45 @@ describe('GET /api/v1/events', () => {
       const res = await GET(v1Request(ctx, `/events${query}`, { key: ownerKey.key }));
       expect(res.status, query).toBe(400);
       const body = (await res.json()) as { error: { code: string; details?: unknown[] } };
+      expect(body.error.code, query).toBe('invalid_request');
+    }
+  });
+});
+
+describe('GET /api/v1/leaderboards/loot', () => {
+  async function loot(key: TestKey, query = '') {
+    return getLootLeaderboard(v1Request(ctx, `/leaderboards/loot${query}`, { key: key.key }));
+  }
+
+  it('ranks the period’s drops, each exactly as /events serves it', async () => {
+    const res = await loot(ownerKey, '?period=week&limit=5');
+    expect(res.status).toBe(200);
+    const { data } = expectShape(LootLeaderboardResponse, await res.json());
+    expect(data.period).toBe('week');
+    expect(Date.parse(data.to) - Date.parse(data.from)).toBe(7 * 24 * 60 * 60 * 1000);
+    const feed = await page(ownerKey, '?types=loot');
+    expect(data.entries).toEqual(feed.data.map((event, i) => ({ rank: i + 1, event })));
+    expect(data.entries[0]?.event).toMatchObject({
+      type: 'loot',
+      account: { id: world.main.id, name: world.main.name },
+    });
+    expect(data.entries[0]?.event.value_gp).toBeGreaterThan(0);
+
+    const byDefault = expectShape(LootLeaderboardResponse, await (await loot(memberKey)).json());
+    expect(byDefault.data.period).toBe('day');
+  });
+
+  it('is empty for a key without `events`', async () => {
+    const res = await loot(statsKey, '?period=month');
+    expect(res.status).toBe(200);
+    expect(expectShape(LootLeaderboardResponse, await res.json()).data.entries).toEqual([]);
+  });
+
+  it('400 for an unknown period or a limit outside 1…50', async () => {
+    for (const query of ['?period=year', '?limit=0', '?limit=51', '?limit=ten', '?limit=']) {
+      const res = await loot(ownerKey, query);
+      expect(res.status, query).toBe(400);
+      const body = (await res.json()) as { error: { code: string } };
       expect(body.error.code, query).toBe('invalid_request');
     }
   });
