@@ -3,21 +3,20 @@
  * /login otherwise; each page calls it too, since a layout isn't re-rendered on client navigation).
  * Header with navigation and the user menu, the page in a centred container, and one LiveProvider
  * for toasts, presence and the wizard's live status (handoff §11), inside the icon configuration
- * (OSRS_ICONS_URL and the CDN's stack tables, read here at request time; D-95).
+ * (OSRS_ICONS_URL, read here at request time; the browser loads the CDN's stack tables; D-95).
  */
 import { getConfig } from '@hub/core';
 import Link from 'next/link';
-import { IconConfigProvider } from '@/components/icons/icon-config-provider';
+import { IconConfigLoader } from '@/components/icons/icon-config-provider';
 import { LiveProvider } from '@/components/live/live-provider';
 import { AppHeader } from '@/components/shell/app-header';
-import { loadIconConfig } from '@/lib/osrs-icons-server';
 import { requireUser } from '@/lib/session';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const [{ user }, icons] = await Promise.all([requireUser(), loadIconConfig()]);
-  const { hubName } = getConfig();
+  const { user } = await requireUser();
+  const { hubName, osrsIconsUrl } = getConfig();
   return (
-    <IconConfigProvider value={icons}>
+    <IconConfigLoader base={osrsIconsUrl}>
       <LiveProvider>
         <a
           href="#main"
@@ -43,6 +42,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </footer>
         </div>
       </LiveProvider>
-    </IconConfigProvider>
+    </IconConfigLoader>
   );
 }

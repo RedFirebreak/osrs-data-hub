@@ -67,6 +67,14 @@ const iconsUrl = z
       ctx.addIssue({ code: 'custom', message: 'must start with https:// (or http://)' });
       return z.NEVER;
     }
+    // Icon URLs are `${base}/items/…`: a query, fragment or credentials would end up in the middle.
+    if (url.search || url.hash || url.username || url.password) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'must be a plain base URL, without ?query, #fragment or user:password@',
+      });
+      return z.NEVER;
+    }
     return trimmed;
   });
 

@@ -3,9 +3,10 @@
  * The live event toast (handoff §11): the event's icon, its line ("Zezima received Dragon warhammer
  * (38.2M) from Lizardman shaman") linking to the account page, and — when the event is a minute old
  * or older (the plugin's retry queue delivers up to ~10 min late) — how long ago it happened. Stacked
- * by the root layout's <Toaster position="top-right">. The icon is the event's game icon (D-95) when it
- * has one; the Toaster sits outside the (app) IconConfigProvider, so the caller passes the config. The toast id is the event id, so an event
- * that somehow arrives twice updates its toast instead of stacking a second one.
+ * by the root layout's <Toaster position="top-right">. The icon is the event's game icon (D-95) when
+ * it has one; the Toaster sits outside the (app) icon provider, so the caller passes the config and
+ * the toast provides it again. The toast id is the event id, so an event that somehow arrives twice
+ * updates its toast instead of stacking a second one.
  */
 import { relativeTime } from '@hub/core';
 import type { FeedEvent } from '@hub/server';
@@ -13,8 +14,9 @@ import Link from 'next/link';
 import { toast } from 'sonner';
 import { accountHref } from '@/components/accounts/account-link';
 import { EventIcon } from '@/components/events/event-icon';
-import { OsrsImage } from '@/components/icons/osrs-icon';
-import { NO_ICONS, eventIconUrl, type IconConfig } from '@/lib/osrs-icons';
+import { IconConfigProvider } from '@/components/icons/icon-config-provider';
+import { EventGameIcon } from '@/components/icons/osrs-icon';
+import { NO_ICONS, type IconConfig } from '@/lib/osrs-icons';
 import { toastShowsAge } from './live-state';
 
 /** How long an event toast stays (ms). */
@@ -39,13 +41,12 @@ export function showEventToast(
     {
       id: `event-${event.id}`,
       icon: (
-        <OsrsImage
-          src={eventIconUrl(icons.base, icons.stacks, event)}
-          width={20}
-          height={20}
-          className="size-5 object-contain"
-          fallback={<EventIcon icon={event.icon} className="size-4" />}
-        />
+        <IconConfigProvider value={icons}>
+          <EventGameIcon
+            event={event}
+            fallback={<EventIcon icon={event.icon} className="size-4" />}
+          />
+        </IconConfigProvider>
       ),
       description: age ? <time dateTime={event.occurredAt}>{age}</time> : undefined,
       duration: EVENT_TOAST_DURATION_MS,

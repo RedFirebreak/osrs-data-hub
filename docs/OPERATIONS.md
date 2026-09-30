@@ -24,8 +24,8 @@ its default is listed in `.env.example`.
   only used to re-check membership every 6 hours. If the bot is not in the guild, re-verification logs
   errors but never removes anyone (DISCORD-1).
 - **Icons** (`OSRS_ICONS_URL`, D-95): item, skill and slot pictures load in the browser from
-  `https://icons.scapekeeper.com` by default, and the web server fetches the CDN's small stack table
-  from there once a day. For an offline or privacy-minded install, set it to empty (names only) or to a
+  `https://icons.scapekeeper.com` by default, along with the CDN's small stack table (once per page
+  load, browser-cached). For an offline or privacy-minded install, set it to empty (names only) or to a
   mirror: extract an osrs-icons release tarball into any static web root that sends
   `Access-Control-Allow-Origin: *`. It is read at runtime, so no image rebuild is needed.
 

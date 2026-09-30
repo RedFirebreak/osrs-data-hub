@@ -220,7 +220,7 @@ next/dist/lib/static-env.js), for the client and the server bundles alike. The r
 are built once in CI (D-87), so a per-deployment value can never reach the browser that way, and a
 `NEXT_PUBLIC_` variable set only at runtime is simply ignored. Fix: read the variable on the server at
 request time (through `getConfig()` in a dynamic layout or page) and hand it to client components as a
-prop or through a context provider, as `OSRS_ICONS_URL` does (apps/web `lib/osrs-icons-server.ts`,
+prop or through a context provider, as `OSRS_ICONS_URL` does (apps/web `app/(app)/layout.tsx`,
 `components/icons/icon-config-provider.tsx`, D-95). The hub has no `NEXT_PUBLIC_*` variables; keep it
 that way.
 

@@ -2,8 +2,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   eventIconUrl,
-  iconsBase,
+  eventItemQuantity,
   itemIconUrl,
+  parseStacks,
   skillIconUrl,
   slotIconUrl,
   stackedItemId,
@@ -40,16 +41,36 @@ describe('stackedItemId', () => {
     expect(stackedItemId({}, 995, 5)).toBe(995);
     expect(stackedItemId(null, 995, 5)).toBe(995);
   });
+
+  it('does not depend on the rows being sorted', () => {
+    const unsorted: IconStacks = {
+      995: [
+        [10000, 1004],
+        [2, 996],
+        [250, 1002],
+      ],
+    };
+    expect(stackedItemId(unsorted, 995, 1)).toBe(995);
+    expect(stackedItemId(unsorted, 995, 300)).toBe(1002);
+    expect(stackedItemId(unsorted, 995, 250_000)).toBe(1004);
+  });
 });
 
-describe('iconsBase', () => {
-  it('strips trailing slashes and whitespace, turns icons off when empty', () => {
-    expect(iconsBase('https://icons.example/')).toBe(base);
-    expect(iconsBase(' https://icons.example// ')).toBe(base);
-    expect(iconsBase('')).toBeNull();
-    expect(iconsBase('   ')).toBeNull();
-    expect(iconsBase(undefined)).toBe('https://icons.scapekeeper.com');
-    expect(iconsBase(null)).toBe('https://icons.scapekeeper.com');
+describe('parseStacks', () => {
+  it('keeps well-formed tables and drops the rest', () => {
+    expect(
+      parseStacks({
+        995: [
+          [2, 996],
+          [3, 'x'],
+        ],
+        abc: [[2, 3]],
+        4151: 'nope',
+        617: [],
+      }),
+    ).toEqual({ 995: [[2, 996]] });
+    expect(parseStacks(null)).toEqual({});
+    expect(parseStacks([1, 2])).toEqual({});
   });
 });
 
@@ -63,16 +84,16 @@ describe('icon URLs', () => {
 
   it('has no item icon without a base or a valid id', () => {
     expect(itemIconUrl(null, stacks, 4151)).toBeNull();
-    expect(itemIconUrl(iconsBase(''), stacks, 4151)).toBeNull();
     expect(itemIconUrl(base, stacks, -1)).toBeNull();
     expect(itemIconUrl(base, stacks, null)).toBeNull();
     expect(itemIconUrl(base, stacks, 1.5)).toBeNull();
   });
 
-  it('builds skill URLs, and none for Overall', () => {
+  it('builds skill URLs, and none for Overall or Combat', () => {
     expect(skillIconUrl(base, 'Attack')).toBe(`${base}/skills/attack.png`);
     expect(skillIconUrl(base, 'sailing')).toBe(`${base}/skills/sailing.png`);
     expect(skillIconUrl(base, 'Overall')).toBeNull();
+    expect(skillIconUrl(base, 'Combat')).toBeNull();
     expect(skillIconUrl(base, '')).toBeNull();
     expect(skillIconUrl(null, 'Attack')).toBeNull();
   });
@@ -98,5 +119,20 @@ describe('eventIconUrl', () => {
     );
     expect(eventIconUrl(base, stacks, { itemId: null, skill: null })).toBeNull();
     expect(eventIconUrl(null, stacks, { itemId: 4151, skill: 'Attack' })).toBeNull();
+  });
+
+  it("shows a loot drop's stack at its quantity", () => {
+    const loot = (quantity: unknown, id = 995) => ({
+      itemId: 995,
+      skill: null,
+      data: { data: { highestValueItem: { id, name: 'Coins', quantity } } },
+    });
+    expect(eventIconUrl(base, stacks, loot(50_000))).toBe(`${base}/items/1004.webp`);
+    expect(eventItemQuantity(loot(250))).toBe(250);
+    // Anything odd, or a highestValueItem that isn't the event's item, counts as one.
+    expect(eventItemQuantity(loot('many'))).toBe(1);
+    expect(eventItemQuantity(loot(0))).toBe(1);
+    expect(eventItemQuantity(loot(250, 4151))).toBe(1);
+    expect(eventItemQuantity({ itemId: 995, skill: null })).toBe(1);
   });
 });

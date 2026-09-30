@@ -6,7 +6,7 @@ import { EventFeed } from '@/components/events/event-feed';
 import { feedEvent } from '@/components/live/test-fixtures';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import type { IconConfig } from '@/lib/osrs-icons';
-import { IconConfigProvider } from './icon-config-provider';
+import { IconConfigLoader, IconConfigProvider } from './icon-config-provider';
 
 const BASE = 'http://localhost:8765';
 const ICONS: IconConfig = {
@@ -47,6 +47,22 @@ describe('ItemTile with icons', () => {
     expect(html).not.toContain('<img');
     expect(html).toContain('line-clamp-2');
     expect(render(<ItemTile item={coins} />, { base: null, stacks: {} })).not.toContain('<img');
+  });
+
+  it('holds a stacked quantity back while the browser loads the stack tables', () => {
+    const loading = (node: React.ReactNode) =>
+      renderToStaticMarkup(<IconConfigLoader base={BASE}>{node}</IconConfigLoader>);
+    const pending = loading(<ItemTile item={coins} />);
+    expect(pending).not.toContain('<img');
+    expect(pending).not.toContain('line-clamp-2');
+    expect(loading(<ItemTile item={{ ...coins, id: 4151, quantity: 1 }} />)).toContain(
+      `src="${BASE}/items/4151.webp"`,
+    );
+    expect(
+      renderToStaticMarkup(
+        <IconConfigLoader base={null}>{<ItemTile item={coins} />}</IconConfigLoader>,
+      ),
+    ).toContain('line-clamp-2');
   });
 
   it('shows an empty equipment slot as its silhouette, the label kept for screen readers', () => {

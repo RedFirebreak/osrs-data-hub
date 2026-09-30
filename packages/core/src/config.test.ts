@@ -54,4 +54,14 @@ describe('OSRS_ICONS_URL (D-95)', () => {
       'OSRS_ICONS_URL',
     );
   });
+
+  it('rejects a query, fragment or credentials, which icon paths would be appended after', () => {
+    for (const value of [
+      'https://mirror.example/?v=2',
+      'https://mirror.example/#icons',
+      'https://user:pass@mirror.example',
+    ]) {
+      expect(() => parseConfig({ ...ENV, OSRS_ICONS_URL: value }), value).toThrow('OSRS_ICONS_URL');
+    }
+  });
 });

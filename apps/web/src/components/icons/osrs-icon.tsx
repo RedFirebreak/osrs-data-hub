@@ -16,10 +16,12 @@
 import { useCallback, useState } from 'react';
 import {
   eventIconUrl,
+  eventItemQuantity,
   itemIconUrl,
   skillIconUrl,
   slotIconUrl,
   type EventIconSource,
+  type IconConfig,
 } from '@/lib/osrs-icons';
 import { cn } from '@/lib/utils';
 import { useIconConfig } from './icon-config-provider';
@@ -52,12 +54,15 @@ export function OsrsImage({
   // The URL that failed, so a new src (another quantity) gets its own try.
   const [failed, setFailed] = useState<string | null>(null);
   // A server-rendered <img> can fail before hydration, while React isn't listening for its error
-  // event yet. A broken image is complete with no natural width; decode() then tells a real failure
-  // from an image that simply hasn't started loading (lazy), without trusting `complete` alone.
+  // event yet. A broken image is complete with no natural width, but so is a lazy one the browser
+  // hasn't started loading (Chromium), and decode() may reject for it too. An eager probe of the same
+  // URL (from the HTTP cache when it did load) tells a real failure apart.
   const checkEarlyFailure = useCallback(
     (img: HTMLImageElement | null) => {
       if (!img || !src || !img.complete || img.naturalWidth > 0) return;
-      img.decode().catch(() => setFailed(src));
+      const probe = new Image();
+      probe.onerror = () => setFailed(src);
+      probe.src = src;
     },
     [src],
   );
@@ -87,17 +92,26 @@ type IconProps = Omit<OsrsImageProps, 'src' | 'width' | 'height'> & {
   holdSpace?: boolean;
 };
 
+/**
+ * Whether a stacked quantity must wait for the stack tables, which the browser is still loading:
+ * the base picture would show one coin and then swap to the pile.
+ */
+function awaitingStacks({ base, stacks }: IconConfig, quantity: number): boolean {
+  return base !== null && stacks === null && quantity > 1;
+}
+
+/** An empty box of the icon's size. */
+function blankBox(className: string): React.ReactNode {
+  return <span aria-hidden className={cn('inline-block', className)} />;
+}
+
 /** The fallback, or an empty box of the icon's size (holdSpace while icons are on). */
 function fallbackFor(
   base: string | null,
   { holdSpace, fallback }: Pick<IconProps, 'holdSpace' | 'fallback'>,
   className: string,
 ): React.ReactNode {
-  return holdSpace && base ? (
-    <span aria-hidden className={cn('inline-block', className)} />
-  ) : (
-    fallback
-  );
+  return holdSpace && base ? blankBox(className) : fallback;
 }
 
 /**
@@ -112,8 +126,10 @@ export function ItemIcon({
   fallback,
   ...rest
 }: IconProps & { itemId: number | null | undefined; quantity?: number }) {
-  const { base, stacks } = useIconConfig();
+  const icons = useIconConfig();
+  const { base, stacks } = icons;
   const box = cn('h-8 w-9 shrink-0 object-contain', className);
+  if (awaitingStacks(icons, quantity)) return blankBox(box);
   return (
     <OsrsImage
       src={itemIconUrl(base, stacks, itemId, quantity)}
@@ -188,8 +204,10 @@ export function EventGameIcon({
   fallback,
   ...rest
 }: IconProps & { event: EventIconSource }) {
-  const { base, stacks } = useIconConfig();
+  const icons = useIconConfig();
+  const { base, stacks } = icons;
   const box = cn('size-5 shrink-0 object-scale-down', className);
+  if (awaitingStacks(icons, eventItemQuantity(event))) return blankBox(box);
   return (
     <OsrsImage
       src={eventIconUrl(base, stacks, event)}
