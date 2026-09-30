@@ -6,6 +6,9 @@ the hub. It is **pull-only**: poll `/snapshot` and the `/events` cursor feed; th
 - Base URL: `https://<your hub>/api/v1`
 - Interactive reference: `https://<your hub>/docs/api`
 - OpenAPI 3.1 document: `https://<your hub>/api/v1/openapi.json` (public, no key needed)
+- Static copy: [openapi.json](openapi.json), built with `APP_URL=https://hub.example.com`. The project
+  website renders it as its API reference. A test fails when it is stale; refresh it with
+  `pnpm openapi:update`.
 
 Design decisions: D-69 … D-77 and D-88 … D-94 in [ARCHITECTURE.md](ARCHITECTURE.md).
 
