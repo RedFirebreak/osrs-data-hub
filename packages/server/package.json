@@ -14,7 +14,7 @@
     "@hub/core": "workspace:*",
     "@hub/db": "workspace:*",
     "drizzle-orm": "0.45.3",
-    "pg": "8.23.0",
+    "pg": "8.23.1",
     "pino": "10.3.1",
     "prom-client": "15.1.3",
     "zod": "4.6.5"
