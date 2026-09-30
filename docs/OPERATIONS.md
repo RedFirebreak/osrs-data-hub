@@ -1,6 +1,7 @@
 # Operations
 
 How to run osrs-data-hub for a guild: one VM, Docker Compose, behind the VM's existing reverse proxy.
+The same images also run on Kubernetes (§9).
 
 ## 1. Configure
 
@@ -45,7 +46,10 @@ Terminate TLS in the proxy you already run and forward to `127.0.0.1:3000`. Six 
    `X-Accel-Buffering: no`, which nginx honours; Caddy and Traefik stream by default.
 2. **Forward the host.** Keep the original `Host` or set `X-Forwarded-Host`, and append the client address
    to `X-Forwarded-For`. `TRUST_PROXY_HOPS` (default 1) is the number of proxies whose
-   `X-Forwarded-For` entries the hub trusts for rate limits.
+   `X-Forwarded-For` entries the hub trusts for rate limits. Count from the right, one hop per proxy
+   that appends to the header: the hub takes the entry that many positions from the end (D-42). One
+   proxy on the VM is 1; Cloudflare → cloudflared → Traefik is 2 (§9). Too low, and every client is
+   the last proxy's address; too high, and the entry is one the client wrote itself.
 3. **Serve the hub over HTTPS** (or `localhost`). Browsers send `Sec-Fetch-Site` only to secure
    origins, and some same-origin checks rely on it: on plain `http://<LAN address>` the export and
    the raw-payload viewer answer 403.
@@ -187,7 +191,8 @@ In Grafana: **Dashboards → New → Import**, upload
 Prometheus in the **Data source** variable at the top (the JSON names no datasource). The **Job**
 variable lists the scrape jobs that export hub metrics; All sums web and worker, which is what every
 panel expects. To change the dashboard, edit it in Grafana, export it as JSON (with "Export for sharing
-externally" off) and commit it over the file, so the repo stays the source (D-85).
+externally" off) and commit it over the file, so the repo stays the source (D-85). A Kubernetes
+deployment loads this file and `alerts.yml` as they are (§9), so a change here is a change there.
 
 Some panels need a little history: re-verification, grace expiry and the audit-log prune run every
 15 minutes, hourly and daily, so their panels use one-hour windows. The "last success" panel and the
@@ -206,3 +211,44 @@ the host: see [DEVELOPMENT.md](DEVELOPMENT.md#monitoring-stack). It is not meant
 The admin decommission switch makes ingest answer **410**, which disables the connection in every
 plugin permanently (the player has to re-pair to use another hub). Use it only when shutting the
 instance down for good.
+
+## 9. Kubernetes
+
+Kubernetes is a supported deployment target: the images published to GHCR on every version tag (D-87)
+run from a cluster instead of Compose. The manifests are not in this repository; the operator's cluster
+repository owns the deployment shape (Argo CD, Traefik behind a Cloudflare tunnel, a bjw-s
+app-template release). What lives here is the contract those manifests rely on. Changing any item
+below changes the cluster too, so call it out in the PR.
+
+- **Images.** `ghcr.io/redfirebreak/osrs-data-hub-web:<x.y.z>` and
+  `ghcr.io/redfirebreak/osrs-data-hub-worker:<x.y.z>`, pinned to an exact version there and bumped by
+  Renovate; there is no `latest`. Both run as the `node` user (uid 1000), with `node` as PID 1 (the
+  `CMD` is the binary, no shell or init) and need no capabilities. The web image listens on `3000` with
+  `HOSTNAME=0.0.0.0` baked in (NEXT-9). The worker listens on `WORKER_METRICS_PORT` (default `9464`,
+  `0` = no listener) on all interfaces; it answers 404 until `METRICS_TOKEN` is set and 401 without the
+  bearer token. `WORKER_METRICS_BIND` is a Compose-only setting (it picks the host address Compose
+  publishes on) and means nothing in a cluster.
+- **Configuration** is the same environment variables as §1 (`.env.example`); there is no
+  Kubernetes-specific setting. `APP_URL` is the public origin, as always (D-26).
+- **Probes.** `GET /api/health` is both the readiness and the liveness probe of the web pod: 200 when
+  `SELECT 1` succeeds within 2 s, 503 otherwise, no auth, nothing about the deployment in the body. The
+  worker has no health endpoint; its liveness is the process.
+- **Migrations** run as an initContainer, from the worker image, with
+  `node --enable-source-maps dist/migrate.js` and `DATABASE_URL`. That is the Compose `migrate` service,
+  so `dist/migrate.js` must stay a one-shot that exits 0 once every migration is applied and non-zero
+  on any failure, and only one instance runs at a time (one `web` and one `worker` replica, D-5).
+- **Database.** The same `timescale/timescaledb:<x>-pg18` image as `compose.yaml`, with
+  `TS_TUNE_MEMORY`, `TS_TUNE_MAX_CONNS=100` (DB-5), `TIMESCALEDB_TELEMETRY=off` and its volume mounted
+  at `/var/lib/postgresql` (TSDB-6). Renovate bumps the three references here in one PR
+  (`renovate.json`); when the pinned tag changes here, it changes in the cluster repository too.
+- **Proxy chain.** Behind Cloudflare → cloudflared → Traefik the web pod receives
+  `X-Forwarded-For: <client>, <cloudflared pod>`, so the deployment sets `TRUST_PROXY_HOPS=2` (§3,
+  requirement 2). Traefik streams `text/event-stream` and forwards `Host` by default; the live stream's
+  25 s heartbeat keeps the tunnel's idle timeout from closing it.
+- **Metrics.** `/metrics` on the public hostname is denied by the ingress (§3, requirement 6).
+  Prometheus scrapes the web and worker Services in-cluster with `METRICS_TOKEN`, under the job names
+  `hub-web` and `hub-worker` that the dashboard's `job` variable expects (§7).
+- **Dashboard and alerts.** [`ops/grafana/dashboards/hub-overview.json`](../ops/grafana/dashboards/hub-overview.json)
+  and [`ops/prometheus/alerts.yml`](../ops/prometheus/alerts.yml) are consumed verbatim by the cluster,
+  as a Grafana dashboard ConfigMap and a PrometheusRule (D-85). Renaming a metric, a label, an alert or
+  the `job` variable breaks them there as well as in a self-managed Grafana.
