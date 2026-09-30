@@ -1,0 +1,1 @@
+CREATE INDEX "events_loot_rank_idx" ON "events" USING btree ("account_id","occurred_at" DESC NULLS LAST,"value_gp","seq") WHERE "events"."type" in ('loot', 'pk_loot') and "events"."value_gp" is not null and not "events"."special_world";

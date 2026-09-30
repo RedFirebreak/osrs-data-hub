@@ -69,7 +69,11 @@ export interface ApiSnapshotAccount {
   world?: number | null;
   /** `activity`: the last known world is a special one. */
   specialWorld?: boolean;
-  /** `activity`: the last game state as sent (LOGGED_IN, LOGIN_SCREEN, HOPPING, …), as on /accounts/{id}. */
+  /**
+   * `activity`: the last game state as sent (LOGGED_IN, LOGIN_SCREEN, HOPPING, …), as on
+   * /accounts/{id}, except null once an in-game state timed out (online went false without the
+   * plugin saying so, e.g. a crashed client), so it never claims "logged in" for an offline account.
+   */
   gameState?: string | null;
   /** `activity`: when the hub last heard from the account. */
   lastSeen?: string;
@@ -178,7 +182,12 @@ function snapshotAccount(
     out.online = presence?.online ?? false;
     out.world = presence?.world ?? null;
     out.specialWorld = presence?.specialWorld ?? false;
-    out.gameState = presence?.gameState ?? null;
+    // An in-game state with online false means presence timed out: the state is stale (D-94).
+    const gameState = presence?.gameState ?? null;
+    out.gameState =
+      presence && !presence.online && gameState !== null && IN_GAME_STATES.has(gameState)
+        ? null
+        : gameState;
     out.lastSeen = (row?.lastSeen ?? account.lastSeen).toISOString();
     out.hp = vitals?.hp ?? null;
     out.prayer = vitals?.prayer ?? null;

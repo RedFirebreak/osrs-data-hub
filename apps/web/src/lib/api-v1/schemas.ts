@@ -207,24 +207,24 @@ export const LocationsMultiQuery = z.object({
   ...rangeShape(HISTORY_DEFAULT_DAYS),
 });
 
+/** The `period` of both leaderboards (/leaderboards/gains and /leaderboards/loot). */
+const leaderboardPeriod = z.enum(LEADERBOARD_PERIODS).optional().meta({
+  description:
+    '`day` = since local midnight in the key creator’s time zone; `week`/`month` = the last 7/30 days. Default `day`.',
+});
+
 /** GET /leaderboards/gains. */
 export const LeaderboardQuery = z.object({
   skill: z.string().min(1, 'empty value').optional().meta({
     description:
       'One skill, case-insensitive (`overall` works). Without it: Overall first, then every skill anyone gained XP in.',
   }),
-  period: z.enum(LEADERBOARD_PERIODS).optional().meta({
-    description:
-      '`day` = since local midnight in the key creator’s time zone; `week`/`month` = the last 7/30 days. Default `day`.',
-  }),
+  period: leaderboardPeriod,
 });
 
 /** GET /leaderboards/loot. */
 export const LootLeaderboardQuery = z.object({
-  period: z.enum(LEADERBOARD_PERIODS).optional().meta({
-    description:
-      '`day` = since local midnight in the key creator’s time zone; `week`/`month` = the last 7/30 days. Default `day`.',
-  }),
+  period: leaderboardPeriod,
   limit: wholeNumber(1, LOOT_LEADERBOARD_MAX_LIMIT)
     .optional()
     .meta({
@@ -444,11 +444,13 @@ export const SnapshotAccount = z.object({
   online: z.boolean().optional().meta(inActivity('in game now')),
   world: int.nullable().optional().meta(inActivity('last known world')),
   special_world: z.boolean().optional().meta(inActivity()),
-  game_state: z
-    .string()
-    .nullable()
+  game_state: presenceShape.game_state
     .optional()
-    .meta(inActivity('last game state as sent (LOGGED_IN, LOGIN_SCREEN, HOPPING, …)')),
+    .meta(
+      inActivity(
+        'last game state as sent (LOGGED_IN, LOGIN_SCREEN, HOPPING, …); null once an in-game state timed out',
+      ),
+    ),
   last_seen: timestamp.optional().meta(inActivity('when the hub last heard from the account')),
   hp: Meter.nullable().optional().meta(inActivity()),
   prayer: Meter.nullable().optional().meta(inActivity()),

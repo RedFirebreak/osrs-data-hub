@@ -43,6 +43,13 @@
       "when": 1790749484327,
       "tag": "0005_service_keys",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790775601541,
+      "tag": "0006_events_loot_rank_idx",
+      "breakpoints": true
     }
   ]
 }

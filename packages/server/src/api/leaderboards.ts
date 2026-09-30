@@ -4,8 +4,9 @@
  * GET /leaderboards/loot (D-94, for the live map), the most valuable drops of a period over the
  * accounts whose `events` the key may read.
  */
-import { events, type DbOrTx } from '@hub/db';
-import { and, desc, eq, gte, inArray, isNotNull, lte } from 'drizzle-orm';
+import { events, lootRankedEvent, type DbOrTx } from '@hub/db';
+import { and, desc, gte, inArray, lte } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import {
   LEADERBOARD_SIZE,
   getGainsLeaderboards,
@@ -91,8 +92,6 @@ export async function apiLeaderboardGains(
 
 export const LOOT_LEADERBOARD_DEFAULT_LIMIT = 10;
 export const LOOT_LEADERBOARD_MAX_LIMIT = 50;
-/** The event types with a loot value that the loot leaderboard ranks. */
-export const LOOT_LEADERBOARD_TYPES = ['loot', 'pk_loot'] as const;
 
 export interface ApiLootLeaderboardEntry {
   /** 1-based; drops of equal value are ranked newest first. */
@@ -136,21 +135,27 @@ export async function apiLootLeaderboard(
 
   const accounts = await eventReadableAccounts(db, principal, undefined);
   if (accounts.size === 0) return { ...head, entries: [] };
+  // Rank on events_loot_rank_idx alone (an index-only scan over the period's drops), then read the
+  // full rows of the top `limit` only: ranking over the rows themselves fetched every drop's jsonb.
+  const ranked = alias(events, 'ranked');
+  const top = db
+    .select({ seq: ranked.seq })
+    .from(ranked)
+    .where(
+      and(
+        inArray(ranked.accountId, [...accounts.keys()]),
+        gte(ranked.occurredAt, from),
+        lte(ranked.occurredAt, now),
+        lootRankedEvent(ranked),
+      ),
+    )
+    .orderBy(desc(ranked.valueGp), desc(ranked.occurredAt), desc(ranked.seq))
+    .limit(limit);
   const rows = await db
     .select(EVENT_ROW_COLUMNS)
     .from(events)
-    .where(
-      and(
-        inArray(events.accountId, [...accounts.keys()]),
-        inArray(events.type, [...LOOT_LEADERBOARD_TYPES]),
-        gte(events.occurredAt, from),
-        lte(events.occurredAt, now),
-        isNotNull(events.valueGp),
-        eq(events.specialWorld, false),
-      ),
-    )
-    .orderBy(desc(events.valueGp), desc(events.occurredAt), desc(events.seq))
-    .limit(limit);
+    .where(inArray(events.seq, top))
+    .orderBy(desc(events.valueGp), desc(events.occurredAt), desc(events.seq));
   return {
     ...head,
     entries: toApiEvents(rows, accounts).map((event, i) => ({ rank: i + 1, event })),

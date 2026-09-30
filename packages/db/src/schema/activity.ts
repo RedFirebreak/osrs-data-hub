@@ -1,5 +1,6 @@
-import { sql } from 'drizzle-orm';
+import { sql, type SQL } from 'drizzle-orm';
 import {
+  type AnyPgColumn,
   bigint,
   boolean,
   date,
@@ -67,8 +68,27 @@ export const events = pgTable(
     index('events_type_occurred_idx').on(t.type, t.occurredAt.desc()),
     // Deleting a device sets device_id null here: without an index each delete scans every event.
     index('events_device_idx').on(t.deviceId),
+    // The loot leaderboard (D-94) ranks a period's drops from this index alone (an index-only scan,
+    // no heap fetches of the jsonb rows) and then reads only the top rows by seq.
+    index('events_loot_rank_idx')
+      .on(t.accountId, t.occurredAt.desc(), t.valueGp, t.seq)
+      .where(lootRankedEvent(t)),
   ],
 );
+
+/**
+ * The events the loot leaderboard ranks (D-94): `loot` and `pk_loot` (as @hub/core's
+ * LOOT_EVENT_TYPES) with a value, not on a special world. It is events_loot_rank_idx's predicate: a
+ * query must include it as is, with literals rather than parameters, for the planner to prove the
+ * index applies.
+ */
+export function lootRankedEvent(c: {
+  type: AnyPgColumn;
+  valueGp: AnyPgColumn;
+  specialWorld: AnyPgColumn;
+}): SQL {
+  return sql`${c.type} in ('loot', 'pk_loot') and ${c.valueGp} is not null and not ${c.specialWorld}`;
+}
 
 export const SESSION_END_REASONS = ['logout', 'shutdown', 'disabled', 'timeout'] as const;
 export type SessionEndReason = (typeof SESSION_END_REASONS)[number];
