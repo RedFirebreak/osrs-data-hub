@@ -4,6 +4,13 @@ Changes are consolidated per pull request, newest first. Each entry names the PR
 open), what changed, and any decision (`D-n`, see [ARCHITECTURE.md](ARCHITECTURE.md#decision-log)) or
 gotcha (`AREA-n`, see [gotchas](gotchas/README.md)) it introduced.
 
+## License (branch `chore/license`)
+
+- **Apache License 2.0:** `LICENSE`, plus a `NOTICE` that redistributions and derivative works must keep
+  (Apache-2.0 §4(d)), so anyone who builds on the hub credits RedFirebreak. `CITATION.cff` gives the repo
+  GitHub's "Cite this repository" button. The root `package.json` declares `"license": "Apache-2.0"`, and
+  the README has a License section.
+
 ## Loot leaderboard index and timed-out game state (branch `red/loot-index-followup`)
 
 Review fixes to #13 (D-94) that were left uncommitted when it merged.
