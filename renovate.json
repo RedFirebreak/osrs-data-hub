@@ -1,0 +1,19 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", "helpers:pinGitHubActionDigests"],
+  "packageRules": [
+    {
+      "description": "compose.yaml, compose.dev.yaml and ci.yml pin the same TimescaleDB image, and the Kubernetes deployment mirrors it (docs/OPERATIONS.md §9): bump all three in one PR so they cannot drift.",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["timescale/timescaledb"],
+      "groupName": "timescaledb image"
+    },
+    {
+      "description": "The Dockerfile stays on node:24: corepack is not shipped with Node 25+ (TOOL-6). Minor and patch updates still come through.",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["node"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
+    }
+  ]
+}
