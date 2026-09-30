@@ -10,9 +10,9 @@ Items, skills and empty equipment slots show the game's icons from the central o
 
 - **Config:** `OSRS_ICONS_URL` in `@hub/core` config (default `https://icons.scapekeeper.com`, empty =
   icons off, otherwise an http(s) mirror; trailing slashes stripped, anything else, a query, fragment
-  or credentials included, refused at start).
-  Read at request time, never `NEXT_PUBLIC_*` (NEXT-17, new). Listed on Admin → Configuration and in
-  `.env.example`; OPERATIONS §1 covers mirrors and turning it off.
+  or credentials included, refused at start). Read at request time, never `NEXT_PUBLIC_*` (NEXT-17,
+  new). Listed on Admin → Configuration and in `.env.example`; OPERATIONS §1 covers mirrors and turning
+  it off.
 - **Resolver:** `lib/osrs-icons.ts` ports the CDN's reference client (`stackedItemId`, the highest
   breakpoint at or below the quantity in any row order; `itemIconUrl`, `skillIconUrl` (none for Overall
   or Combat), `slotIconUrl`, `parseStacks`) plus `eventIconUrl` (the event's item at its loot stack
@@ -23,15 +23,30 @@ Items, skills and empty equipment slots show the game's icons from the central o
 - **UI:** `components/icons/osrs-icon.tsx` (`OsrsImage`, `ItemIcon`, `SkillIcon`, `SlotIcon`,
   `EventGameIcon`): plain lazy `<img>`s that fall back to the previous text or lucide icon when icons
   are off or an icon is missing (404), including a failure before hydration (checked with an eager
-  probe, since a lazy image not yet loaded also looks broken). Inventory and equipment
-  tiles show the quantity-aware picture with the in-game stack label over it (the name moves to the
-  title and screen-reader text), empty slots their silhouette, the "Most valuable" list and skills table
-  small icons, event feeds and live toasts the event's item or skill icon.
+  probe, since a lazy image not yet loaded also looks broken). Inventory and equipment tiles show the
+  quantity-aware picture with the in-game stack label over it (the name moves to the title and
+  screen-reader text), empty slots their silhouette, the "Most valuable" list and skills table small
+  icons, event feeds and live toasts the event's item or skill icon.
 - **Privacy page:** names the icon host the browser loads pictures from, when icons are on.
 - **Docs:** D-95, ARCHITECTURE §12 "Game icons", handoff §18.2 closed, NEXT-17.
-- **Tests:** resolver (unsorted tables, Combat, loot quantity), the loader's first render, config parsing,
-  the admin configuration entry, the privacy note, and rendered tiles, skills and feed rows with and
-  without icons.
+- **Tests:** resolver (unsorted tables, Combat, loot quantity), the loader's first render, config
+  parsing, the admin configuration entry, the privacy note, and rendered tiles, skills and feed rows
+  with and without icons.
+
+## Renovate waits 7 days for a release (branch `red/renovate-patch-age-delay-007033`)
+
+- **`renovate.json`:** `minimumReleaseAge: "7 days"`, so Renovate only opens a PR for a release once it
+  has been published for a week; a version that is pulled or quickly followed by a fix in that window
+  never reaches a PR. With the default `internalChecksFilter=strict` no branch is created while an
+  update is pending; the Dependency Dashboard lists it under "Pending Status Checks", where it can be
+  forced early.
+
+## License (branch `chore/license`)
+
+- **Apache License 2.0:** `LICENSE`, plus a `NOTICE` that redistributions and derivative works must keep
+  (Apache-2.0 §4(d)), so anyone who builds on the hub credits RedFirebreak. `CITATION.cff` gives the repo
+  GitHub's "Cite this repository" button. The root `package.json` declares `"license": "Apache-2.0"`, and
+  the README has a License section.
 
 ## Loot leaderboard index and timed-out game state (branch `red/loot-index-followup`)
 

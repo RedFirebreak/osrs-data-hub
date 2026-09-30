@@ -1,0 +1,16 @@
+cff-version: 1.2.0
+message: 'If you use this software, please cite it as below.'
+type: software
+title: 'osrs-data-hub'
+abstract: 'A self-hostable web app that collects Old School RuneScape account data from the HA Exporter RuneLite plugin, keeps long-term history, and shares it inside a Discord guild.'
+authors:
+  - name: 'RedFirebreak'
+repository-code: 'https://github.com/RedFirebreak/osrs-data-hub'
+url: 'https://github.com/RedFirebreak/osrs-data-hub'
+license: Apache-2.0
+keywords:
+  - old-school-runescape
+  - osrs
+  - runelite
+  - discord
+  - self-hosted
