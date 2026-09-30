@@ -2,9 +2,10 @@
  * The inventory (the `inventory` category): a 28-slot grid laid out as in game (by `inventorySlot`
  * from plugin 1.5.1; older plugins send occupied slots only, without a slot, so their items fill the
  * grid in the order sent, PLUGIN-11), the same items merged into stacks by value, and the carried
- * value. Server component.
+ * value. Items show their icons (D-95). Server component.
  */
 import { formatGp, formatNumber, type ItemData } from '@hub/core';
+import { ItemIcon } from '@/components/icons/osrs-icon';
 import { ItemTile } from './item-tile';
 import { inventorySlots, mergeStacks } from './items';
 
@@ -29,14 +30,17 @@ export function InventoryContent({ items }: { items: readonly ItemData[] }) {
         <h3 className="mb-1 text-xs font-medium text-muted-foreground">Most valuable</h3>
         <ul className="flex flex-col divide-y text-sm">
           {stacks.slice(0, TOP_STACKS).map((s) => (
-            <li key={s.id} className="flex items-baseline justify-between gap-3 py-1.5">
-              <span className="min-w-0 truncate">
-                {s.quantity > 1 && (
-                  <span className="text-muted-foreground tabular-nums">
-                    {formatNumber(s.quantity)} ×{' '}
-                  </span>
-                )}
-                {s.name}
+            <li key={s.id} className="flex items-center justify-between gap-3 py-1.5">
+              <span className="flex min-w-0 items-center gap-2">
+                <ItemIcon itemId={s.id} quantity={s.quantity} className="h-4 w-[18px]" holdSpace />
+                <span className="min-w-0 truncate">
+                  {s.quantity > 1 && (
+                    <span className="text-muted-foreground tabular-nums">
+                      {formatNumber(s.quantity)} ×{' '}
+                    </span>
+                  )}
+                  {s.name}
+                </span>
               </span>
               <span className="shrink-0 tabular-nums">
                 {s.value > 0 ? `${formatGp(s.value)} gp` : '—'}

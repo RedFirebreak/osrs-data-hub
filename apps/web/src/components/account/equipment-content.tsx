@@ -1,7 +1,7 @@
 /**
  * Current gear by slot in the worn-equipment layout, and the change log (the `equipment` category,
  * handoff §12 "equipment timeline"): each change lists the slots that changed against the previous
- * recorded set. Server component.
+ * recorded set. Empty slots show the game's slot silhouette (D-95). Server component.
  */
 import { formatGp, itemsValue, type ItemData } from '@hub/core';
 import type { EquipmentChange } from '@hub/server';
@@ -36,7 +36,7 @@ export function EquipmentGrid({ items }: { items: readonly ItemData[] }) {
           ) : (
             <div key={slot} role="listitem" className="min-w-0">
               <span className="sr-only">{slotLabel(slot)}: </span>
-              <ItemTile item={bySlot.get(slot) ?? null} placeholder={slotLabel(slot)} />
+              <ItemTile item={bySlot.get(slot) ?? null} placeholder={slotLabel(slot)} slot={slot} />
             </div>
           ),
         )}

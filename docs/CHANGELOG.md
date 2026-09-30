@@ -4,6 +4,32 @@ Changes are consolidated per pull request, newest first. Each entry names the PR
 open), what changed, and any decision (`D-n`, see [ARCHITECTURE.md](ARCHITECTURE.md#decision-log)) or
 gotcha (`AREA-n`, see [gotchas](gotchas/README.md)) it introduced.
 
+## OSRS game icons (branch `red/osrs-icons`)
+
+Items, skills and empty equipment slots show the game's icons from the central osrs-icons CDN (D-95).
+
+- **Config:** `OSRS_ICONS_URL` in `@hub/core` config (default `https://icons.scapekeeper.com`, empty =
+  icons off, otherwise an http(s) mirror; trailing slashes stripped, anything else refused at start).
+  Read at request time, never `NEXT_PUBLIC_*` (NEXT-17, new). Listed on Admin → Configuration and in
+  `.env.example`; OPERATIONS §1 covers mirrors and turning it off.
+- **Resolver:** `lib/osrs-icons.ts` ports the CDN's reference client (`iconsBase`, `stackedItemId`,
+  `itemIconUrl`, `skillIconUrl`, `slotIconUrl`) plus `eventIconUrl` (the event's item, else its skill),
+  with the reference tests mirrored.
+- **Stack tables:** `lib/osrs-icons-server.ts` fetches `/data/stacks.json` for the (app) layout (1.5 s
+  timeout, Next data cache for a day, `{}` and a five-minute pause after a failure, one fetch shared by
+  concurrent renders); `IconConfigProvider` hands base and tables to client components.
+- **UI:** `components/icons/osrs-icon.tsx` (`OsrsImage`, `ItemIcon`, `SkillIcon`, `SlotIcon`,
+  `EventGameIcon`): plain lazy `<img>`s that fall back to the previous text or lucide icon when icons
+  are off or an icon is missing (404), including a failure before hydration. Inventory and equipment
+  tiles show the quantity-aware picture with the in-game stack label over it (the name moves to the
+  title and screen-reader text), empty slots their silhouette, the "Most valuable" list and skills table
+  small icons, event feeds and live toasts the event's item or skill icon.
+- **Privacy page:** names the icon host the browser loads pictures from, when icons are on.
+- **Docs:** D-95, ARCHITECTURE §12 "Game icons", handoff §18.2 closed, NEXT-17.
+- **Tests:** resolver, stack loader (timeout, caching, failure back-off, icons off), config parsing,
+  the admin configuration entry, the privacy note, and rendered tiles, skills and feed rows with and
+  without icons.
+
 ## Loot leaderboard index and timed-out game state (branch `red/loot-index-followup`)
 
 Review fixes to #13 (D-94) that were left uncommitted when it merged.

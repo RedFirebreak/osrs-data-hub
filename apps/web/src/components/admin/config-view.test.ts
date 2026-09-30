@@ -58,6 +58,14 @@ describe('configSections', () => {
     });
     expect(valueOf('APP_URL')).toEqual({ kind: 'text', text: 'https://hub.example.com' });
     expect(valueOf('HUB_NAME')).toEqual({ kind: 'text', text: 'Test Hub' });
+    expect(valueOf('OSRS_ICONS_URL')).toEqual({
+      kind: 'text',
+      text: 'https://icons.scapekeeper.com',
+    });
+    expect(valueOf('OSRS_ICONS_URL', configSections(config({ OSRS_ICONS_URL: '' })))).toEqual({
+      kind: 'text',
+      text: 'off (text only)',
+    });
     expect(valueOf('DISCORD_CLIENT_ID')).toEqual({ kind: 'text', text: '123456789012345678' });
     expect(valueOf('DISCORD_ADMIN_ROLE_IDS')).toEqual({
       kind: 'list',

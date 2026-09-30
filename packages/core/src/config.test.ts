@@ -32,3 +32,26 @@ describe('WORKER_METRICS_PORT (D-84)', () => {
     expect(() => parseConfig({ ...ENV, WORKER_METRICS_PORT: 'x' })).toThrow('WORKER_METRICS_PORT');
   });
 });
+
+describe('OSRS_ICONS_URL (D-95)', () => {
+  it('defaults to the icon CDN, turns icons off when empty, and strips trailing slashes', () => {
+    expect(parseConfig(ENV).osrsIconsUrl).toBe('https://icons.scapekeeper.com');
+    expect(parseConfig({ ...ENV, OSRS_ICONS_URL: '' }).osrsIconsUrl).toBeNull();
+    expect(parseConfig({ ...ENV, OSRS_ICONS_URL: '  ' }).osrsIconsUrl).toBeNull();
+    expect(parseConfig({ ...ENV, OSRS_ICONS_URL: ' http://localhost:8765// ' }).osrsIconsUrl).toBe(
+      'http://localhost:8765',
+    );
+    expect(
+      parseConfig({ ...ENV, OSRS_ICONS_URL: 'https://mirror.example/osrs-icons/' }).osrsIconsUrl,
+    ).toBe('https://mirror.example/osrs-icons');
+  });
+
+  it('rejects a value that is not an http(s) URL', () => {
+    expect(() => parseConfig({ ...ENV, OSRS_ICONS_URL: 'icons.example.com' })).toThrow(
+      'OSRS_ICONS_URL',
+    );
+    expect(() => parseConfig({ ...ENV, OSRS_ICONS_URL: 'ftp://icons.example.com' })).toThrow(
+      'OSRS_ICONS_URL',
+    );
+  });
+});
