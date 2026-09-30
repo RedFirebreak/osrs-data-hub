@@ -13,6 +13,9 @@ gotcha (`AREA-n`, see [gotchas](gotchas/README.md)) it introduced.
 - **Drift check:** `openapi.snapshot.test.ts` compares the built document with the file
   (`toMatchFileSnapshot`), so `pnpm test` fails when a schema changes and the copy wasn't refreshed.
   `pnpm openapi:update` rewrites it. Prettier skips the file (it is plain `JSON.stringify` output).
+- **e2e on Windows:** `e2e/serve.mjs` spawns pnpm through a shell on Windows and passes the Discord
+  mock to `--import` as a `file://` URL, so `pnpm test:e2e` (and the screenshot run) works there too
+  (TOOL-10).
 
 ## OSRS game icons (branch `red/osrs-icons`)
 
