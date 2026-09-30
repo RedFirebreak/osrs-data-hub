@@ -1,6 +1,6 @@
 /**
  * DELETE /api/app/admin/service-keys/[id] → 200 `{ ok: true }`: an admin revokes a service key
- * (D-87); the next request with it gets 401. Idempotent (a revoked key answers 200 again). 404 for
+ * (D-88); the next request with it gets 401. Idempotent (a revoked key answers 200 again). 404 for
  * an id that isn't a uuid, doesn't exist or is a user's own key (all look the same). Audited as
  * 'service_key.revoked'.
  *

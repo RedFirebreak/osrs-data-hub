@@ -104,7 +104,7 @@ describe('checkApiRate', () => {
   });
 });
 
-describe('a limit per key (D-87)', () => {
+describe('a limit per key (D-88)', () => {
   it('judges the key by its own limit and reports it in the headers', () => {
     const { clock, limits } = setup();
     for (let i = 0; i < 600; i++) {

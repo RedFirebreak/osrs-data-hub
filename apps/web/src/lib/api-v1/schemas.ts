@@ -139,7 +139,7 @@ export const XpQuery = z.object({
 });
 
 /**
- * The `accounts` list of a bulk request (`/xp`, `/locations`, D-91): parsed up to the service
+ * The `accounts` list of a bulk request (`/xp`, `/locations`, D-92): parsed up to the service
  * keys' cap; the read model refuses more than MAX_BULK_ACCOUNTS for a user key (400).
  */
 function bulkAccountsParam(category: string) {

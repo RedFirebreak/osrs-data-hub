@@ -172,7 +172,7 @@ describe('GET /api/v1/xp', () => {
         /^accounts(\.\d+)?$/,
       );
     }
-    // Between the two caps (D-91): parsed, then refused for a user key by the read model.
+    // Between the two caps (D-92): parsed, then refused for a user key by the read model.
     const overUser = await getXp(
       v1Request(ctx, `/xp?accounts=${ids(MAX_XP_ACCOUNTS + 1)}`, { key: ownerKey.key }),
     );

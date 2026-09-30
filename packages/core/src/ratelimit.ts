@@ -163,7 +163,7 @@ export class TokenBucketLimiter {
  * retryAfterSeconds is when the oldest counted hit expires.
  *
  * `hit`, `peek` and `usage` take an optional `limit` for that key (a positive integer), so one
- * limiter can serve keys with different allowances (API keys with their own rate limit, D-87); the
+ * limiter can serve keys with different allowances (API keys with their own rate limit, D-88); the
  * constructor's `limit` is the default. The hits kept per key are bounded by the window, not the
  * limit, so a key whose limit is lowered is judged by its real recent hits.
  */

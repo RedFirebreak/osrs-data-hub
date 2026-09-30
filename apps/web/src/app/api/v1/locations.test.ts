@@ -1,5 +1,5 @@
 /**
- * GET /api/v1/locations?accounts=a,b (D-91): every named account's trail in one call, the same
+ * GET /api/v1/locations?accounts=a,b (D-92): every named account's trail in one call, the same
  * points as /accounts/{id}/locations, the `location_history` gate (the one 404, D-70), the bulk
  * caps per key kind, and 400 for bad parameters.
  */

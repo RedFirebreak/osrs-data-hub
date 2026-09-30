@@ -438,7 +438,7 @@ describe('WindowLimiter', () => {
     });
   });
 
-  describe('a limit per call (D-87)', () => {
+  describe('a limit per call (D-88)', () => {
     it('judges each key by the limit given, with the constructor’s as the default', () => {
       const clock = new FakeClock();
       const limiter = new WindowLimiter({ limit: 2, windowMs: 60 * SEC, clock });

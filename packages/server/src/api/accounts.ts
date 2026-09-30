@@ -32,13 +32,13 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 export interface ApiAccountSummary {
   id: string;
   name: string;
-  /** The plugin's salted accountHash; only for service keys, omitted otherwise (D-90). */
+  /** The plugin's salted accountHash; only for service keys, omitted otherwise (D-91). */
   accountHash?: string;
   /** IRONMAN varbit: 0 normal, 1 IM, 2 UIM, 3 HCIM, 4 GIM, 5 HCGIM, 6 UGIM; null when never sent. */
   type: number | null;
   /** "Normal", "Ironman", … ("Unknown" for null). */
   typeLabel: string;
-  /** The account's owner as the guild page shows them; null without an active owner (D-89). */
+  /** The account's owner as the guild page shows them; null without an active owner (D-90). */
   owner: ApiOwner | null;
   /** In game now; null when the key can't read the account's `activity`. */
   online: boolean | null;
@@ -116,11 +116,11 @@ export async function apiListAccounts(
 export interface ApiAccountDetail {
   id: string;
   name: string;
-  /** The plugin's salted accountHash; only for service keys, omitted otherwise (D-90). */
+  /** The plugin's salted accountHash; only for service keys, omitted otherwise (D-91). */
   accountHash?: string;
   type: number | null;
   typeLabel: string;
-  /** The account's owner as the guild page shows them; null without an active owner (D-89). */
+  /** The account's owner as the guild page shows them; null without an active owner (D-90). */
   owner: ApiOwner | null;
   /** When the hub first saw the account. */
   firstSeen: string;

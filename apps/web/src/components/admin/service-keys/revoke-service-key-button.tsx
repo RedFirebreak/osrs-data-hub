@@ -1,6 +1,6 @@
 'use client';
 /**
- * "Revoke" for a service key on Admin → Integrations (D-87): DELETE /api/app/admin/service-keys/[id]
+ * "Revoke" for a service key on Admin → Integrations (D-88): DELETE /api/app/admin/service-keys/[id]
  * behind a confirmation. The integration using it gets 401 from its next request on.
  */
 import { BanIcon } from 'lucide-react';

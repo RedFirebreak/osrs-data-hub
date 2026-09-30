@@ -131,7 +131,7 @@ describe('wireSnapshotAccount', () => {
     for (const omitted of ['skills', 'equipment', 'inventory', 'account_hash']) {
       expect(wire).not.toHaveProperty(omitted);
     }
-    // The hash only when the read model carries it (service keys, D-90).
+    // The hash only when the read model carries it (service keys, D-91).
     const hashed = wireSnapshotAccount({ ...account, accountHash: 'a'.repeat(56) });
     expect(SnapshotAccount.parse(hashed)).toEqual(hashed);
     expect(hashed.account_hash).toBe('a'.repeat(56));

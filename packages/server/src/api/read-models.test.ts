@@ -157,7 +157,7 @@ describe('apiMe', () => {
 describe('apiListAccounts', () => {
   it('lists the visible accounts by name, with presence only for activity', async () => {
     const list = await apiListAccounts(t.db, memberKey.principal, {}, NOW);
-    // Owners as the guild page shows them (D-89): the seeded users have no Discord id.
+    // Owners as the guild page shows them (D-90): the seeded users have no Discord id.
     const ownerOf = (name: string) => ({ name, discordId: null });
     expect(list).toEqual([
       {
@@ -479,7 +479,7 @@ describe('apiSnapshot', () => {
     const forOne = counted.reset();
     await apiSnapshot(counted.db, memberKey.principal, {}, NOW);
     expect(counted.reset()).toBe(forOne);
-    // Accounts, their access (4 tables), latest_state, and the owners (D-89).
+    // Accounts, their access (4 tables), latest_state, and the owners (D-90).
     expect(forOne).toBeLessThanOrEqual(7);
   });
 

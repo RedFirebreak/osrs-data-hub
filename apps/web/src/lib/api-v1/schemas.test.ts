@@ -48,7 +48,7 @@ describe('comma-separated lists', () => {
     expect(AccountsQuery.safeParse({ ids: list(MAX_LIST_PARAM + 1).join(',') }).success).toBe(
       false,
     );
-    // Bulk lists are parsed up to the service keys' cap (D-91); the read model applies the user
+    // Bulk lists are parsed up to the service keys' cap (D-92); the read model applies the user
     // keys' lower one, so the same route can serve both kinds.
     const dupes = [...list(MAX_XP_ACCOUNTS_SERVICE), ...list(MAX_XP_ACCOUNTS_SERVICE)].join(',');
     expect(XpMultiQuery.parse({ accounts: dupes }).accounts).toHaveLength(MAX_XP_ACCOUNTS_SERVICE);

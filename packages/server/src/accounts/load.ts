@@ -25,7 +25,7 @@ const MAX_PUBLIC_ID_LENGTH = 64;
 export interface AccountRow {
   id: number;
   publicId: string;
-  /** The plugin's salted SHA-224 accountHash: the account's identity for ingest (D-90). */
+  /** The plugin's salted SHA-224 accountHash: the account's identity for ingest (D-91). */
   accountHash: string;
   name: string;
   accountType: number | null;
@@ -92,7 +92,7 @@ const accountColumns = {
  * viewers, nothing shared with them). Callers answer null with a 404, so existence never leaks.
  * With `restrict` (the public API, D-70), also null when the account is outside its scope or none of
  * its categories is granted; `access` is then the narrowed one (see AccessRestriction).
- * The viewer may be the guild audience (GUILD_AUDIENCE, D-88): then the account is visible iff some
+ * The viewer may be the guild audience (GUILD_AUDIENCE, D-89): then the account is visible iff some
  * category's audience is `guild`.
  */
 export async function loadVisibleAccount(

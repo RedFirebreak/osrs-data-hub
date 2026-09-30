@@ -17,7 +17,7 @@ const tstz = (name: string) => timestamp(name, { withTimezone: true });
 
 /**
  * `user`: a member's own key, reading what its creator may see (D-69, D-70). `service`: an
- * integration key an admin created, belonging to no user and reading the guild audience (D-87).
+ * integration key an admin created, belonging to no user and reading the guild audience (D-88).
  */
 export const API_KEY_KINDS = ['user', 'service'] as const;
 export type ApiKeyKind = (typeof API_KEY_KINDS)[number];
@@ -25,7 +25,7 @@ export type ApiKeyKind = (typeof API_KEY_KINDS)[number];
 /**
  * Public API keys (Milestone 3). Shown once as ohub_<prefix>_<secret>; only sha256(secret) stored.
  * A user key has its creator in `user_id` (cascade: the key goes with the user); a service key has
- * none (D-87) and records who created it in `created_by_user_id`, which offboarding leaves alone.
+ * none (D-88) and records who created it in `created_by_user_id`, which offboarding leaves alone.
  */
 export const apiKeys = pgTable(
   'api_keys',
@@ -47,7 +47,7 @@ export const apiKeys = pgTable(
       .default('all_visible')
       .notNull(),
     accountIds: integer('account_ids').array(),
-    /** Requests per sliding minute; null = the default of its kind (D-72, D-87). */
+    /** Requests per sliding minute; null = the default of its kind (D-72, D-88). */
     rateLimitPerMinute: integer('rate_limit_per_minute'),
     expiresAt: tstz('expires_at'),
     createdAt: tstz('created_at').defaultNow().notNull(),

@@ -49,9 +49,9 @@ export interface Viewer {
 }
 
 /**
- * The guild audience itself as a principal (D-88): what an active guild member who is neither the
+ * The guild audience itself as a principal (D-89): what an active guild member who is neither the
  * owner, a contributor nor a grantee of an account sees, i.e. exactly the categories whose audience
- * is `guild`. Service keys (D-87) act as this principal; it never owns, manages or is granted
+ * is `guild`. Service keys (D-88) act as this principal; it never owns, manages or is granted
  * anything, and the admin override never applies to it.
  */
 export interface GuildAudience {
@@ -101,7 +101,7 @@ export interface ResolvedAccess {
 
 /**
  * The one permission resolver (handoff §10, D-22), used by the UI, the SSE filter and the API:
- * - The guild audience (GUILD_AUDIENCE, D-88) is an active member with no relation to any account:
+ * - The guild audience (GUILD_AUDIENCE, D-89) is an active member with no relation to any account:
  *   it gets the categories whose effective audience is `guild`, relation 'member', never canManage,
  *   and hidden accounts stay invisible to it.
  * - A viewer whose status isn't 'active' sees nothing (visible false, no categories, canManage false,
@@ -146,7 +146,7 @@ export function resolveAccess(principal: Principal, account: AccountAccess): Res
   };
 }
 
-/** The guild audience's access (D-88): the `guild` categories of an active account, nothing else. */
+/** The guild audience's access (D-89): the `guild` categories of an active account, nothing else. */
 function resolveGuildAudience(account: AccountAccess): ResolvedAccess {
   if (account.status !== 'active') return noAccess();
   const categories = new Set<Category>();

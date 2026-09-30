@@ -1,8 +1,8 @@
 /**
- * Admin → Integrations (D-87): the hub's service keys, the integration keys of the public API used
+ * Admin → Integrations (D-88): the hub's service keys, the integration keys of the public API used
  * by the guild's own services (the live map). Active keys with Revoke, then revoked and expired
  * ones, and "Create integration key". Explains that a service key belongs to nobody, reads what the
- * guild audience sees (D-88) and survives every offboarding.
+ * guild audience sees (D-89) and survives every offboarding.
  */
 import { getConfig } from '@hub/core';
 import { getDb } from '@hub/db';

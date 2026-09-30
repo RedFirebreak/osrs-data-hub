@@ -393,7 +393,7 @@ export function adminUserActionPath(userId: string, action: 'offboard' | 'restor
 }
 
 /** DELETE path that revokes any device. */
-/** The admin API path of one service key (D-87). */
+/** The admin API path of one service key (D-88). */
 export function adminServiceKeyPath(keyId: string): string {
   return `/api/app/admin/service-keys/${encodeURIComponent(keyId)}`;
 }

@@ -1,8 +1,8 @@
 /**
- * Service keys (D-87): admin-only creation and revocation (audited), no user, so no per-user limit
- * and immune to offboarding; authenticated into a guild-audience principal (D-88) that sees exactly
- * the `guild` categories; owner identity (D-89), the account hash for service keys only (D-90) and
- * the bulk limits (D-91).
+ * Service keys (D-88): admin-only creation and revocation (audited), no user, so no per-user limit
+ * and immune to offboarding; authenticated into a guild-audience principal (D-89) that sees exactly
+ * the `guild` categories; owner identity (D-90), the account hash for service keys only (D-91) and
+ * the bulk limits (D-92).
  */
 import { CATEGORIES } from '@hub/core';
 import { apiKeys, auditLog, locationSamples, users } from '@hub/db';
@@ -286,7 +286,7 @@ describe('listServiceKeys and revokeServiceKey', () => {
   });
 });
 
-describe('a service key’s access (D-88)', () => {
+describe('a service key’s access (D-89)', () => {
   it('authenticates into a guild-audience principal without a user', async () => {
     const { principal, info } = await serviceKey();
     expect(principal).toEqual({
@@ -362,7 +362,7 @@ describe('a service key’s access (D-88)', () => {
   });
 });
 
-describe('owner identity (D-89) and the account hash (D-90)', () => {
+describe('owner identity (D-90) and the account hash (D-91)', () => {
   it('names the active owner with their Discord id on accounts and snapshots, never contributors', async () => {
     const { principal } = await serviceKey({ categories: [...CATEGORIES] });
     const list = await apiListAccounts(t.db, principal, {}, NOW);
@@ -430,7 +430,7 @@ describe('owner identity (D-89) and the account hash (D-90)', () => {
   });
 });
 
-describe('bulk history (D-91)', () => {
+describe('bulk history (D-92)', () => {
   const ids = (n: number) =>
     Array.from({ length: n }, (_, i) => `Fake${String(i).padStart(8, '0')}`);
 

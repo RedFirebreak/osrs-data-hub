@@ -1,7 +1,7 @@
 /**
- * /api/v1 through a service key (D-87, D-88): /me reports the kind, no user and the key's own rate
+ * /api/v1 through a service key (D-88, D-89): /me reports the kind, no user and the key's own rate
  * limit (also in X-RateLimit-Limit); /snapshot and /accounts show guild accounts with their owner
- * (D-89) and the account hash (D-90), hide private ones, and keep working after the admin who
+ * (D-90) and the account hash (D-91), hide private ones, and keep working after the admin who
  * created the key is offboarded; a user key gets the owner but never the hash.
  */
 import { CATEGORIES } from '@hub/core';

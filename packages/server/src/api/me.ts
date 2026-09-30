@@ -8,7 +8,7 @@ import { keyRateLimit, type ApiKeyScope, type ApiPrincipal } from './keys';
 export interface ApiMe {
   key: {
     id: string;
-    /** `user` (a member's key) or `service` (an integration key, D-87). */
+    /** `user` (a member's key) or `service` (an integration key, D-88). */
     kind: ApiKeyKind;
     name: string;
     /** The 10-character prefix (the key is `ohub_<prefix>_<secret>`). */
@@ -16,13 +16,13 @@ export interface ApiMe {
     /** The key's categories, in the order of CATEGORIES (what it may read where shared). */
     categories: Category[];
     accountScope: ApiKeyScope;
-    /** Requests per sliding minute (D-72, D-87). */
+    /** Requests per sliding minute (D-72, D-88). */
     rateLimitPerMinute: number;
     expiresAt: string | null;
   };
   /**
    * The key's creator: every request sees what they may see right now, narrowed by the key. Null for
-   * a service key, which belongs to no user and sees the guild audience (D-87).
+   * a service key, which belongs to no user and sees the guild audience (D-88).
    */
   user: { name: string } | null;
   /** Accounts the key can see right now (D-70). */

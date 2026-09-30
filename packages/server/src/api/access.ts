@@ -1,7 +1,7 @@
 /**
  * What an API key may read (D-70), implemented once on top of the shared loaders (accounts/load.ts):
  * an account is visible to a principal iff it is in the key's account scope AND resolveAccess gives
- * the key's viewer (its creator, or the guild audience for a service key, D-87/D-88) at least one
+ * the key's viewer (its creator, or the guild audience for a service key, D-88/D-89) at least one
  * category that the key also has; the principal's categories on it are that intersection.
  * Evaluated on every request, so a sharing change or the creator losing access applies at once. The
  * admin override never applies through the API.
@@ -20,9 +20,9 @@ import type { ApiPrincipal } from './keys';
 import { MAX_LIST_PARAM, isPublicIdLike, listParam } from './params';
 import type { ApiAccountRef, ApiOwner } from './types';
 
-/** Most accounts one bulk request (`/xp`, `/locations`) may name with a user key (D-91). */
+/** Most accounts one bulk request (`/xp`, `/locations`) may name with a user key (D-92). */
 export const MAX_BULK_ACCOUNTS = 10;
-/** … and with a service key (D-91): the live map polls its whole guild in one call. */
+/** … and with a service key (D-92): the live map polls its whole guild in one call. */
 export const MAX_BULK_ACCOUNTS_SERVICE = 50;
 
 /** Whom the resolver evaluates for this key: its creator, never an admin (D-70), or the guild audience. */
@@ -32,14 +32,14 @@ export function apiViewer(principal: ApiPrincipal): Principal {
     : { ...principal.viewer, isAdmin: false };
 }
 
-/** How many accounts a bulk request may name for this key (D-91). */
+/** How many accounts a bulk request may name for this key (D-92). */
 export function bulkAccountLimit(principal: ApiPrincipal): number {
   return principal.kind === 'service' ? MAX_BULK_ACCOUNTS_SERVICE : MAX_BULK_ACCOUNTS;
 }
 
 /**
  * The account's `accountHash` for the response, or undefined (the field is omitted): only service
- * keys get it (D-90). The hash is the plugin's identity for ingest: a member who knew another
+ * keys get it (D-91). The hash is the plugin's identity for ingest: a member who knew another
  * account's hash could report data for it from their own device and become a contributor who sees
  * everything, so user keys never see it.
  */
@@ -51,7 +51,7 @@ export function apiAccountHash(
 }
 
 /**
- * The owners of `entries` as the API shows them (D-89): the guild page lists every visible account
+ * The owners of `entries` as the API shows them (D-90): the guild page lists every visible account
  * under its owner for every member (D-68), so an account the key may see always carries its owner
  * when that owner is an active user; accounts without an owner, or whose owner is in grace or gone,
  * get null. Contributors are never included. One query for all entries.

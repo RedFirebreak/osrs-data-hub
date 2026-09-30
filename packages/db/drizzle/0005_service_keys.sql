@@ -1,4 +1,4 @@
--- D-87: service (integration) keys share api_keys with user keys. `kind` tells them apart, a
+-- D-88: service (integration) keys share api_keys with user keys. `kind` tells them apart, a
 -- service key has no user_id (offboarding never revokes it; it counts towards no user's limit) and
 -- records who created it; `rate_limit_per_minute` is null for the default of its kind.
 ALTER TABLE "api_keys" ALTER COLUMN "user_id" DROP NOT NULL;--> statement-breakpoint

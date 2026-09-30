@@ -48,18 +48,18 @@ export interface ApiSnapshotLocation extends ApiLocation {
 
 /**
  * One account in a snapshot. `id`, `name`, `type`, `typeLabel`, `owner` and `categories` are always
- * present (`accountHash` for service keys, D-90); every other field belongs to one category and is
+ * present (`accountHash` for service keys, D-91); every other field belongs to one category and is
  * OMITTED when the key can't read that category on the account (null means "readable, but the
  * plugin never sent it").
  */
 export interface ApiSnapshotAccount {
   id: string;
   name: string;
-  /** The plugin's salted accountHash; only for service keys, omitted otherwise (D-90). */
+  /** The plugin's salted accountHash; only for service keys, omitted otherwise (D-91). */
   accountHash?: string;
   type: number | null;
   typeLabel: string;
-  /** The account's owner as the guild page shows them; null without an active owner (D-89). */
+  /** The account's owner as the guild page shows them; null without an active owner (D-90). */
   owner: ApiOwner | null;
   /** What this key may read on this account. */
   categories: Category[];

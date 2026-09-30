@@ -1,12 +1,12 @@
 /**
- * Service keys, the hub's integration keys (D-87), managed on Admin → Integrations:
+ * Service keys, the hub's integration keys (D-88), managed on Admin → Integrations:
  *
  * - GET → 200 `{ keys: ServiceKeyInfo[] }` (listServiceKeys): every service key, newest first,
  *   revoked and expired ones included with their status and who created each; never a secret.
  * - POST `{ name, categories, expiresInDays?, rateLimitPerMinute? }` → 201 `{ key, info }`. `key`
  *   (`ohub_<prefix>_<secret>`) is in this response only: the hub keeps just sha256(secret). The body
  *   is validated by createServiceKey (CreateServiceKeySchema; 400 `invalid_request` with `details`).
- *   The key belongs to no user and reads what the guild audience sees (D-88). Audited.
+ *   The key belongs to no user and reads what the guild audience sees (D-89). Audited.
  *
  * Session auth (401), admins only (403); POST also checks the Origin (403 `bad_origin`, D-36) and
  * caps the body at 64 KiB (413).

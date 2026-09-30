@@ -302,7 +302,7 @@ describe('resolveAccess', () => {
     });
   });
 
-  describe('guild audience (D-88)', () => {
+  describe('guild audience (D-89)', () => {
     it('sees exactly the guild categories, as a member, and never manages', () => {
       const r = resolveAccess(GUILD_AUDIENCE, account());
       expect(r.relation).toBe('member');

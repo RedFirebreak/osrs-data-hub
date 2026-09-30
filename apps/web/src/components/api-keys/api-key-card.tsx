@@ -1,5 +1,5 @@
 /**
- * One key on the API keys page (D-76) and on Admin → Integrations (service keys, D-87): name and
+ * One key on the API keys page (D-76) and on Admin → Integrations (service keys, D-88): name and
  * status, the key as `ohub_<prefix>_…` (the secret is never shown again after creation), the
  * categories it reads, its account scope (listed accounts the owner can no longer see are named "An
  * account you can no longer see"; a service key reads the guild audience), its rate limit, who

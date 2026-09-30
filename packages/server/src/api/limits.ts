@@ -1,7 +1,7 @@
 /**
  * Rate limits of the public API (handoff §13, D-72), in memory in the single web process (D-5): per
  * key its own requests per sliding minute (120 for a user key, 600 for a service key unless the
- * admin set another, D-87) plus 1 per second on /snapshot, and failed key authentications per
+ * admin set another, D-88) plus 1 per second on /snapshot, and failed key authentications per
  * client IP (30 per minute) so keys can't be guessed. The host keeps one ApiLimits on globalThis
  * (D-37, NEXT-3).
  */
@@ -10,7 +10,7 @@ import { pairRateKey } from '../pairing/limits';
 
 /** Requests per minute of a user key (D-72). */
 export const API_RATE_LIMIT = 120;
-/** Requests per minute of a service key without its own limit (D-87). */
+/** Requests per minute of a service key without its own limit (D-88). */
 export const SERVICE_KEY_RATE_LIMIT = 600;
 /** The most an admin may give one service key. */
 export const MAX_KEY_RATE_LIMIT = 6000;
@@ -49,7 +49,7 @@ export function createApiLimits(opts: { clock?: Clock } = {}): ApiLimits {
 
 /** The X-RateLimit-* headers, as strings of whole numbers. */
 export interface ApiRateHeaders {
-  /** Requests per window: the key's own limit (120 for user keys, D-72; per service key, D-87). */
+  /** Requests per window: the key's own limit (120 for user keys, D-72; per service key, D-88). */
   'X-RateLimit-Limit': string;
   /** Requests left in the current sliding window, this one counted. */
   'X-RateLimit-Remaining': string;

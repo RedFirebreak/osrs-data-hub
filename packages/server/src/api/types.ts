@@ -12,7 +12,7 @@ export interface ApiAccountRef {
 }
 
 /**
- * An account's owner as the guild page shows them to every member (D-68, D-89): display name and
+ * An account's owner as the guild page shows them to every member (D-68, D-90): display name and
  * Discord user id, for a consumer that links hub accounts to people. Never a contributor.
  */
 export interface ApiOwner {

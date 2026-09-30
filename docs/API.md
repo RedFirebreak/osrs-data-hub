@@ -7,7 +7,7 @@ the hub. It is **pull-only**: poll `/snapshot` and the `/events` cursor feed; th
 - Interactive reference: `https://<your hub>/docs/api`
 - OpenAPI 3.1 document: `https://<your hub>/api/v1/openapi.json` (public, no key needed)
 
-Design decisions: D-69 … D-77 and D-87 … D-92 in [ARCHITECTURE.md](ARCHITECTURE.md).
+Design decisions: D-69 … D-77 and D-88 … D-93 in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Authentication
 
@@ -35,16 +35,16 @@ unknown, revoked or expired key, or a key whose creator left the guild.
 
 For the guild's own services (its live map, a shared bot) an admin creates a **service key** on
 **Admin → Integrations** (`/admin/integrations`). Same format, categories and expiry as a user key, but
-(D-87):
+(D-88):
 
 - it belongs to **no user**: offboarding anyone, the admin who created it included, never revokes it,
   and it counts towards nobody's limit of 10 keys;
-- it reads what the **guild audience** sees (D-88): the accounts and categories whose sharing audience is
+- it reads what the **guild audience** sees (D-89): the accounts and categories whose sharing audience is
   *guild*. Accounts and categories set to *private* or *selected* stay hidden, exactly as for a member
   who is neither owner, contributor nor grantee. There is no admin override;
 - its rate limit is its own: **600 requests per minute** unless the admin set another (1–6000);
   `/snapshot` stays at 1 per second;
-- it alone sees `account_hash` (D-90), and it may name 50 accounts per bulk request instead of 10 (D-91);
+- it alone sees `account_hash` (D-91), and it may name 50 accounts per bulk request instead of 10 (D-92);
 - day-based periods (`period=day` on gains and leaderboards) use UTC, since it has no creator settings.
 
 `/me` tells the kinds apart: `key.kind` is `user` or `service`, and `user` is `null` for a service key.
@@ -157,8 +157,8 @@ key) and how many accounts it can see. Useful as a connection test.
 `/snapshot`, `/accounts` and `/accounts/{id}` carry, on every account:
 
 - `owner`: `{ "name", "discord_id" }`, the account's owner as the hub's guild page shows them to every
-  member, or `null` when the account has no active owner (D-89). Contributors are never exposed.
-- `account_hash` (**service keys only**, omitted for user keys, D-90): the plugin's salted SHA-224
+  member, or `null` when the account has no active owner (D-90). Contributors are never exposed.
+- `account_hash` (**service keys only**, omitted for user keys, D-91): the plugin's salted SHA-224
   `accountHash`, the value the plugin sends to any endpoint it is paired with. A service that players
   also pair with directly can match a hub account to the same player without relying on the name.
 
@@ -290,7 +290,7 @@ effect at `from` is carried in as the first point.
 ### GET /xp?accounts=a,b&skills=&from=&to=&resolution=
 
 The same series for several accounts, in request order: 1–10 accounts with a user key, 1–50 with a
-service key (D-91). If any account isn't readable (`stats`), the whole request is a 404 naming it, as if
+service key (D-92). If any account isn't readable (`stats`), the whole request is a 404 naming it, as if
 it didn't exist; more accounts than the key's cap is a 400.
 
     GET /api/v1/xp?accounts=oC8RsqiTuyak,jHSfP5UICcQt&skills=overall&resolution=1d
@@ -377,7 +377,7 @@ Default: 30 days.
 
 The location trails of several accounts in one call (`location_history`), in request order, each
 exactly what `/accounts/{id}/locations` returns for the same range: at most one point per minute,
-oldest first, kept 30 days. 1–10 accounts with a user key, 1–50 with a service key (D-91). If any
+oldest first, kept 30 days. 1–10 accounts with a user key, 1–50 with a service key (D-92). If any
 account isn't readable, the whole request is a 404 naming it. Default: 30 days.
 
     GET /api/v1/locations?accounts=oC8RsqiTuyak,jHSfP5UICcQt
@@ -437,7 +437,7 @@ Other rules:
   - `/accounts?online=true` for "who's online".
   - Suggested key: `events`, `stats`, `activity`.
 - **Live map** ([ha-osrs-map](https://github.com/RedFirebreak/ha-osrs-map), polling the hub
-  server-side with a **service key**, D-87):
+  server-side with a **service key**, D-88):
   - poll `/snapshot?since=` (1/s at most; every 2–10 s is plenty) with a key holding `location_live` and
     `activity`, and a full refresh without `since` now and then to drop accounts that left. Browsers
     could call it directly too (CORS).
@@ -445,6 +445,6 @@ Other rules:
     knew before that default keep `private` until their owner changes it), and whose players send
     their location, have a `location`. Grey out `stale: true` positions.
   - `owner.discord_id` and `account_hash` link a hub account to the player who paired with the map
-    directly (D-89, D-90); `/xp?accounts=` and `/locations?accounts=` take 50 accounts per call
-    (D-91).
-  - There is no push for keys yet (D-92): polling is the contract.
+    directly (D-90, D-91); `/xp?accounts=` and `/locations?accounts=` take 50 accounts per call
+    (D-92).
+  - There is no push for keys yet (D-93): polling is the contract.

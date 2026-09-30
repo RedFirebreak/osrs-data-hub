@@ -1,6 +1,6 @@
 /**
  * API keys for the public, pull-only REST API (handoff §13, D-69, D-70, D-76): create, list, revoke,
- * and authenticate a request's bearer key into an ApiPrincipal. Service keys (D-87) share the table,
+ * and authenticate a request's bearer key into an ApiPrincipal. Service keys (D-88) share the table,
  * the format and the authentication; their management is in service-keys.ts.
  *
  * A key is `ohub_<prefix>_<secret>`: a 10-character base62 prefix, unique and stored in clear so a
@@ -81,7 +81,7 @@ export interface ApiKeyAccount {
 /** A key as its owner sees it on the API keys page. Never contains the secret or its hash. */
 export interface ApiKeyInfo {
   id: string;
-  /** `user` (a member's own key) or `service` (an admin-created integration key, D-87). */
+  /** `user` (a member's own key) or `service` (an admin-created integration key, D-88). */
   kind: ApiKeyKind;
   name: string;
   /** The 10-character prefix; the page shows the key as `ohub_<prefix>_…`. */
@@ -94,7 +94,7 @@ export interface ApiKeyInfo {
    * 'all_visible'.
    */
   accounts: ApiKeyAccount[] | null;
-  /** Requests per sliding minute: the key's own limit, or the default of its kind (D-72, D-87). */
+  /** Requests per sliding minute: the key's own limit, or the default of its kind (D-72, D-88). */
   rateLimitPerMinute: number;
   expiresAt: string | null;
   createdAt: string;
@@ -197,7 +197,7 @@ export type CreateApiKey = z.output<typeof CreateApiKeySchema>;
 
 export type KeyRow = typeof apiKeys.$inferSelect;
 
-/** The key's requests per minute: its own, else the default of its kind (D-72, D-87). */
+/** The key's requests per minute: its own, else the default of its kind (D-72, D-88). */
 export function keyRateLimit(row: Pick<KeyRow, 'kind' | 'rateLimitPerMinute'>): number {
   return (
     row.rateLimitPerMinute ?? (row.kind === 'service' ? SERVICE_KEY_RATE_LIMIT : API_RATE_LIMIT)
@@ -482,7 +482,7 @@ function byNameThenHidden(a: ApiKeyAccount, b: ApiKeyAccount): number {
 
 /**
  * Revokes a user key: the user's own, or any user's when `asAdmin` (the caller checks that the actor
- * is an admin; service keys are revoked through revokeServiceKey, D-87). The next request with it
+ * is an admin; service keys are revoked through revokeServiceKey, D-88). The next request with it
  * gets 401. Idempotent: revoking a revoked key keeps its time, writes no second audit entry and
  * still returns true. False when the key doesn't exist, isn't the user's (and not `asAdmin`), or
  * `keyId` isn't a uuid, so the route answers 404 without revealing other users' keys. A key revoked
@@ -531,8 +531,8 @@ export async function revokeApiKey(
 /**
  * Who a request acts as: the key and whom the resolver evaluates for it. For a user key, `viewer` is
  * the creator as the resolver sees them, with isAdmin always false (no admin override through the
- * API, D-70) and `userId` the creator; for a service key (D-87), `viewer` is the guild audience
- * (GUILD_AUDIENCE, D-88) and `userId` is null. `categories` are the key's; `accountIds` its explicit
+ * API, D-70) and `userId` the creator; for a service key (D-88), `viewer` is the guild audience
+ * (GUILD_AUDIENCE, D-89) and `userId` is null. `categories` are the key's; `accountIds` its explicit
  * account list (internal ids), or null for 'all_visible' (always null for service keys). What the
  * key may read is evaluated on every request from these (api/access.ts).
  */
@@ -543,7 +543,7 @@ export interface ApiPrincipal {
   viewer: Principal;
   categories: ReadonlySet<Category>;
   accountIds: ReadonlySet<number> | null;
-  /** Requests per sliding minute this key may make (D-72, D-87). */
+  /** Requests per sliding minute this key may make (D-72, D-88). */
   rateLimitPerMinute: number;
 }
 
@@ -596,7 +596,7 @@ export async function authenticateApiKey(
   const categories = new Set(row.categories.filter(isCategory));
   const rateLimitPerMinute = keyRateLimit(row);
   if (row.kind === 'service') {
-    // Belongs to no user (D-87): nothing to load, and no offboarding can have touched it.
+    // Belongs to no user (D-88): nothing to load, and no offboarding can have touched it.
     await touchLastUsed(db, row, now);
     return {
       ok: true,

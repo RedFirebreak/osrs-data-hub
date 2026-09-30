@@ -35,9 +35,9 @@ export const XP_RESOLUTIONS = ['auto', '5m', '1h', '1d'] as const;
 export type ApiXpResolution = (typeof XP_RESOLUTIONS)[number];
 /** The range of an XP request without `from`: the last 7 days (the raw 5-minute tier). */
 export const XP_DEFAULT_DAYS = 7;
-/** Most accounts one GET /xp may name with a user key (D-91). */
+/** Most accounts one GET /xp may name with a user key (D-92). */
 export const MAX_XP_ACCOUNTS = MAX_BULK_ACCOUNTS;
-/** ... and with a service key (D-91). */
+/** ... and with a service key (D-92). */
 export const MAX_XP_ACCOUNTS_SERVICE = MAX_BULK_ACCOUNTS_SERVICE;
 /** Most skills one XP request may name. */
 export const MAX_XP_SKILLS = MAX_SERIES_SKILLS;
@@ -127,7 +127,7 @@ export async function apiXp(
 
 /**
  * XP series of several accounts (GET /xp?accounts=a,b): at most MAX_XP_ACCOUNTS (a service key:
- * MAX_XP_ACCOUNTS_SERVICE, D-91), each of which the key must be able to read `stats` of, else
+ * MAX_XP_ACCOUNTS_SERVICE, D-92), each of which the key must be able to read `stats` of, else
  * ApiError 'not_found' naming it (D-70). One series request per account, in request order.
  */
 export async function apiXpMulti(
@@ -162,7 +162,7 @@ export async function apiXpMulti(
   return { resolution, from: req.from.toISOString(), to: req.to.toISOString(), accounts };
 }
 
-/** The creator's time zone (their settings); undefined (UTC) for a service key (D-87). */
+/** The creator's time zone (their settings); undefined (UTC) for a service key (D-88). */
 export async function principalTimezone(
   db: DbOrTx,
   principal: ApiPrincipal,
@@ -182,7 +182,7 @@ export type ApiGainsPeriod = (typeof GAINS_PERIODS)[number];
 export interface ApiGainsParams {
   /**
    * day = since local midnight in the key creator's time zone (their settings; UTC for a service
-   * key, which has no creator, D-87), week/month/year = the last 7/30/365 days. Default 'day' when
+   * key, which has no creator, D-88), week/month/year = the last 7/30/365 days. Default 'day' when
    * neither `period` nor `from` is given.
    */
   period?: ApiGainsPeriod;

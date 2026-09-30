@@ -105,7 +105,7 @@ export interface ApiLocations extends ApiHistory {
   points: ApiLocationPoint[];
 }
 
-/** Several accounts' trails in one call (GET /locations?accounts=a,b, D-91). */
+/** Several accounts' trails in one call (GET /locations?accounts=a,b, D-92). */
 export interface ApiLocationsMulti {
   from: string;
   to: string;
@@ -237,7 +237,7 @@ export async function apiLocations(
 }
 
 /**
- * The location trails of several accounts (GET /locations?accounts=a,b, D-91): at most
+ * The location trails of several accounts (GET /locations?accounts=a,b, D-92): at most
  * bulkAccountLimit(principal) accounts, each of which the key must be able to read
  * `location_history` of, else ApiError 'not_found' naming it (D-70). Each trail is exactly what
  * GET /accounts/{id}/locations returns for the same range (same thinning and cap), in request order.

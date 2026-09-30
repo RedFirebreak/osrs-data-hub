@@ -133,7 +133,7 @@ function wireOwner(owner: ApiOwner | null): WireOwner | null {
   return owner === null ? null : { name: owner.name, discord_id: owner.discordId };
 }
 
-/** `account_hash` only when the read model has it (service keys, D-90): omitted, never null. */
+/** `account_hash` only when the read model has it (service keys, D-91): omitted, never null. */
 function accountHash(a: { accountHash?: string }): { account_hash?: string } {
   return a.accountHash === undefined ? {} : { account_hash: a.accountHash };
 }

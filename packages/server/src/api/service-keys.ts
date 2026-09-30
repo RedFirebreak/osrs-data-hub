@@ -1,8 +1,8 @@
 /**
- * Service keys, the integration keys of the public API (D-87): created and revoked by admins on
+ * Service keys, the integration keys of the public API (D-88): created and revoked by admins on
  * Admin → Integrations, they belong to no user, so offboarding anyone (the admin who created one
  * included) never revokes them and they count towards nobody's per-user limit. A service key reads
- * exactly what the guild audience sees (GUILD_AUDIENCE, D-88): the accounts and categories whose
+ * exactly what the guild audience sees (GUILD_AUDIENCE, D-89): the accounts and categories whose
  * sharing audience is `guild`; `private` and `selected` stay hidden, and there is no admin override
  * (D-70). Same format, storage, categories and expiry as user keys (D-69, keys.ts); its rate limit is
  * its own (`rateLimitPerMinute`, default SERVICE_KEY_RATE_LIMIT).

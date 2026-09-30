@@ -1,5 +1,5 @@
 /**
- * GET /api/v1/locations?accounts=a,b&from=&to= (D-91): the location trails of several accounts in
+ * GET /api/v1/locations?accounts=a,b&from=&to= (D-92): the location trails of several accounts in
  * one call, in request order, each exactly what /accounts/{id}/locations returns for the same range
  * (`location_history`, at most one point per minute, kept 30 days). Up to 10 accounts with a user
  * key, 50 with a service key; an account the key can't read makes the whole request the one 404

@@ -13,7 +13,7 @@
  * 3. authenticateApiKey: every failure is the same 401 (`WWW-Authenticate: Bearer`), whatever was
  *    wrong, and every one but a missing header counts towards the IP's limit.
  * 4. The per-key limits (the key's own requests per minute: 120 for a user key, 600 or the admin's
- *    figure for a service key (D-87), plus 1/s on /snapshot): 429 + Retry-After; the X-RateLimit-*
+ *    figure for a service key (D-88), plus 1/s on /snapshot): 429 + Retry-After; the X-RateLimit-*
  *    headers go on every authenticated response, errors included.
  * 5. The handler, inside handleApi's error mapping (ZodError/ServerApiError → 400/404, database outage
  *    → 503 + Retry-After, anything else → 500 that leaks nothing).

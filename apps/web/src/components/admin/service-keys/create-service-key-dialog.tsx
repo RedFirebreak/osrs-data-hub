@@ -1,6 +1,6 @@
 'use client';
 /**
- * "Create integration key" on Admin → Integrations (D-87): a dialog with the key's name, the
+ * "Create integration key" on Admin → Integrations (D-88): a dialog with the key's name, the
  * categories it may read (nothing preselected), its rate limit (blank = the service default) and its
  * expiry; POST /api/app/admin/service-keys. On success the dialog shows the key once, read-only with
  * a Copy button and a clear warning, and can only be left with "Done", which reloads the list
