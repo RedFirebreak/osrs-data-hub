@@ -4,6 +4,19 @@ Changes are consolidated per pull request, newest first. Each entry names the PR
 open), what changed, and any decision (`D-n`, see [ARCHITECTURE.md](ARCHITECTURE.md#decision-log)) or
 gotcha (`AREA-n`, see [gotchas](gotchas/README.md)) it introduced.
 
+## Static OpenAPI copy for the website (branch `feat/openapi-export`)
+
+- **`docs/openapi.json`:** a checked-in copy of the `/api/v1` OpenAPI document, built with
+  `APP_URL=https://hub.example.com`. The project website
+  ([osrs-data-hub-website](https://github.com/RedFirebreak/osrs-data-hub-website)) vendors it, so its API
+  reference works without a running hub.
+- **Drift check:** `openapi.snapshot.test.ts` compares the built document with the file
+  (`toMatchFileSnapshot`), so `pnpm test` fails when a schema changes and the copy wasn't refreshed.
+  `pnpm openapi:update` rewrites it. Prettier skips the file (it is plain `JSON.stringify` output).
+- **e2e on Windows:** `e2e/serve.mjs` spawns pnpm through a shell on Windows and passes the Discord
+  mock to `--import` as a `file://` URL, so `pnpm test:e2e` (and the screenshot run) works there too
+  (TOOL-10).
+
 ## OSRS game icons (branch `red/osrs-icons`)
 
 Items, skills and empty equipment slots show the game's icons from the central osrs-icons CDN (D-95).

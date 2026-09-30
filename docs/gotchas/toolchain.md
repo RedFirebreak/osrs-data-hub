@@ -16,6 +16,7 @@ Build, lint, test and package tooling (TypeScript, ESLint, Prettier, pnpm, tsup,
 | [TOOL-7](#tool-7) | After `pnpm format`, `tools/check_gotchas.py` reports `has no '*Source: ...*' line` for every entry and doc tables are re-padded, or tests that splice a payload fixture as a string fail (`expected [] to deeply equal [ 'player.inventory' ]`). |
 | [TOOL-8](#tool-8) | A Playwright run whose `globalSetup` creates the app's database fails with `Timed out waiting 60000ms from config.webServer`, or the server logs `database "…" does not exist` at start although `globalSetup` created it. |
 | [TOOL-9](#tool-9) | On a Windows clone `pnpm format:check` flags nearly every file (`Code style issues found in 548 files`), untouched ones like `apps/web/tsconfig.json` included, while the same content with the CRs stripped passes; or it still fails that way after pulling the commit that adds `.gitattributes`, with `git ls-files --eol` still showing `w/crlf`. |
+| [TOOL-10](#tool-10) | On Windows `pnpm test:e2e` never starts the server: `e2e: next build failed (spawnSync pnpm ENOENT)`, or with `E2E_SKIP_BUILD=1` `Error [ERR_UNSUPPORTED_ESM_URL_SCHEME]: … Received protocol 'e:'`. |
 | [ZOD-1](#zod-1) | Unknown or new fields in a plugin payload vanish after parsing: stored event data lacks keys the plugin sent. |
 
 ### PGBOSS-1
@@ -173,6 +174,17 @@ stay CRLF. With a clean working tree, delete the tracked files and check them ou
 `git ls-files -z | xargs -0 rm -f && git checkout -- .` (or clone again).
 
 *Source: `OBSERVED` (this repo, Windows 11, Git for Windows with system `core.autocrlf=true`, prettier 3.9.9, 2026-09-29: 548 files flagged; after adding `.gitattributes`, `git checkout-index -a -f` left 594 files CRLF until they were deleted and checked out again)*
+
+### TOOL-10
+**On Windows `pnpm test:e2e` never starts the server: `e2e: next build failed (spawnSync pnpm ENOENT)`, or with `E2E_SKIP_BUILD=1` `Error [ERR_UNSUPPORTED_ESM_URL_SCHEME]: … Received protocol 'e:'`.**
+Two Node behaviours that only differ on Windows, both in `apps/web/e2e/serve.mjs`. pnpm is installed as
+`pnpm.cmd`, and `spawn`/`spawnSync` without a shell don't resolve `.cmd` files, so `spawnSync('pnpm', …)`
+fails with ENOENT. And `--import` in `NODE_OPTIONS` takes a module specifier, i.e. a URL: an absolute
+Windows path such as `E:\…\mock-discord.mjs` parses as a URL with scheme `e:`. Pass
+`shell: process.platform === 'win32'` to the spawn, and `pathToFileURL(path).href` to `--import`.
+Linux CI never sees either.
+
+*Source: `OBSERVED` (e2e screenshots on Windows 11, Node 22.14, 2026-09-30)*
 
 ### ZOD-1
 **Unknown or new fields in a plugin payload vanish after parsing: stored event data lacks keys the plugin sent.**
