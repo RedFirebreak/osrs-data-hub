@@ -252,3 +252,26 @@ below changes the cluster too, so call it out in the PR.
   and [`ops/prometheus/alerts.yml`](../ops/prometheus/alerts.yml) are consumed verbatim by the cluster,
   as a Grafana dashboard ConfigMap and a PrometheusRule (D-85). Renaming a metric, a label, an alert or
   the `job` variable breaks them there as well as in a self-managed Grafana.
+
+## 10. Releases
+
+A release is a git tag `v<major>.<minor>.<patch>` on `main`; the Release workflow builds the two images
+for it and publishes them to GHCR as `<major>.<minor>.<patch>` and `<major>.<minor>` (D-87). Nothing is
+released on merge: cut one when a feature or fix is ready, one version per PR or a few PRs together.
+
+- **The button.** GitHub → Actions → **Cut release** → Run workflow, branch `main`, choose `patch`,
+  `minor` or `major`. It computes the next version from the latest tag, tags `main`'s head, creates a
+  GitHub Release whose notes list the PRs merged since the previous tag, and publishes both images. It
+  refuses to run from another branch, on a commit that is already tagged, or on a commit whose CI run
+  on `main` has not succeeded yet (wait for it, or fix it).
+- **By hand,** the same thing without the guards: create a Release in the GitHub UI with a new tag, or
+  `gh release create v0.2.0 --generate-notes`, or `git tag v0.2.0 && git push origin v0.2.0`. A tag
+  pushed by a person triggers the Release workflow directly.
+- **Which bump.** `patch` for fixes and small changes, `minor` for a feature, `major` when a deployment
+  has to change something to upgrade: an env variable renamed or made required, a manual migration
+  step, an image contract in §9. Say so in the release notes; that is what the cluster's Renovate PR
+  links to.
+- **Dry run.** Actions → **Release** → Run workflow on any branch builds both images without pushing.
+
+The cluster picks a new version up through its Renovate (§9); Compose deployments pull whatever tag
+their `compose.yaml` names, or build locally as before.
