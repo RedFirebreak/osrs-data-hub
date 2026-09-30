@@ -4,7 +4,24 @@ Changes are consolidated per pull request, newest first. Each entry names the PR
 open), what changed, and any decision (`D-n`, see [ARCHITECTURE.md](ARCHITECTURE.md#decision-log)) or
 gotcha (`AREA-n`, see [gotchas](gotchas/README.md)) it introduced.
 
-## Game state and loot leaderboard for the live map (branch `red/map-loot-leaderboard`)
+## Loot leaderboard index and timed-out game state (branch `red/loot-index-followup`)
+
+Review fixes to #13 (D-94) that were left uncommitted when it merged.
+
+- **Loot index:** migration `0006_events_loot_rank_idx` adds a partial index over the ranked drops
+  (`lootRankedEvent` in `@hub/db` is its predicate and the query's). The leaderboard ranks from it
+  with an index-only scan, then reads only the top rows: `period=month` over a 2.4M-event test table
+  went from 256 ms to 35 ms.
+- **`game_state` on `/snapshot`:** now null once an in-game state timed out (`online` false without a
+  reported logout), so a crashed client never reads as logged in.
+- **Docs:** API.md notes that a drop can rank on `/leaderboards/loot` a few seconds before the
+  `/events` cursor serves it; D-94 records the index, the timed-out `game_state` and the settle margin.
+- **Shared `period` schema:** both leaderboard queries use one `leaderboardPeriod`, and `/snapshot`'s
+  `game_state` reuses the presence schema's.
+- **Tests:** the snapshot read-model expects `game_state: null` after a timeout; the loot route test
+  matches entries to `/events` by id, since the feed is in `seq` order and the leaderboard by value.
+
+## Game state and loot leaderboard for the live map (PR #13)
 
 Two more API v1 additions requested by [ha-osrs-map](https://github.com/RedFirebreak/ha-osrs-map)
 (D-94). Additive only (D-71).

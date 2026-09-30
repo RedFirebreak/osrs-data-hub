@@ -242,8 +242,9 @@ service key). The other fields depend on the key's categories on that account:
 
 A field is omitted without its category, and `null` when readable but never sent. `game_state` is the
 last game state the plugin sent (`LOGGED_IN`, `LOGIN_SCREEN`, `HOPPING`, …), the same value as
-`presence.game_state` on `/accounts/{id}` (D-94). It isn't cleared when presence times out, so an
-account can be `online: false` with `game_state: "LOGGED_IN"`; `online` is the one to trust.
+`presence.game_state` on `/accounts/{id}` (D-94), except that it's `null` once an in-game state
+timed out (`online` turned false without the plugin reporting a logout, e.g. a crashed client), so it
+never says `LOGGED_IN` for an offline account.
 
     GET /api/v1/snapshot
     → 200, ETag: W/"iJSsXZ1wy4SjrMLJMHceEMf2oLc", Last-Modified: Tue, 29 Sep 2026 14:13:42 GMT
@@ -414,7 +415,9 @@ The period's most valuable drops over accounts whose `events` the key reads (D-9
 - `period` as for the gains leaderboards (`day` since local midnight in the key creator's time zone,
   UTC for a service key; `week`/`month` the last 7/30 days). Default `period=day`.
 - `limit`: 1–50, default 10.
-- Each `event` is exactly what `/events` serves for it, `data.location` removed the same way.
+- Each `event` is exactly what `/events` serves for it, `data.location` removed the same way. A drop
+  can show up here a few seconds before the `/events` cursor serves it, which holds back events
+  younger than its settle margin.
 - `entries` is empty when nothing qualifies, also for a key that reads no account's `events`.
 - The admin's guild feed filter (D-81) doesn't apply, as for the rest of the API.
 
@@ -477,6 +480,6 @@ Other rules:
   - `owner.discord_id` and `account_hash` link a hub account to the player who paired with the map
     directly (D-90, D-91); `/xp?accounts=` and `/locations?accounts=` take 50 accounts per call
     (D-92).
-  - `game_state` on `/snapshot` (with `activity`) and `/leaderboards/loot` (with `events`) for its
-    status and top-drops panels (D-94).
+  - `game_state` on `/snapshot` (with `activity`) for its status panel, and `/leaderboards/loot`
+    (with `events`) for its top-drops panel (D-94).
   - There is no push for keys yet (D-93): polling is the contract.

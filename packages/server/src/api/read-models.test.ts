@@ -371,7 +371,8 @@ describe('apiSnapshot', () => {
       online: false,
       world: 319,
       specialWorld: false,
-      gameState: 'LOGGED_IN',
+      // Presence timed out: the stale in-game state isn't served (D-94).
+      gameState: null,
       lastSeen: new Date(t0 + 10 * MIN).toISOString(),
       hp: expect.any(Object) as unknown,
       prayer: expect.any(Object) as unknown,

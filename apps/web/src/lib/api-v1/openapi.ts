@@ -218,7 +218,7 @@ export const OPERATIONS: readonly OperationSpec[] = [
     operationId: 'getLootLeaderboard',
     tag: 'Leaderboards',
     summary: 'Loot leaderboard',
-    description: `The period’s most valuable drops over the accounts whose \`events\` the key may read: \`loot\` and \`pk_loot\` events with a value, not on a special world, highest \`value_gp\` first. Each entry’s \`event\` is exactly what \`/events\` serves (with \`data.location\` removed the same way). Default \`period=day\`, \`limit=${LOOT_LEADERBOARD_DEFAULT_LIMIT}\` (at most ${LOOT_LEADERBOARD_MAX_LIMIT}).`,
+    description: `The period’s most valuable drops over the accounts whose \`events\` the key may read: \`loot\` and \`pk_loot\` events with a value, not on a special world, highest \`value_gp\` first. Each entry’s \`event\` is exactly what \`/events\` serves (with \`data.location\` removed the same way), though it can appear here a few seconds before the \`/events\` cursor serves it. Default \`period=day\`, \`limit=${LOOT_LEADERBOARD_DEFAULT_LIMIT}\` (at most ${LOOT_LEADERBOARD_MAX_LIMIT}).`,
     response: 'LootLeaderboardResponse',
     query: S.LootLeaderboardQuery,
   },

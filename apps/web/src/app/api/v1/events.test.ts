@@ -185,8 +185,13 @@ describe('GET /api/v1/leaderboards/loot', () => {
     const { data } = expectShape(LootLeaderboardResponse, await res.json());
     expect(data.period).toBe('week');
     expect(Date.parse(data.to) - Date.parse(data.from)).toBe(7 * 24 * 60 * 60 * 1000);
-    const feed = await page(ownerKey, '?types=loot');
-    expect(data.entries).toEqual(feed.data.map((event, i) => ({ rank: i + 1, event })));
+    // Match by id: the feed is in seq order, the leaderboard in value order.
+    const feed = new Map((await page(ownerKey, '?types=loot')).data.map((e) => [e.id, e]));
+    expect(data.entries.length).toBeGreaterThan(0);
+    data.entries.forEach((entry, i) => {
+      expect(entry.rank).toBe(i + 1);
+      expect(entry.event).toEqual(feed.get(entry.event.id));
+    });
     expect(data.entries[0]?.event).toMatchObject({
       type: 'loot',
       account: { id: world.main.id, name: world.main.name },
