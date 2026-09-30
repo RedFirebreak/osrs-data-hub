@@ -2,10 +2,12 @@
  * The skills table (handoff §12): Overall first, then the skills in the in-game grid order (the read
  * model already sorts them), with the real level (a virtual level above 99 is shown subtly next to
  * it, PLUGIN-9), XP, and XP gained today / over 7, 30 and 365 days (phones: today only). Overall's
- * level is the real total level (D-44). Server component.
+ * level is the real total level (D-44). Each skill has its game icon (D-95; none for Overall).
+ * Server component.
  */
 import { MAX_REAL_LEVEL, OVERALL, formatGain, formatNumber } from '@hub/core';
 import type { SkillRow } from '@hub/server';
+import { SkillIcon } from '@/components/icons/osrs-icon';
 import {
   Table,
   TableBody,
@@ -66,7 +68,11 @@ export function SkillsTable({ rows, className }: SkillsTableProps) {
           return (
             <TableRow key={row.skill} className={cn(overall && 'bg-muted/40 font-medium')}>
               <TableHead scope="row" className="font-medium">
-                {overall ? 'Overall' : row.skill}
+                <span className="flex items-center gap-2">
+                  {/* Overall has no icon; holdSpace keeps the names lined up. */}
+                  <SkillIcon skill={row.skill} holdSpace />
+                  {overall ? 'Overall' : row.skill}
+                </span>
               </TableHead>
               <TableCell className="text-right">
                 {formatNumber(row.realLevel)}

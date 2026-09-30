@@ -2,7 +2,8 @@
  * Privacy (handoff §16, public): what is stored and for how long (the retention table of
  * ARCHITECTURE §8, with this deployment's values from getConfig()), who can see what (the sharing
  * categories and defaults, handoff §10), that the plugin decides what is sent (D-4), hosting in the
- * Netherlands (GDPR), and what "Download my data" (D-79) and "Delete my data" (D-78) do.
+ * Netherlands (GDPR), the icon server the browser loads pictures from (D-95), and what "Download my
+ * data" (D-79) and "Delete my data" (D-78) do.
  */
 import { CATEGORIES, CATEGORY_LABELS, DEFAULT_AUDIENCE, getConfig, type Audience } from '@hub/core';
 import { SELF_DELETE_UNDO_DAYS } from '@hub/server';
@@ -55,6 +56,8 @@ export default async function PrivacyPage() {
   await connection();
   const config = getConfig();
   const guild = config.discord.guildName;
+  // The icon CDN the browser loads pictures from (D-95); null when icons are off.
+  const iconsHost = config.osrsIconsUrl ? new URL(config.osrsIconsUrl).host : null;
 
   const retention: { data: string; kept: string }[] = [
     {
@@ -166,6 +169,14 @@ export default async function PrivacyPage() {
               For each sign-in the hub keeps the IP address and browser it came from until it
               expires. There is no tracking or advertising.
             </li>
+            {iconsHost && (
+              <li>
+                Item, skill and equipment-slot pictures load from {iconsHost}, an icon server for
+                OSRS tools. Your browser fetches them directly, so that server sees your IP address
+                and which pictures a page shows, as any website would; nothing else about you or
+                your accounts is sent to it.
+              </li>
+            )}
             <li>Your settings (toast filter, time zone).</li>
           </ul>
         </Section>

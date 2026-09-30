@@ -1,6 +1,7 @@
 /**
  * A list of events (FeedEvent from @hub/server: already permission-checked and redacted for the
- * viewer, with describeEvent's line and icon hint). Each row: icon, the line (linking to the account
+ * viewer, with describeEvent's line and icon hint). Each row: icon (the game icon of the item or
+ * skill it names, else the hint's lucide icon; D-95), the line (linking to the account
  * page unless `linkAccounts` is false), a relative time, a value badge for loot, and a "Special world"
  * badge when flagged.
  *
@@ -104,6 +105,7 @@ export function EventFeedItem({
       <EventIconBadge
         icon={event.icon}
         label={event.title}
+        game={event}
         className={compact ? 'size-7' : undefined}
       />
       <div className="min-w-0 flex-1">

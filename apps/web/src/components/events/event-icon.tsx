@@ -1,10 +1,12 @@
 /**
  * Icons for events. @hub/core describeEvent (and so every FeedEvent) carries an icon *hint* —
  * 'gift' | 'skull' | 'trending-up' | 'book' | 'swords' | 'map' | 'sparkles' | 'bell' — which maps to
- * a lucide icon here; unknown hints fall back to the bell. Server- and client-safe (no hooks).
+ * a lucide icon here; unknown hints fall back to the bell. EventIconBadge shows the event's game icon
+ * instead when it has one (the item it names, else its skill; D-95), with the lucide icon as the
+ * fallback. Server- and client-safe (no hooks here; the game icon is a client leaf).
  *
  *   <EventIcon icon={event.icon} className="size-4" />      // the bare icon
- *   <EventIconBadge icon={event.icon} />                     // the icon in a tinted circle (feeds)
+ *   <EventIconBadge icon={event.icon} game={event} />       // in a tinted circle (feeds)
  */
 import {
   BellIcon,
@@ -18,6 +20,8 @@ import {
   type LucideIcon,
   type LucideProps,
 } from 'lucide-react';
+import { EventGameIcon } from '@/components/icons/osrs-icon';
+import type { EventIconSource } from '@/lib/osrs-icons';
 import { cn } from '@/lib/utils';
 
 const ICONS: Readonly<Record<string, LucideIcon>> = {
@@ -81,11 +85,13 @@ export interface EventIconBadgeProps {
   icon: string;
   /** Screen-reader text for the icon, e.g. the event's title ("Loot"). */
   label?: string;
+  /** The event's item and skill (a FeedEvent): its game icon replaces the lucide one when it has one. */
+  game?: EventIconSource;
   className?: string;
 }
 
 /** The icon in a tinted circle, sized for feed rows (size-8; pass className to change). */
-export function EventIconBadge({ icon, label, className }: EventIconBadgeProps) {
+export function EventIconBadge({ icon, label, game, className }: EventIconBadgeProps) {
   const tone = (Object.hasOwn(TONES, icon) ? TONES[icon] : undefined) ?? TONES.bell;
   return (
     <span
@@ -95,7 +101,15 @@ export function EventIconBadge({ icon, label, className }: EventIconBadgeProps) 
         className,
       )}
     >
-      <EventIcon icon={icon} className="size-4" />
+      {game ? (
+        <EventGameIcon
+          event={game}
+          className="size-6"
+          fallback={<EventIcon icon={icon} className="size-4" />}
+        />
+      ) : (
+        <EventIcon icon={icon} className="size-4" />
+      )}
       {label && <span className="sr-only">{label}</span>}
     </span>
   );

@@ -1,4 +1,4 @@
-import { parseConfig, setConfigForTests } from '@hub/core';
+import { getConfig, parseConfig, setConfigForTests } from '@hub/core';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -71,5 +71,18 @@ describe('privacy page', () => {
     expect(text).toContain('Delete my data');
     expect(text).toContain('7 days to change your mind');
     expect(text).toMatch(/Signing in again before then cancels it/);
+  });
+
+  it('names the icon server the browser loads pictures from, and not when icons are off (D-95)', async () => {
+    const text = await render();
+    expect(text).toContain('pictures load from icons.scapekeeper.com');
+    expect(text).toMatch(/sees your IP address/);
+    const before = getConfig();
+    setConfigForTests(parseConfig({ APP_URL: 'http://hub.test', OSRS_ICONS_URL: '' }));
+    try {
+      expect(await render()).not.toContain('icon server');
+    } finally {
+      setConfigForTests(before);
+    }
   });
 });

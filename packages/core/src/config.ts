@@ -38,6 +38,46 @@ const optionalString = z
   .optional()
   .transform((v) => (v && v.trim() !== '' ? v.trim() : undefined));
 
+/** Where the hub's item, skill and equipment-slot icons come from by default (D-95). */
+export const DEFAULT_OSRS_ICONS_URL = 'https://icons.scapekeeper.com';
+
+/**
+ * OSRS_ICONS_URL (D-95): unset → the default CDN; empty → icons off (null); otherwise an http(s) base
+ * URL, trailing slashes removed. Read at runtime like every other variable: a NEXT_PUBLIC_* value
+ * would be baked into the prebuilt image (NEXT-17).
+ */
+const iconsUrl = z
+  .string()
+  .optional()
+  .transform((v, ctx) => {
+    if (v === undefined) return DEFAULT_OSRS_ICONS_URL;
+    const trimmed = v.trim().replace(/\/+$/, '');
+    if (trimmed === '') return null;
+    let url: URL;
+    try {
+      url = new URL(trimmed);
+    } catch {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'must be an absolute URL including https://, or empty to turn icons off',
+      });
+      return z.NEVER;
+    }
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+      ctx.addIssue({ code: 'custom', message: 'must start with https:// (or http://)' });
+      return z.NEVER;
+    }
+    // Icon URLs are `${base}/items/…`: a query, fragment or credentials would end up in the middle.
+    if (url.search || url.hash || url.username || url.password) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'must be a plain base URL, without ?query, #fragment or user:password@',
+      });
+      return z.NEVER;
+    }
+    return trimmed;
+  });
+
 const EnvSchema = z.object({
   APP_URL: z
     .string()
@@ -94,6 +134,7 @@ const EnvSchema = z.object({
   METRICS_TOKEN: optionalString,
   WORKER_METRICS_PORT: int(9464, 0),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
+  OSRS_ICONS_URL: iconsUrl,
 });
 
 export interface HubConfig {
@@ -126,6 +167,8 @@ export interface HubConfig {
   /** The worker's /metrics port (D-84); 0 = no endpoint. */
   workerMetricsPort: number;
   logLevel: 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace' | 'silent';
+  /** Base URL of the OSRS icon CDN without a trailing slash; null = icons off (D-95). */
+  osrsIconsUrl: string | null;
 }
 
 export class ConfigError extends Error {
@@ -183,6 +226,7 @@ export function parseConfig(env: Record<string, string | undefined> = process.en
     metricsToken: e.METRICS_TOKEN,
     workerMetricsPort: e.WORKER_METRICS_PORT,
     logLevel: e.LOG_LEVEL,
+    osrsIconsUrl: e.OSRS_ICONS_URL,
   };
 }
 

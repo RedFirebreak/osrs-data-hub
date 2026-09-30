@@ -34,6 +34,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { useIconConfig } from '@/components/icons/icon-config-provider';
 import { showEventToast } from './event-toast';
 import { LiveConnection, type LiveConnectionState } from './live-connection';
 import {
@@ -104,6 +105,7 @@ export function LiveProvider({ children, toasts = true }: LiveProviderProps) {
   const connection = useRef<LiveConnection | null>(null);
   const expiryTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const lastResyncReconnect = useRef(0);
+  const icons = useIconConfig();
 
   const scheduleExpiry = useCallback((publicId: string, onlineForMs: number) => {
     const timers = expiryTimers.current;
@@ -125,7 +127,7 @@ export function LiveProvider({ children, toasts = true }: LiveProviderProps) {
       case 'event': {
         const msg = data as LiveEventMessage;
         setLastEvent(msg.event);
-        if (msg.toast && toasts) showEventToast(msg.event);
+        if (msg.toast && toasts) showEventToast(msg.event, Date.now(), icons);
         break;
       }
       case 'presence': {

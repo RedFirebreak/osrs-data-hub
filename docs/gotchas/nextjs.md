@@ -20,6 +20,7 @@ Next.js 16 (route handlers, server actions, RSC, proxy.ts, instrumentation, base
 | [NEXT-14](#next-14) | An unknown id's page shows the not-found UI but answers HTTP 200, with `<meta name="robots" content="noindex">` in its HTML, while a `notFound()` from a layout answers 404. |
 | [NEXT-15](#next-15) | `pnpm dev` or a tsx script in a workspace package ignores the repo-root `.env` (`DATABASE_URL is not set`), and starting Next as `node --env-file=… next dev` exits at once with code 9: `--env-file-if-exists= is not allowed in NODE_OPTIONS`. |
 | [NEXT-16](#next-16) | A streamed download logs an error such as `export: failed while streaming` with `TypeError: Invalid state: Controller is already closed` whenever the client cancels it halfway (a closed tab, an aborted `fetch`). |
+| [NEXT-17](#next-17) | A setting read as `process.env.NEXT_PUBLIC_*` keeps the value it had when the image was built: changing it in `.env` or the pod's environment and restarting has no effect in client components (it is `undefined` when the build had none). |
 
 ### NEXT-1
 **Changing `basePath` or an `APP_URL` path prefix at runtime has no effect: the app still answers on the prefix it was built with and 404s on the new one.**
@@ -209,3 +210,18 @@ Fix: set a flag in `cancel()` and have the pull's `catch` return quietly when it
 manual test that cancels between reads doesn't show it.
 
 *Source: `OBSERVED` (apps/web `api/app/export/route.test.ts` "stops the export when the download is cancelled", Next 16.3.6 on Node 22.14, 2026-09-29: the enqueue after cancel threw the TypeError above every run)*
+
+### NEXT-17
+**A setting read as `process.env.NEXT_PUBLIC_*` keeps the value it had when the image was built: changing it in `.env` or the pod's environment and restarting has no effect in client components (it is `undefined` when the build had none).**
+`next build` replaces every literal `process.env.NEXT_PUBLIC_<NAME>` with the value in the build
+environment: `getDefineEnv` (next/dist/build/define-env.js) hands the bundler, Turbopack or webpack, a
+define for each `NEXT_PUBLIC_` variable set during the build (`getNextPublicEnvironmentVariables`,
+next/dist/lib/static-env.js), for the client and the server bundles alike. The released images
+are built once in CI (D-87), so a per-deployment value can never reach the browser that way, and a
+`NEXT_PUBLIC_` variable set only at runtime is simply ignored. Fix: read the variable on the server at
+request time (through `getConfig()` in a dynamic layout or page) and hand it to client components as a
+prop or through a context provider, as `OSRS_ICONS_URL` does (apps/web `app/(app)/layout.tsx`,
+`components/icons/icon-config-provider.tsx`, D-95). The hub has no `NEXT_PUBLIC_*` variables; keep it
+that way.
+
+*Source: `SOURCE` (next 16.3.7 dist/build/define-env.js:51-53, dist/lib/static-env.js:42-56); `DOCS` (next/dist/docs 01-app/02-guides/environment-variables.md:158-166, "frozen with the value evaluated at build time")*

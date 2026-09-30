@@ -102,6 +102,11 @@ export function configSections(config: HubConfig): ConfigSection[] {
           value: text(config.trustProxyHops),
         },
         { name: 'LOG_LEVEL', description: 'Log verbosity', value: text(config.logLevel) },
+        {
+          name: 'OSRS_ICONS_URL',
+          description: 'Item, skill and slot icons (D-95)',
+          value: text(config.osrsIconsUrl ?? 'off (text only)'),
+        },
       ],
     },
     {
