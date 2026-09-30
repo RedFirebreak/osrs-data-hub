@@ -4,6 +4,14 @@ Changes are consolidated per pull request, newest first. Each entry names the PR
 open), what changed, and any decision (`D-n`, see [ARCHITECTURE.md](ARCHITECTURE.md#decision-log)) or
 gotcha (`AREA-n`, see [gotchas](gotchas/README.md)) it introduced.
 
+## Renovate waits 7 days for a release (branch `red/renovate-patch-age-delay-007033`)
+
+- **`renovate.json`:** `minimumReleaseAge: "7 days"`, so Renovate only opens a PR for a release once it
+  has been published for a week; a version that is pulled or quickly followed by a fix in that window
+  never reaches a PR. With the default `internalChecksFilter=strict` no branch is created while an
+  update is pending; the Dependency Dashboard lists it under "Pending Status Checks", where it can be
+  forced early.
+
 ## Loot leaderboard index and timed-out game state (branch `red/loot-index-followup`)
 
 Review fixes to #13 (D-94) that were left uncommitted when it merged.

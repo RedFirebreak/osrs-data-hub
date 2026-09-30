@@ -1,6 +1,7 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:recommended", "helpers:pinGitHubActionDigests"],
+  "minimumReleaseAge": "7 days",
   "packageRules": [
     {
       "description": "compose.yaml, compose.dev.yaml and ci.yml pin the same TimescaleDB image, and the Kubernetes deployment mirrors it (docs/OPERATIONS.md §9): bump all three in one PR so they cannot drift.",
