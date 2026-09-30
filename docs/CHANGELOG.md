@@ -4,6 +4,26 @@ Changes are consolidated per pull request, newest first. Each entry names the PR
 open), what changed, and any decision (`D-n`, see [ARCHITECTURE.md](ARCHITECTURE.md#decision-log)) or
 gotcha (`AREA-n`, see [gotchas](gotchas/README.md)) it introduced.
 
+## Game state and loot leaderboard for the live map (branch `red/map-loot-leaderboard`)
+
+Two more API v1 additions requested by [ha-osrs-map](https://github.com/RedFirebreak/ha-osrs-map)
+(D-94). Additive only (D-71).
+
+- **`game_state` on `/snapshot`:** each account whose `activity` the key reads carries `game_state`
+  (`LOGGED_IN`, `LOGIN_SCREEN`, `HOPPING`, …, or null), the same value as `presence.game_state` on
+  `/accounts/{id}`; omitted without `activity`, like `online` and `world`.
+- **`GET /api/v1/leaderboards/loot?period=day|week|month&limit=`:** the period's most valuable `loot`
+  and `pk_loot` events (with a value, not on a special world) over the accounts whose `events` the key
+  reads, as `{ period, from, to, entries: [{ rank, event }] }`; `limit` 1–50, default 10; periods as
+  the gains leaderboards. Each `event` is exactly the `/events` one (`eventReadableAccounts` and
+  `toApiEvents` are now shared from `events.ts`), location redaction included. Zod schemas, wire
+  mapper and OpenAPI operation `getLootLeaderboard`.
+- **Tests:** `loot-leaderboard.test.ts` (ordering, period cutoff and time zone, limit, types, special
+  worlds, access, redaction against `/events`); the route in `events.test.ts` and the plumbing
+  preflight list; `game_state` in the snapshot read-model, route and wire tests.
+- **Docs:** API.md (`/snapshot` activity fields, the new endpoint, known consumers); ARCHITECTURE §14
+  and D-94.
+
 ## Cut release button (branch `red/cut-release-workflow`)
 
 Releases stay manual, one per feature or fix rather than one per merge, but no longer need a version

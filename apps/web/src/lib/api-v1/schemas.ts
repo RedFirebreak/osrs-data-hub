@@ -20,6 +20,8 @@ import {
   GAINS_PERIODS,
   HISTORY_DEFAULT_DAYS,
   LEADERBOARD_PERIODS,
+  LOOT_LEADERBOARD_DEFAULT_LIMIT,
+  LOOT_LEADERBOARD_MAX_LIMIT,
   MAX_BULK_ACCOUNTS,
   MAX_BULK_ACCOUNTS_SERVICE,
   MAX_LIST_PARAM,
@@ -215,6 +217,19 @@ export const LeaderboardQuery = z.object({
     description:
       '`day` = since local midnight in the key creator’s time zone; `week`/`month` = the last 7/30 days. Default `day`.',
   }),
+});
+
+/** GET /leaderboards/loot. */
+export const LootLeaderboardQuery = z.object({
+  period: z.enum(LEADERBOARD_PERIODS).optional().meta({
+    description:
+      '`day` = since local midnight in the key creator’s time zone; `week`/`month` = the last 7/30 days. Default `day`.',
+  }),
+  limit: wholeNumber(1, LOOT_LEADERBOARD_MAX_LIMIT)
+    .optional()
+    .meta({
+      description: `Drops to return, 1 to ${LOOT_LEADERBOARD_MAX_LIMIT}. Default ${LOOT_LEADERBOARD_DEFAULT_LIMIT}.`,
+    }),
 });
 
 // ─── Responses ─────────────────────────────────────────────────────────────────────────────────
@@ -429,6 +444,11 @@ export const SnapshotAccount = z.object({
   online: z.boolean().optional().meta(inActivity('in game now')),
   world: int.nullable().optional().meta(inActivity('last known world')),
   special_world: z.boolean().optional().meta(inActivity()),
+  game_state: z
+    .string()
+    .nullable()
+    .optional()
+    .meta(inActivity('last game state as sent (LOGGED_IN, LOGIN_SCREEN, HOPPING, …)')),
   last_seen: timestamp.optional().meta(inActivity('when the hub last heard from the account')),
   hp: Meter.nullable().optional().meta(inActivity()),
   prayer: Meter.nullable().optional().meta(inActivity()),
@@ -601,6 +621,23 @@ export const LeaderboardsData = z.object({
   ),
 });
 
+export const LootLeaderboardData = z.object({
+  period: z.enum(LEADERBOARD_PERIODS),
+  from: timestamp,
+  to: timestamp,
+  entries: z
+    .array(
+      z.object({
+        rank: int.min(1),
+        event: Event,
+      }),
+    )
+    .meta({
+      description:
+        'Loot and PK loot with a value, not on a special world, that occurred in [from, to]: highest `value_gp` first (newest first on a tie), at most `limit`. Each `event` is exactly what `/events` serves.',
+    }),
+});
+
 // Envelopes
 const Meta = z.object({
   generated_at: timestamp.meta({ description: 'When the hub built this response.' }),
@@ -637,6 +674,7 @@ export const WealthResponse = envelope(WealthData, Meta);
 export const LocationsResponse = envelope(LocationsData, Meta);
 export const LocationsMultiResponse = envelope(LocationsMultiData, Meta);
 export const LeaderboardsResponse = envelope(LeaderboardsData, Meta);
+export const LootLeaderboardResponse = envelope(LootLeaderboardData, Meta);
 
 export const ErrorResponse = z.object({
   error: z.object({
@@ -667,5 +705,6 @@ export type WireLocations = z.infer<typeof LocationsData>;
 export type WireLocationsMulti = z.infer<typeof LocationsMultiData>;
 export type WireOwner = z.infer<typeof Owner>;
 export type WireLeaderboards = z.infer<typeof LeaderboardsData>;
+export type WireLootLeaderboard = z.infer<typeof LootLeaderboardData>;
 export type WireItem = z.infer<typeof Item>;
 export type WireSkills = z.infer<typeof Skills>;

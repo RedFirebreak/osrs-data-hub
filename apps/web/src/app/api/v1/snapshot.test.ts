@@ -77,6 +77,7 @@ describe('GET /api/v1/snapshot', () => {
       online: true,
       world: 302,
       special_world: false,
+      game_state: 'LOGGED_IN',
       hp: { current: 99, max: 99 },
       location: { x: 3164, y: 3487, plane: 0, is_on_boat: false, stale: false },
     });
@@ -106,6 +107,7 @@ describe('GET /api/v1/snapshot', () => {
     expect(Object.keys(mapMain ?? {}).sort()).toEqual(
       [
         'categories',
+        'game_state',
         'hp',
         'id',
         'last_seen',
@@ -121,6 +123,15 @@ describe('GET /api/v1/snapshot', () => {
         'world',
       ].sort(),
     );
+
+    // Presence, `game_state` included, belongs to `activity`.
+    const statsKey = await makeKey(ctx, world.ownerId, { name: 'stats', categories: ['stats'] });
+    const stats = expectShape(SnapshotResponse, await (await snapshot(statsKey)).json());
+    const statsMain = stats.data.find((a) => a.id === world.main.id);
+    expect(statsMain?.categories).toEqual(['stats']);
+    for (const field of ['online', 'world', 'special_world', 'game_state', 'last_seen']) {
+      expect(statsMain).not.toHaveProperty(field);
+    }
   });
 
   it('answers If-None-Match with the current ETag with 304: headers, no body', async () => {

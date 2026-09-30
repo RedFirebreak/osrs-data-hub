@@ -17,6 +17,8 @@ import {
   FAILED_AUTH_LIMIT,
   FAILED_AUTH_WINDOW_MS,
   HISTORY_DEFAULT_DAYS,
+  LOOT_LEADERBOARD_DEFAULT_LIMIT,
+  LOOT_LEADERBOARD_MAX_LIMIT,
   MAX_BULK_ACCOUNTS,
   MAX_BULK_ACCOUNTS_SERVICE,
   SERVICE_KEY_RATE_LIMIT,
@@ -211,6 +213,15 @@ export const OPERATIONS: readonly OperationSpec[] = [
     response: 'LeaderboardsResponse',
     query: S.LeaderboardQuery,
   },
+  {
+    path: '/leaderboards/loot',
+    operationId: 'getLootLeaderboard',
+    tag: 'Leaderboards',
+    summary: 'Loot leaderboard',
+    description: `The period’s most valuable drops over the accounts whose \`events\` the key may read: \`loot\` and \`pk_loot\` events with a value, not on a special world, highest \`value_gp\` first. Each entry’s \`event\` is exactly what \`/events\` serves (with \`data.location\` removed the same way). Default \`period=day\`, \`limit=${LOOT_LEADERBOARD_DEFAULT_LIMIT}\` (at most ${LOOT_LEADERBOARD_MAX_LIMIT}).`,
+    response: 'LootLeaderboardResponse',
+    query: S.LootLeaderboardQuery,
+  },
 ];
 
 /** The public operation serving this document (no key, no rate limit). */
@@ -246,6 +257,7 @@ const COMPONENTS: readonly [string, z.ZodType][] = [
   ['LocationsResponse', S.LocationsResponse],
   ['LocationsMultiResponse', S.LocationsMultiResponse],
   ['LeaderboardsResponse', S.LeaderboardsResponse],
+  ['LootLeaderboardResponse', S.LootLeaderboardResponse],
   ['Error', S.ErrorResponse],
 ];
 
@@ -447,7 +459,10 @@ export function buildOpenApiDocument(): Json {
       { name: 'XP and gains', description: 'XP series and gains (`stats`).' },
       { name: 'Events', description: 'The cursor feed (`events`).' },
       { name: 'Histories', description: 'Sessions, equipment, wealth and locations.' },
-      { name: 'Leaderboards', description: 'Gains leaderboards (`stats`).' },
+      {
+        name: 'Leaderboards',
+        description: 'Gains leaderboards (`stats`) and the loot leaderboard (`events`).',
+      },
       { name: 'Meta', description: 'This document.' },
     ],
     paths,

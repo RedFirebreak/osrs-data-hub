@@ -7,7 +7,7 @@ the hub. It is **pull-only**: poll `/snapshot` and the `/events` cursor feed; th
 - Interactive reference: `https://<your hub>/docs/api`
 - OpenAPI 3.1 document: `https://<your hub>/api/v1/openapi.json` (public, no key needed)
 
-Design decisions: D-69 … D-77 and D-88 … D-93 in [ARCHITECTURE.md](ARCHITECTURE.md).
+Design decisions: D-69 … D-77 and D-88 … D-94 in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Authentication
 
@@ -233,20 +233,24 @@ per key.
 Each account has `id`, `name`, `type`, `type_label`, `owner` and `categories` (and `account_hash` for a
 service key). The other fields depend on the key's categories on that account:
 
-- `activity`: `online`, `world`, `special_world`, `last_seen`, `hp`, `prayer`, `spellbook`;
+- `activity`: `online`, `world`, `special_world`, `game_state`, `last_seen`, `hp`, `prayer`,
+  `spellbook`;
 - `location_live`: `location` (with `stale` and `updated_at`);
 - `stats`: `skills`;
 - `equipment`: `equipment`;
 - `inventory`: `inventory`.
 
-A field is omitted without its category, and `null` when readable but never sent.
+A field is omitted without its category, and `null` when readable but never sent. `game_state` is the
+last game state the plugin sent (`LOGGED_IN`, `LOGIN_SCREEN`, `HOPPING`, …), the same value as
+`presence.game_state` on `/accounts/{id}` (D-94). It isn't cleared when presence times out, so an
+account can be `online: false` with `game_state: "LOGGED_IN"`; `online` is the one to trust.
 
     GET /api/v1/snapshot
     → 200, ETag: W/"iJSsXZ1wy4SjrMLJMHceEMf2oLc", Last-Modified: Tue, 29 Sep 2026 14:13:42 GMT
 
     {"data":[{"id":"oC8RsqiTuyak","name":"Alpha Main","type":0,"type_label":"Normal",
       "owner":{"name":"Owner","discord_id":"100000000000000042"},"categories":["stats","events","activity","location_live"],
-      "online":true,"world":302,"special_world":false,"last_seen":"2026-09-29T14:13:42.046Z",
+      "online":true,"world":302,"special_world":false,"game_state":"LOGGED_IN","last_seen":"2026-09-29T14:13:42.046Z",
       "hp":{"current":99,"max":99},"prayer":{"current":99,"max":99},"spellbook":"lunar",
       "location":{"x":3164,"y":3487,"plane":0,"is_on_boat":false,"stale":false,"updated_at":"2026-09-29T14:13:42.046Z"},
       "skills":{"total_level":2372,"overall_xp":534951983,"skills":[…]}},
@@ -400,6 +404,32 @@ accounts that gained XP.
     {"data":{"period":"day","from":"2026-09-29T00:00:00.000Z","to":"2026-09-29T14:14:12.533Z",
      "leaderboards":[{"skill":"Attack","entries":[{"rank":1,"account":{"id":"oC8RsqiTuyak","name":"Alpha Main"},"gain":5000}]}]},"meta":{…}}
 
+### GET /leaderboards/loot?period=day|week|month&limit=
+
+The period's most valuable drops over accounts whose `events` the key reads (D-94).
+
+- Only `loot` and `pk_loot` events with a `value_gp`, never on a special world, that occurred between
+  `from` and `to`.
+- Highest `value_gp` first; drops of equal value newest first. `rank` counts from 1.
+- `period` as for the gains leaderboards (`day` since local midnight in the key creator's time zone,
+  UTC for a service key; `week`/`month` the last 7/30 days). Default `period=day`.
+- `limit`: 1–50, default 10.
+- Each `event` is exactly what `/events` serves for it, `data.location` removed the same way.
+- `entries` is empty when nothing qualifies, also for a key that reads no account's `events`.
+- The admin's guild feed filter (D-81) doesn't apply, as for the rest of the API.
+
+    GET /api/v1/leaderboards/loot?period=week&limit=2
+
+    {"data":{"period":"week","from":"2026-09-22T14:14:12.533Z","to":"2026-09-29T14:14:12.533Z",
+     "entries":[
+      {"rank":1,"event":{"id":"01a0ed84-1827-7008-ad3e-ffb85a03171a","type":"loot","account":{"id":"oC8RsqiTuyak","name":"Alpha Main"},
+        "occurred_at":"2026-09-29T14:13:40.046Z","received_at":"2026-09-29T14:13:42.046Z","value_gp":35237280,
+        "item_id":11828,"npc_id":3162,"skill":null,"level":null,"tier":null,"points":null,"special_world":false,
+        "data":{"type":"loot","eventId":"d57690f0-…","timestamp":1790691220046,"data":{…}},
+        "title":"Loot","line":"Alpha Main received Armadyl chestplate (35.2M) from Kree'arra"}},
+      {"rank":2,"event":{"id":"…","type":"pk_loot","account":{"id":"jHSfP5UICcQt","name":"Bravo Alt"},"value_gp":1250000,…}}]},
+     "meta":{"generated_at":"…"}}
+
 ### GET /openapi.json
 
 The OpenAPI 3.1 description of all of the above, generated from the same schemas the routes validate
@@ -447,4 +477,6 @@ Other rules:
   - `owner.discord_id` and `account_hash` link a hub account to the player who paired with the map
     directly (D-90, D-91); `/xp?accounts=` and `/locations?accounts=` take 50 accounts per call
     (D-92).
+  - `game_state` on `/snapshot` (with `activity`) and `/leaderboards/loot` (with `events`) for its
+    status and top-drops panels (D-94).
   - There is no push for keys yet (D-93): polling is the contract.

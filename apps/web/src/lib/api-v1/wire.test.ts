@@ -104,6 +104,7 @@ describe('wireSnapshotAccount', () => {
       online: false,
       world: null,
       specialWorld: false,
+      gameState: null,
       lastSeen: AT,
       hp: null,
       prayer: { current: 1, max: 2 },
@@ -122,6 +123,7 @@ describe('wireSnapshotAccount', () => {
       online: false,
       world: null,
       special_world: false,
+      game_state: null,
       last_seen: AT,
       hp: null,
       prayer: { current: 1, max: 2 },
@@ -131,6 +133,12 @@ describe('wireSnapshotAccount', () => {
     for (const omitted of ['skills', 'equipment', 'inventory', 'account_hash']) {
       expect(wire).not.toHaveProperty(omitted);
     }
+    // Activity fields only when the read model has them (the key reads `activity`).
+    const { gameState: _g, ...withoutState } = account;
+    expect(wireSnapshotAccount(withoutState)).not.toHaveProperty('game_state');
+    expect(wireSnapshotAccount({ ...account, gameState: 'LOGGED_IN' }).game_state).toBe(
+      'LOGGED_IN',
+    );
     // The hash only when the read model carries it (service keys, D-91).
     const hashed = wireSnapshotAccount({ ...account, accountHash: 'a'.repeat(56) });
     expect(SnapshotAccount.parse(hashed)).toEqual(hashed);

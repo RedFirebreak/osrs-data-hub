@@ -344,6 +344,7 @@ describe('apiSnapshot', () => {
       online: true,
       world: 302,
       specialWorld: false,
+      gameState: 'LOGGED_IN',
       lastSeen: new Date(t0 + HOUR + SEC).toISOString(),
       hp: { current: 99, max: 99 },
       prayer: { current: 99, max: 99 },
@@ -370,6 +371,7 @@ describe('apiSnapshot', () => {
       online: false,
       world: 319,
       specialWorld: false,
+      gameState: 'LOGGED_IN',
       lastSeen: new Date(t0 + 10 * MIN).toISOString(),
       hp: expect.any(Object) as unknown,
       prayer: expect.any(Object) as unknown,
@@ -388,6 +390,7 @@ describe('apiSnapshot', () => {
     expect(Object.keys(z ?? {}).sort()).toEqual(
       [
         'categories',
+        'gameState',
         'hp',
         'id',
         'lastSeen',
@@ -465,6 +468,8 @@ describe('apiSnapshot', () => {
       categories: ['stats'],
       skills: expect.any(Object) as unknown,
     });
+    // Presence, game state included, belongs to `activity`.
+    expect(since.accounts[0]).not.toHaveProperty('gameState');
   });
 
   it('runs the same few queries however many accounts it returns (no N+1)', async () => {
