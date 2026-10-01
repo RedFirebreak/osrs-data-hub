@@ -48,8 +48,6 @@ function all(audience: Audience): Partial<Record<Category, Audience>> {
 }
 
 const sorted = (s: ReadonlySet<Category>) => [...s].sort();
-const isRecord = (v: unknown): v is Record<string, unknown> =>
-  typeof v === 'object' && v !== null && !Array.isArray(v);
 const ALL = [...CATEGORIES].sort();
 /** What a member sees of an account with no sharing rows: every category is guild by default (D-96). */
 const DEFAULT_GUILD: Category[] = ALL;
@@ -640,7 +638,7 @@ describe('redactEventData', () => {
   it('strips data.location from a death for a viewer without location categories', () => {
     const ev = storedEvent('event-death-dangerous');
     const before = structuredClone(ev);
-    const out = redactEventData('death', ev, allButLocation) as Record<string, unknown>;
+    const out = redactEventData(ev, allButLocation) as Record<string, unknown>;
 
     expect(out).not.toBe(ev);
     const data = out.data as Record<string, unknown>;
@@ -658,7 +656,7 @@ describe('redactEventData', () => {
   });
 
   it('strips a SAFE death too', () => {
-    const out = redactEventData('death', storedEvent('event-death-safe'), none) as { data: object };
+    const out = redactEventData(storedEvent('event-death-safe'), none) as { data: object };
     expect(out.data).not.toHaveProperty('location');
     expect(out.data).toHaveProperty('keptItems');
   });
@@ -666,7 +664,7 @@ describe('redactEventData', () => {
   it('strips data.location from a superior_spawn', () => {
     const ev = storedEvent('event-superior');
     const before = structuredClone(ev);
-    const out = redactEventData('superior_spawn', ev, none) as Record<string, unknown>;
+    const out = redactEventData(ev, none) as Record<string, unknown>;
     expect(out.data).toEqual({ name: 'Nechryarch', npcId: 7411 });
     expect(out.type).toBe('superiorSpawn');
     expect(ev).toEqual(before);
@@ -675,25 +673,25 @@ describe('redactEventData', () => {
   it('keeps the location with location_live or location_history (same object)', () => {
     for (const cat of ['location_live', 'location_history'] as const) {
       const death = storedEvent('event-death-dangerous');
-      expect(redactEventData('death', death, new Set([cat]))).toBe(death);
+      expect(redactEventData(death, new Set([cat]))).toBe(death);
       const sup = storedEvent('event-superior');
-      expect(redactEventData('superior_spawn', sup, new Set([cat]))).toBe(sup);
+      expect(redactEventData(sup, new Set([cat]))).toBe(sup);
     }
   });
 
   it('returns events without a location unchanged (same object)', () => {
-    const cases: [string, FixtureName][] = [
-      ['loot', 'event-loot'],
-      ['pk_loot', 'event-pkloot'],
-      ['level_up', 'event-levelup-multi'],
-      ['collection_log', 'event-collectionlog'],
-      ['achievement_diary', 'event-diary-repeat'],
-      ['combat_task', 'event-combattask'],
-      ['questComplete', 'event-unknown-type'],
+    const cases: FixtureName[] = [
+      'event-loot',
+      'event-pkloot',
+      'event-levelup-multi',
+      'event-collectionlog',
+      'event-diary-repeat',
+      'event-combattask',
+      'event-unknown-type',
     ];
-    for (const [type, name] of cases) {
+    for (const name of cases) {
       const ev = storedEvent(name);
-      expect(redactEventData(type, ev, none)).toBe(ev);
+      expect(redactEventData(ev, none)).toBe(ev);
     }
   });
 
@@ -706,7 +704,7 @@ describe('redactEventData', () => {
       eventId: 'e',
       timestamp: 1,
     };
-    expect(redactEventData('petDrop', pet, none)).toEqual({
+    expect(redactEventData(pet, none)).toEqual({
       type: 'petDrop',
       data: { name: 'Baby mole' },
       eventId: 'e',
@@ -714,20 +712,19 @@ describe('redactEventData', () => {
     });
     const loot = storedEvent('event-loot');
     (loot.data as Record<string, unknown>).location = { x: 3222, y: 3218, plane: 0 };
-    const out = redactEventData('loot', loot, none) as { data: Record<string, unknown> };
+    const out = redactEventData(loot, none) as { data: Record<string, unknown> };
     expect(out.data).not.toHaveProperty('location');
     expect(out.data.totalValue).toBe((loot.data as Record<string, unknown>).totalValue);
-    expect(redactEventData('petDrop', pet, new Set(['location_live']))).toBe(pet);
+    expect(redactEventData(pet, new Set(['location_live']))).toBe(pet);
   });
 
   it('leaves no location in any fixture event, and passes each through unchanged with a location category', () => {
     for (const name of FIXTURES) {
       for (const ev of fixtureJson<{ events?: unknown[] }>(name).events ?? []) {
-        const type = isRecord(ev) && typeof ev.type === 'string' ? ev.type : '';
-        expect(JSON.stringify(redactEventData(type, ev, allButLocation) ?? null)).not.toContain(
+        expect(JSON.stringify(redactEventData(ev, allButLocation) ?? null)).not.toContain(
           '"location"',
         );
-        expect(redactEventData(type, ev, new Set(['location_history']))).toBe(ev);
+        expect(redactEventData(ev, new Set(['location_history']))).toBe(ev);
       }
     }
   });
@@ -739,20 +736,19 @@ describe('redactEventData', () => {
       eventId: 'e',
       timestamp: 1,
     };
-    expect(redactEventData('death', ev, none)).toBe(ev);
+    expect(redactEventData(ev, none)).toBe(ev);
   });
 
   it('passes through values that are not an event object', () => {
-    for (const v of [null, undefined, 'death', 42, true])
-      expect(redactEventData('death', v, none)).toBe(v);
+    for (const v of [null, undefined, 'death', 42, true]) expect(redactEventData(v, none)).toBe(v);
     const arr = [{ location: { x: 1, y: 1, plane: 0 } }];
-    expect(redactEventData('death', arr, none)).toBe(arr);
+    expect(redactEventData(arr, none)).toBe(arr);
   });
 
   it('leaves a non-object data alone', () => {
     for (const data of ['x', 3, null, [{ location: {} }]]) {
       const ev = { type: 'death', data, eventId: 'e', timestamp: 1 };
-      expect(redactEventData('death', ev, none)).toBe(ev);
+      expect(redactEventData(ev, none)).toBe(ev);
     }
   });
 
@@ -763,7 +759,7 @@ describe('redactEventData', () => {
       eventId: 'e',
       timestamp: 1,
     };
-    expect(redactEventData('death', ev, none)).toEqual({
+    expect(redactEventData(ev, none)).toEqual({
       type: 'death',
       data: { valueLost: 5 },
       eventId: 'e',
@@ -771,22 +767,9 @@ describe('redactEventData', () => {
     });
   });
 
-  it("doesn't depend on the type argument (a wrong or wire-style type still redacts)", () => {
-    for (const type of ['level_up', '', 'superiorSpawn', 'DEATH']) {
-      const death = storedEvent('event-death-dangerous');
-      expect((redactEventData(type, death, none) as { data: object }).data).not.toHaveProperty(
-        'location',
-      );
-      const sup = storedEvent('event-superior');
-      expect((redactEventData(type, sup, none) as { data: object }).data).not.toHaveProperty(
-        'location',
-      );
-    }
-  });
-
   it('strips a top-level location (inner data passed by mistake)', () => {
     const inner = { name: 'Nechryarch', npcId: 7411, location: { x: 1, y: 2, plane: 0 } };
-    const out = redactEventData('superior_spawn', inner, none);
+    const out = redactEventData(inner, none);
     expect(out).toEqual({ name: 'Nechryarch', npcId: 7411 });
     expect(inner.location).toEqual({ x: 1, y: 2, plane: 0 });
   });
@@ -796,17 +779,17 @@ describe('redactEventData', () => {
     const member = resolveAccess(viewer(MEMBER), account({ sharing: noLocation }));
     const owner = resolveAccess(viewer(OWNER), account({ sharing: noLocation }));
     const ev = storedEvent('event-death-dangerous');
-    expect(
-      (redactEventData('death', ev, member.categories) as { data: object }).data,
-    ).not.toHaveProperty('location');
-    expect(redactEventData('death', ev, owner.categories)).toBe(ev);
+    expect((redactEventData(ev, member.categories) as { data: object }).data).not.toHaveProperty(
+      'location',
+    );
+    expect(redactEventData(ev, owner.categories)).toBe(ev);
     const shared = resolveAccess(
       viewer(MEMBER),
       account({ sharing: { ...noLocation, location_history: 'guild' } }),
     );
-    expect(redactEventData('death', ev, shared.categories)).toBe(ev);
+    expect(redactEventData(ev, shared.categories)).toBe(ev);
     // By default a member gets both location categories (D-96), so the coordinates are kept.
     const byDefault = resolveAccess(viewer(MEMBER), account());
-    expect(redactEventData('death', ev, byDefault.categories)).toBe(ev);
+    expect(redactEventData(ev, byDefault.categories)).toBe(ev);
   });
 });

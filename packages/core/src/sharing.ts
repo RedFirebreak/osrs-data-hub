@@ -193,17 +193,13 @@ function isAudience(value: unknown): value is Audience {
 /**
  * Removes location data from event data the viewer may not see: `data.location` is stripped unless
  * categories include location_live or location_history. In v1.5 only death and superior_spawn events
- * carry one, but the rule applies to every event whatever `type` says (fail closed): unknown types are
+ * carry one, but the rule applies to every event whatever its type (fail closed): unknown types are
  * stored as sent and newer plugins may add fields to known types, and a `location` is coordinates
- * either way. So `type` doesn't change the result. `eventData` is the stored original event
+ * either way. So the function doesn't take the type. `eventData` is the stored original event
  * {type, data, eventId, timestamp}; returns a copy (or the same object when nothing changes); the input
  * is never mutated. A top-level `location` (inner data passed by mistake) is stripped too.
  */
-export function redactEventData(
-  type: string,
-  eventData: unknown,
-  categories: ReadonlySet<Category>,
-): unknown {
+export function redactEventData(eventData: unknown, categories: ReadonlySet<Category>): unknown {
   if (categories.has('location_live') || categories.has('location_history')) return eventData;
   if (!isRecord(eventData)) return eventData;
 

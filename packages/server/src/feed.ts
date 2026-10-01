@@ -54,7 +54,7 @@ export function toFeedEvent(
   account: { publicId: string; name: string },
   categories: ReadonlySet<Category>,
 ): FeedEvent {
-  const data = redactEventData(row.type, row.data, categories);
+  const data = redactEventData(row.data, categories);
   const d = describeEvent(account.name, { ...row, data });
   return {
     id: row.id,
