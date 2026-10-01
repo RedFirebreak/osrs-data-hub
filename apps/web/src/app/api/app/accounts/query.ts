@@ -55,7 +55,7 @@ function paramsOf(url: string | URL): Record<string, string> {
 }
 
 /**
- * `?from=ISO&to=ISO` of a history route (sessions, equipment, wealth, locations). Both optional:
+ * `?from=ISO&to=ISO` of the history route (locations). Both optional:
  * `to` defaults to `now`, `from` to DEFAULT_HISTORY_DAYS before `to`. Throws a ZodError (→ 400) for
  * a value that isn't an ISO instant, or `from` after `to`.
  */

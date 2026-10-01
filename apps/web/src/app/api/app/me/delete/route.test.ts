@@ -7,7 +7,7 @@ import { auditLog, devices, session, users } from '@hub/db';
 import { SELF_DELETE_UNDO_DAYS } from '@hub/server';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { GET as getSettings } from '@/app/api/app/settings/route';
+import { GET as getFeed } from '@/app/api/app/feed/route';
 import { withTestDb, type WebTestContext } from '@/lib/test-utils';
 import { POST } from './route';
 
@@ -123,7 +123,7 @@ describe('POST /api/app/me/delete', () => {
     expect(set.every((c) => c.includes('Max-Age=0'))).toBe(true);
 
     // The old cookie no longer works.
-    const again = await getSettings(ctx.request('/api/app/settings', { cookie }));
+    const again = await getFeed(ctx.request('/api/app/feed', { cookie }));
     expect(again.status).toBe(401);
     expect((await post(cookie, { confirm: 'delete' })).status).toBe(401);
   });
