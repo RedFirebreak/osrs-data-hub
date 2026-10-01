@@ -10,11 +10,10 @@
  */
 import { sha256Hex, type Viewer } from '@hub/core';
 import { apiKeys, users, type Db, type DbOrTx } from '@hub/db';
-import { and, desc, eq, isNull } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { AdminError } from '../admin/errors';
 import { audit } from '../audit';
-import { isUuid } from '../devices/util';
 import { formatKey, newKeySecret } from './key-format';
 import {
   KEY_FIELD_SCHEMAS,
@@ -22,6 +21,7 @@ import {
   insertWithFreshPrefix,
   keyInfoOf,
   parseKeyInput,
+  revokeKey,
   type ApiKeyInfo,
 } from './keys';
 import { MAX_KEY_RATE_LIMIT } from './limits';
@@ -136,26 +136,14 @@ export async function revokeServiceKey(
   opts: { actor: Viewer; keyId: string; now?: Date },
 ): Promise<boolean> {
   assertAdmin(opts.actor);
-  if (!isUuid(opts.keyId)) return false;
-  const now = opts.now ?? new Date();
-  const scope = and(eq(apiKeys.id, opts.keyId), eq(apiKeys.kind, 'service'));
-  return db.transaction(async (tx) => {
-    const [revoked] = await tx
-      .update(apiKeys)
-      .set({ revokedAt: now })
-      .where(and(scope, isNull(apiKeys.revokedAt)))
-      .returning({ id: apiKeys.id, prefix: apiKeys.prefix, name: apiKeys.name });
-    if (revoked) {
-      await audit(tx, {
-        actorUserId: opts.actor.userId,
-        action: 'service_key.revoked',
-        targetType: 'api_key',
-        targetId: revoked.id,
-        meta: { prefix: revoked.prefix, name: revoked.name },
-      });
-      return true;
-    }
-    const existing = await tx.select({ id: apiKeys.id }).from(apiKeys).where(scope);
-    return existing.length > 0;
-  });
+  const scope = eq(apiKeys.kind, 'service');
+  return revokeKey(db, { keyId: opts.keyId, scope, now: opts.now }, (tx, revoked) =>
+    audit(tx, {
+      actorUserId: opts.actor.userId,
+      action: 'service_key.revoked',
+      targetType: 'api_key',
+      targetId: revoked.id,
+      meta: { prefix: revoked.prefix, name: revoked.name },
+    }),
+  );
 }

@@ -437,30 +437,52 @@ export async function revokeApiKey(
   db: Db,
   opts: { userId: string; keyId: string; now?: Date },
 ): Promise<boolean> {
+  const scope = and(eq(apiKeys.kind, 'user'), eq(apiKeys.userId, opts.userId));
+  return revokeKey(db, { keyId: opts.keyId, scope, now: opts.now }, (tx, revoked) =>
+    audit(tx, {
+      actorUserId: opts.userId,
+      action: 'api_key.revoked',
+      targetType: 'api_key',
+      targetId: revoked.id,
+      meta: { ownerUserId: revoked.userId, prefix: revoked.prefix, asAdmin: false },
+    }),
+  );
+}
+
+/** What a revocation's audit entry is written from. */
+export type RevokedKey = Pick<KeyRow, 'id' | 'userId' | 'prefix' | 'name'>;
+
+/**
+ * Revokes the key `keyId` if it is one of the keys `scope` selects (the keys the actor may revoke),
+ * for revokeApiKey and revokeServiceKey: sets `revoked_at` once and runs `auditRevoked` in the same
+ * transaction, only when this call revoked it. True when the key is in scope, revoked now or before
+ * (idempotent); false when it isn't, or `keyId` isn't a uuid.
+ */
+export async function revokeKey(
+  db: Db,
+  opts: { keyId: string; scope: SQL | undefined; now?: Date | undefined },
+  auditRevoked: (tx: DbOrTx, revoked: RevokedKey) => Promise<void>,
+): Promise<boolean> {
   if (!isUuid(opts.keyId)) return false;
   const now = opts.now ?? new Date();
-  const scope = and(eq(apiKeys.kind, 'user'), eq(apiKeys.userId, opts.userId));
+  const inScope = and(eq(apiKeys.id, opts.keyId), opts.scope);
   return db.transaction(async (tx) => {
     const [revoked] = await tx
       .update(apiKeys)
       .set({ revokedAt: now })
-      .where(and(eq(apiKeys.id, opts.keyId), isNull(apiKeys.revokedAt), scope))
-      .returning({ id: apiKeys.id, userId: apiKeys.userId, prefix: apiKeys.prefix });
-    if (revoked) {
-      await audit(tx, {
-        actorUserId: opts.userId,
-        action: 'api_key.revoked',
-        targetType: 'api_key',
-        targetId: revoked.id,
-        meta: { ownerUserId: revoked.userId, prefix: revoked.prefix, asAdmin: false },
+      .where(and(inScope, isNull(apiKeys.revokedAt)))
+      .returning({
+        id: apiKeys.id,
+        userId: apiKeys.userId,
+        prefix: apiKeys.prefix,
+        name: apiKeys.name,
       });
+    if (revoked) {
+      await auditRevoked(tx, revoked);
       return true;
     }
-    // Nothing updated: already revoked (idempotent success) or not the actor's key.
-    const existing = await tx
-      .select({ id: apiKeys.id })
-      .from(apiKeys)
-      .where(and(eq(apiKeys.id, opts.keyId), scope));
+    // Nothing updated: already revoked (idempotent success) or not a key in scope.
+    const existing = await tx.select({ id: apiKeys.id }).from(apiKeys).where(inScope);
     return existing.length > 0;
   });
 }
