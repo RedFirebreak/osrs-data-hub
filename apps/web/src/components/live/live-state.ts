@@ -6,6 +6,7 @@
  * Only `import type` from @hub/server: this module is bundled for the browser, and a value import
  * (or `import { type … }` under verbatimModuleSyntax) would pull the server package in (NEXT-12).
  */
+import { isRecord } from '@hub/core';
 import type {
   DeviceMessage,
   FeedEvent,
@@ -34,10 +35,6 @@ export const LIVE_MESSAGE_TYPES: readonly LiveMessageType[] = [
   'device',
   'resync',
 ];
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
 
 function isFeedEvent(value: unknown): value is FeedEvent {
   if (!isRecord(value)) return false;
@@ -111,7 +108,11 @@ export function parseLiveData<T extends LiveMessageType>(
   }
 }
 
-/** A positive safe integer from an SSE `id:` / cursor value, else null. */
+/**
+ * An event's seq as the stream names it (the SSE `id:`): a positive safe integer, as digits or as a
+ * number; anything else is null. Not the server's parseSeqCursor (lib/query.ts), which reads the
+ * cursor a client sends back and so takes 0 and only strings.
+ */
 export function parseSeq(value: unknown): number | null {
   const n = typeof value === 'string' && /^\d{1,16}$/.test(value.trim()) ? Number(value) : value;
   return typeof n === 'number' && Number.isSafeInteger(n) && n > 0 ? n : null;

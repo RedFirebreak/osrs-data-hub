@@ -46,7 +46,6 @@ packages/fixtures   wire-exact HA Exporter v1.5 payloads for tests
 | [docs/API.md](docs/API.md) | The public API v1 for consumers: keys, conventions, every endpoint |
 | [docs/OPERATIONS.md](docs/OPERATIONS.md) | Self-hosting: configuration, reverse proxy, backups, retention |
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Local setup, tests, CI |
-| [docs/CHANGELOG.md](docs/CHANGELOG.md) | Changes per pull request |
 | [docs/gotchas/](docs/gotchas/README.md) | Known traps in the shared layer, indexed by symptom |
 
 ## Quick start (development)
@@ -64,3 +63,10 @@ The dev scripts read the root `.env`, with an optional `.env.dev` on top (see
 ## Status
 
 V1 is being built milestone by milestone (see [docs/ARCHITECTURE.md §14](docs/ARCHITECTURE.md#14-milestones-and-status)).
+
+## License
+
+Apache License 2.0 (see [LICENSE](LICENSE)), Copyright 2026 RedFirebreak. You may use, change and
+redistribute it, including commercially. If you do, keep the [NOTICE](NOTICE) file and credit
+RedFirebreak with a link to https://github.com/RedFirebreak/osrs-data-hub. GitHub's "Cite this repository" button uses
+[CITATION.cff](CITATION.cff).

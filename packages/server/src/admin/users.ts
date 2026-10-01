@@ -5,7 +5,7 @@ import type { Viewer } from '@hub/core';
 import { users, type Db, type OffboardReason, type UserStatus } from '@hub/db';
 import { asc, eq, sql } from 'drizzle-orm';
 import { offboardUser, restoreUser, type OffboardResult } from '../offboarding';
-import { AdminError } from './errors';
+import { AdminError, assertAdmin } from './errors';
 
 export interface AdminUserRow {
   id: string;
@@ -88,13 +88,6 @@ export async function adminRestoreUser(
   assertAdmin(opts.actor);
   await assertUserExists(db, opts.userId);
   return restoreUser(db, { userId: opts.userId, actorUserId: opts.actor.userId });
-}
-
-/** Only an active admin may act (the route checks too; this is the second lock). */
-function assertAdmin(actor: Viewer): void {
-  if (actor.isAdmin !== true || actor.status !== 'active') {
-    throw new AdminError('forbidden', 'admins only');
-  }
 }
 
 async function assertUserExists(db: Db, userId: string): Promise<void> {

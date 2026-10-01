@@ -23,13 +23,14 @@ import {
   settledLiveCursor,
 } from '@hub/server';
 import { handleApi, json } from '@/lib/http';
+import { parseSeqCursor } from '@/lib/query';
 import { requireApiUser } from '@/lib/session';
 
 export async function GET(request: Request): Promise<Response> {
   return handleApi(async () => {
     const { user, viewer } = await requireApiUser(request);
     const db = getDb().db;
-    const after = parseAfter(new URL(request.url).searchParams.get('after'));
+    const after = parseSeqCursor(new URL(request.url).searchParams.get('after'));
     if (after === null) {
       return json(200, { events: [], cursor: await settledLiveCursor(db) });
     }
@@ -44,12 +45,4 @@ export async function GET(request: Request): Promise<Response> {
     const cursor = messages.at(-1)?.event.seq ?? after;
     return json(200, { events: messages, cursor });
   });
-}
-
-/** A non-negative safe integer, else null ("no cursor yet"). */
-function parseAfter(raw: string | null): number | null {
-  const value = raw?.trim() ?? '';
-  if (!/^\d{1,16}$/.test(value)) return null;
-  const n = Number(value);
-  return Number.isSafeInteger(n) ? n : null;
 }

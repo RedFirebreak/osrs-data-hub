@@ -78,10 +78,6 @@ class LruMap<V> {
     this.#map.delete(key);
     this.#map.set(key, value);
   }
-
-  delete(key: string): void {
-    this.#map.delete(key);
-  }
 }
 
 /**
@@ -241,10 +237,11 @@ export class WindowLimiter {
 
 /**
  * Temporary lockout after repeated failures: `maxFailures` failures within `windowMs` lock the key for
- * `lockMs`. recordSuccess clears the failures. /pair: 20 invalid codes per IP within 1 h → 15 min lock.
+ * `lockMs`. /pair: 20 invalid codes per IP within 1 h → 15 min lock.
  * Every failure that leaves ≥ maxFailures failures in the window (re)starts the lock, and failures stay
  * counted for the whole window: after a lock ends, one more failure within the window locks again.
- * recordSuccess doesn't lift an active lock. Bounded to `maxKeys` keys (least recently used evicted).
+ * Nothing clears failures early, a success included (@hub/server pairing/pair.ts says why): they only
+ * age out of the window. Bounded to `maxKeys` keys (least recently used evicted).
  */
 export class FailureLockout {
   readonly #maxFailures: number;
@@ -293,12 +290,5 @@ export class FailureLockout {
       state.lockedUntil = Math.max(state.lockedUntil, now + this.#lockMs);
     }
     this.#state.set(key, state);
-  }
-
-  recordSuccess(key: string): void {
-    const state = this.#state.peek(key);
-    if (!state) return;
-    if (state.lockedUntil > this.#clock.now()) state.failures = [];
-    else this.#state.delete(key);
   }
 }

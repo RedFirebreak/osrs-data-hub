@@ -4,10 +4,7 @@
  * drop, 5xx only for faults a retry can fix. The body is ignored by the plugin but kept small and
  * consistent for humans and logs.
  */
-import type { PluginResponse } from '../feed';
-
-/** Retry-After for transient database failures (D-19): the plugin queues events meanwhile. */
-export const TRANSIENT_RETRY_AFTER_SECONDS = 30;
+import { TRANSIENT_RETRY_AFTER_SECONDS, type PluginResponse } from '../plugin/protocol';
 
 export const ok = (): PluginResponse => ({ status: 200, body: { ok: true } });
 

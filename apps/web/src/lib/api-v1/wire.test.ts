@@ -213,5 +213,13 @@ describe('wireEvent', () => {
       special_world: false,
     });
     expect(wire).not.toHaveProperty('occurredAt');
+    // The account sits where the documentation shows it: after `type`.
+    expect(Object.keys(wire).slice(0, 4)).toEqual(['id', 'type', 'account', 'occurred_at']);
+    // A stored event that isn't an object (a storage bug) still matches the documented type.
+    for (const broken of ['text', 7, null, [1, 2]]) {
+      const guarded = wireEvent({ ...event, data: broken });
+      expect(Event.parse(guarded)).toEqual(guarded);
+      expect(guarded.data).toEqual({});
+    }
   });
 });

@@ -107,7 +107,7 @@ async function publicIdOf(accountHash: string): Promise<string> {
   return row.publicId;
 }
 
-/** Takes live location away from the guild, so a member has no location category at all. */
+/** Takes both location categories away from the guild, so a member has no location category. */
 async function keepLocationPrivate(accountPublicId: string): Promise<void> {
   const [row] = await t.db
     .select({ id: osrsAccounts.id })
@@ -115,6 +115,7 @@ async function keepLocationPrivate(accountPublicId: string): Promise<void> {
     .where(eq(osrsAccounts.publicId, accountPublicId));
   if (!row) throw new Error('account missing');
   await seedSharing(t.db, row.id, 'location_live', 'private');
+  await seedSharing(t.db, row.id, 'location_history', 'private');
 }
 
 afterAll(async () => {
@@ -132,7 +133,7 @@ describe('a normal snapshot (snapshot-normal)', () => {
     expect(skills.rows[0]).toMatchObject({ skill: 'Overall', level: 2372, realLevel: 2372 });
   });
 
-  it('shows the owner every section, and a member only the guild ones', async () => {
+  it('shows the owner every section, and by default a member too', async () => {
     const asOwner = await page(owner, publicId, t0 + 2_000);
     expect(data(asOwner.presence)).toMatchObject({ online: true, world: 302, specialWorld: false });
     expect(data(asOwner.vitals)).toEqual({
@@ -155,10 +156,10 @@ describe('a normal snapshot (snapshot-normal)', () => {
     expect(data(asOwner.equipment).items.length).toBeGreaterThan(0);
 
     const asMember = await page(member, publicId, t0 + 2_000);
-    // Live location is a guild category by default (D-82).
+    // Every category is a guild category by default (D-96).
     expect(data(asMember.location)).toEqual(data(asOwner.location));
-    expect(asMember.equipment).toEqual({ visible: false });
-    expect(asMember.inventory).toEqual({ visible: false });
+    expect(data(asMember.equipment)).toEqual(data(asOwner.equipment));
+    expect(data(asMember.inventory)).toEqual(data(asOwner.inventory));
     expect(asMember.skills.visible && asMember.skills.shared).toBe(true);
     expect(asMember.recentEvents).toEqual({ visible: true, shared: false });
   });

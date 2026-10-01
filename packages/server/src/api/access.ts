@@ -4,9 +4,11 @@
  * the key's viewer (its creator, or the guild audience for a service key, D-88/D-89) at least one
  * category that the key also has; the principal's categories on it are that intersection.
  * Evaluated on every request, so a sharing change or the creator losing access applies at once. The
- * admin override never applies through the API.
+ * admin override never applies through the API: authenticateApiKey hands out a viewer with isAdmin
+ * false, and the shared loaders ignore isAdmin whenever they are given a restriction, which every
+ * load here passes (apiRestriction).
  */
-import { isGuildAudience, type Category, type Principal } from '@hub/core';
+import { accountTypeLabel, type Category } from '@hub/core';
 import { users, type DbOrTx } from '@hub/db';
 import { and, eq, inArray } from 'drizzle-orm';
 import {
@@ -16,21 +18,14 @@ import {
   type AccountWithAccess,
 } from '../accounts/load';
 import { ApiError } from './errors';
-import type { ApiPrincipal } from './keys';
+import type { ApiPrincipal } from './key-auth';
 import { MAX_LIST_PARAM, isPublicIdLike, listParam } from './params';
-import type { ApiAccountRef, ApiOwner } from './types';
+import type { ApiAccountIdentity, ApiAccountRef, ApiOwner } from './types';
 
 /** Most accounts one bulk request (`/xp`, `/locations`) may name with a user key (D-92). */
 export const MAX_BULK_ACCOUNTS = 10;
 /** … and with a service key (D-92): the live map polls its whole guild in one call. */
 export const MAX_BULK_ACCOUNTS_SERVICE = 50;
-
-/** Whom the resolver evaluates for this key: its creator, never an admin (D-70), or the guild audience. */
-export function apiViewer(principal: ApiPrincipal): Principal {
-  return isGuildAudience(principal.viewer)
-    ? principal.viewer
-    : { ...principal.viewer, isAdmin: false };
-}
 
 /** How many accounts a bulk request may name for this key (D-92). */
 export function bulkAccountLimit(principal: ApiPrincipal): number {
@@ -78,7 +73,31 @@ export async function loadApiOwners(
   return out;
 }
 
-/** The principal's key as a restriction for the shared loaders. */
+/**
+ * What every account response starts with (ApiAccountIdentity): id, name, type and the owner (from
+ * loadApiOwners over the same entries, D-90), with `accountHash` for a service key only (D-91).
+ */
+export function accountIdentity(
+  principal: ApiPrincipal,
+  entry: AccountWithAccess,
+  owners: ReadonlyMap<number, ApiOwner | null>,
+): ApiAccountIdentity {
+  const { account } = entry;
+  const accountHash = apiAccountHash(principal, entry);
+  return {
+    id: account.publicId,
+    name: account.name,
+    ...(accountHash !== undefined ? { accountHash } : {}),
+    type: account.accountType,
+    typeLabel: accountTypeLabel(account.accountType),
+    owner: owners.get(account.id) ?? null,
+  };
+}
+
+/**
+ * The principal's key as a restriction for the shared loaders. Loading with it is also what turns the
+ * admin override off (D-70): never load an account for the API without it.
+ */
 export function apiRestriction(principal: ApiPrincipal): AccessRestriction {
   return { categories: principal.categories, accountIds: principal.accountIds };
 }
@@ -95,12 +114,7 @@ export async function loadApiAccount(
   category?: Category,
 ): Promise<AccountWithAccess | null> {
   if (!isPublicIdLike(publicId)) return null;
-  const entry = await loadVisibleAccount(
-    db,
-    apiViewer(principal),
-    publicId,
-    apiRestriction(principal),
-  );
+  const entry = await loadVisibleAccount(db, principal.viewer, publicId, apiRestriction(principal));
   if (!entry || (category !== undefined && !entry.access.categories.has(category))) return null;
   return entry;
 }
@@ -110,7 +124,7 @@ export async function loadApiAccounts(
   db: DbOrTx,
   principal: ApiPrincipal,
 ): Promise<AccountWithAccess[]> {
-  return loadVisibleAccounts(db, apiViewer(principal), apiRestriction(principal));
+  return loadVisibleAccounts(db, principal.viewer, apiRestriction(principal));
 }
 
 /**

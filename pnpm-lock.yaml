@@ -150,9 +150,6 @@ importers:
       drizzle-orm:
         specifier: 0.45.3
         version: 0.45.3(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(kysely@0.29.6)(pg@8.23.0)
-      pg:
-        specifier: 8.23.0
-        version: 8.23.0
       pg-boss:
         specifier: 12.35.0
         version: 12.35.0
@@ -160,9 +157,6 @@ importers:
         specifier: 10.3.1
         version: 10.3.1
     devDependencies:
-      '@types/pg':
-        specifier: ^8.23.1
-        version: 8.23.1
       tsup:
         specifier: 8.5.1
         version: 8.5.1(jiti@2.7.0)(postcss@8.5.28)(tsx@4.23.15)(typescript@6.0.3)
@@ -172,9 +166,6 @@ importers:
 
   packages/core:
     dependencies:
-      uuid:
-        specifier: ^14.0.2
-        version: 14.0.2
       zod:
         specifier: 4.6.5
         version: 4.6.5
@@ -201,9 +192,6 @@ importers:
       drizzle-kit:
         specifier: 0.31.11
         version: 0.31.11
-      tsx:
-        specifier: 4.23.15
-        version: 4.23.15
 
   packages/fixtures: {}
 
@@ -5417,10 +5405,6 @@ packages:
   util-deprecate@1.0.2:
     resolution: {integrity: sha512-EPD5q1uXyFxJpCrLnCc1nHnq3gOa6DZBocAIiI2TaSCA7VCJ1UJDMagCzIkXNsUYfD1daK//LTEQ8xiIbrHtcw==}
 
-  uuid@14.0.2:
-    resolution: {integrity: sha512-xZe/16rV4aa+HGSOCiY2YeLT1OybRLrrkL/Rqaq7p7GMVXjFh+6wN4oMYgjFmnSnhY8t6Xpdl2l9qmnHYuMHwQ==}
-    hasBin: true
-
   validate-npm-package-name@7.0.2:
     resolution: {integrity: sha512-hVDIBwsRruT73PbK7uP5ebUt+ezEtCmzZz3F59BSr2F6OVFnJ/6h8liuvdLrQ88Xmnk6/+xGGuq+pG9WwTuy3A==}
     engines: {node: ^20.17.0 || >=22.9.0}
@@ -10596,8 +10580,6 @@ snapshots:
       '@types/react': 19.3.0
 
   util-deprecate@1.0.2: {}
-
-  uuid@14.0.2: {}
 
   validate-npm-package-name@7.0.2: {}
 

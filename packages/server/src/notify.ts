@@ -11,7 +11,6 @@ export const CHANNELS = {
   state: 'hub_state',
   pairing: 'hub_pairing',
 } as const;
-export type Channel = (typeof CHANNELS)[keyof typeof CHANNELS];
 
 /** New events were committed for an account. */
 export interface EventsNotification {

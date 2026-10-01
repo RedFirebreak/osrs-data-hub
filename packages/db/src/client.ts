@@ -44,6 +44,9 @@ const g = globalThis as unknown as { __hubDb?: DbHandle };
 /**
  * Process-wide pool on globalThis. Next.js runs route handlers and RSC/server code in separate module
  * instances, so a module-level singleton would create one pool per instance (NEXT-3).
+ * The URL is read from the environment, not getConfig(): the pool must not fail on an unrelated
+ * invalid variable (outside production the web process keeps serving, and /api/health reports the
+ * database, not the config).
  */
 export function getDb(
   connectionString = process.env.DATABASE_URL,

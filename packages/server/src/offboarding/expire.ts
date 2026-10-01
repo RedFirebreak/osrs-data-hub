@@ -9,12 +9,11 @@ import {
   type UserStatus,
 } from '@hub/db';
 import { and, asc, eq, inArray, lte, sql } from 'drizzle-orm';
-import { audit } from '../audit';
+import { SYSTEM_ACTOR, audit } from '../audit';
 import { getMetrics, type HubMetrics } from '../metrics';
-import { auditTransfer, findSuccessor, lockAccounts, setOwner, type AuditActor } from './accounts';
+import { auditTransfer, findSuccessor, lockAccounts, setOwner } from './accounts';
 
 const LOCK_TIMEOUT = '10s';
-const SYSTEM: AuditActor = { actorUserId: null, actorLabel: 'system' };
 
 /** A continuous aggregate's materialization hypertable (schema-qualified). */
 export interface MaterializationTable {
@@ -167,7 +166,7 @@ async function expireUser(
     } else if (account.ownerUserId === null) {
       await setOwner(tx, accountId, successor, now);
       // `from` stays null: the deleted user's id is not kept anywhere.
-      await auditTransfer(tx, SYSTEM, account, {
+      await auditTransfer(tx, SYSTEM_ACTOR, account, {
         from: null,
         to: successor.userId,
         reason: 'grace_expired',
@@ -234,7 +233,7 @@ async function auditDeleted(
   accountsLinked: number,
 ): Promise<void> {
   await audit(tx, {
-    ...SYSTEM,
+    ...SYSTEM_ACTOR,
     action: 'user.deleted',
     targetType: 'user',
     targetId: null,

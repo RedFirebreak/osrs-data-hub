@@ -1,7 +1,12 @@
-import { sql } from 'drizzle-orm';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { asc, eq, is, sql, type SQL } from 'drizzle-orm';
+import { PgDialect, PgTable, getTableConfig } from 'drizzle-orm/pg-core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { MIGRATIONS_DIR } from './migrate';
 import { createTestDatabase, type TestDatabase } from './testing';
-import { osrsAccounts, skills, xpSamples } from './schema';
+import * as schema from './schema';
+import { accountSharing, osrsAccounts, skills, xpSamples } from './schema';
 
 let t: TestDatabase;
 beforeAll(async () => {
@@ -89,5 +94,112 @@ describe('migrations', () => {
         sql`INSERT INTO osrs_accounts (public_id, account_hash, current_name, name_normalized, status) VALUES ('p2', 'x', 'a', 'a', 'bogus')`,
       ),
     ).rejects.toThrow();
+  });
+
+  // The enum-like CHECKs are built from the shared value arrays (@hub/core CATEGORIES, AUDIENCES, …)
+  // with check(), but 0001 created them as hand-written SQL and 0008 only recorded them in Drizzle's
+  // snapshot. This holds the two together: every CHECK the schema declares, created on an empty copy
+  // of its table, must come out as the definition the migrations left in the database, and the
+  // database must have no CHECK the schema doesn't know. A failure after changing an array means its
+  // migration is missing: run `pnpm db:generate`.
+  it('has exactly the CHECK constraints the schema declares', async () => {
+    const definitions = (namespace: SQL) => sql`
+      SELECT c.conrelid::regclass::text AS "table", c.conname AS name, pg_get_constraintdef(c.oid) AS def
+      FROM pg_constraint c
+      WHERE c.contype = 'c' AND c.connamespace = ${namespace}
+      ORDER BY c.conname`;
+    type Row = { table: string; name: string; def: string };
+    const byName = (rows: Row[]) =>
+      Object.fromEntries(
+        rows.map((r) => [`${r.table.replace(/^pg_temp[^.]*\./, '')}.${r.name}`, r.def]),
+      );
+
+    const dialect = new PgDialect();
+    const declared = await t.db.transaction(async (tx) => {
+      for (const table of Object.values(schema)) {
+        if (!is(table, PgTable)) continue;
+        const { name, checks } = getTableConfig(table);
+        if (checks.length === 0) continue;
+        // The temp table shadows the real one, so the table-qualified columns in the SQL drizzle-kit
+        // would generate (`"users"."status" IN (…)`) resolve to it.
+        await tx.execute(
+          sql.raw(`CREATE TEMP TABLE "${name}" (LIKE public."${name}") ON COMMIT DROP`),
+        );
+        for (const c of checks) {
+          const expression = dialect.sqlToQuery(c.value).sql;
+          await tx.execute(
+            sql.raw(
+              `ALTER TABLE pg_temp."${name}" ADD CONSTRAINT "${c.name}" CHECK (${expression})`,
+            ),
+          );
+        }
+      }
+      return byName((await tx.execute<Row>(definitions(sql`pg_my_temp_schema()`))).rows);
+    });
+    const migrated = byName(
+      (await t.db.execute<Row>(definitions(sql`'public'::regnamespace`))).rows,
+    );
+
+    expect(Object.keys(declared)).toContain('account_sharing.account_sharing_category_chk');
+    expect(migrated).toEqual(declared);
+  });
+});
+
+describe('0007_sharing_keep_private (D-96)', () => {
+  // The template database ran the migration on empty tables; running its SQL again here is what a
+  // deployment with accounts gets.
+  const migration = readFileSync(
+    path.join(MIGRATIONS_DIR, '0007_sharing_keep_private.sql'),
+    'utf8',
+  );
+
+  async function addAccount(publicId: string): Promise<number> {
+    const [acc] = await t.db
+      .insert(osrsAccounts)
+      .values({
+        publicId,
+        accountHash: publicId.padEnd(56, 'x'),
+        currentName: publicId,
+        nameNormalized: publicId,
+      })
+      .returning({ id: osrsAccounts.id });
+    return acc!.id;
+  }
+
+  const sharingOf = async (accountId: number) =>
+    Object.fromEntries(
+      (
+        await t.db
+          .select({ category: accountSharing.category, audience: accountSharing.audience })
+          .from(accountSharing)
+          .where(eq(accountSharing.accountId, accountId))
+          .orderBy(asc(accountSharing.category))
+      ).map((r) => [r.category, r.audience]),
+    );
+
+  it('pins the formerly private categories of an existing account to private, and nothing else', async () => {
+    const untouched = await addAccount('pin-untouched');
+    await t.db.execute(sql.raw(migration));
+    expect(await sharingOf(untouched)).toEqual({
+      equipment: 'private',
+      inventory: 'private',
+      location_history: 'private',
+    });
+  });
+
+  it("keeps an owner's explicit choices", async () => {
+    const chosen = await addAccount('pin-chosen');
+    await t.db.insert(accountSharing).values([
+      { accountId: chosen, category: 'inventory', audience: 'guild' },
+      { accountId: chosen, category: 'equipment', audience: 'selected' },
+      { accountId: chosen, category: 'stats', audience: 'private' },
+    ]);
+    await t.db.execute(sql.raw(migration));
+    expect(await sharingOf(chosen)).toEqual({
+      equipment: 'selected',
+      inventory: 'guild',
+      location_history: 'private',
+      stats: 'private',
+    });
   });
 });

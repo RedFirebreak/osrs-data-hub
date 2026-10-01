@@ -1,7 +1,7 @@
 /**
  * Handoff §10 end to end: every sharing rule, asserted through the read models the UI uses.
  */
-import { DEFAULT_GUILD_FEED_FILTER } from '@hub/core';
+import { CATEGORIES, DEFAULT_GUILD_FEED_FILTER } from '@hub/core';
 import { createTestDatabase, type TestDatabase } from '@hub/db/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { getAccountPage } from './account-page';
@@ -38,11 +38,11 @@ let admin: SeededUser;
 let inGrace: SeededUser;
 /** Default sharing, every section sent. */
 let open: SeededAccount;
-/** events private; equipment selected (grantee); location_history selected (grantee). */
+/** events, inventory private; equipment selected (grantee); location_history selected (grantee). */
 let restricted: SeededAccount;
 /** Hidden (owner offboarded without a transfer). */
 let hidden: SeededAccount;
-/** Only presence was ever received. */
+/** Only presence was ever received; equipment private. */
 let bare: SeededAccount;
 
 const fullState = {
@@ -89,6 +89,7 @@ beforeAll(async () => {
   await seedLatestState(t.db, restricted.id, fullState);
   await seedEvents(restricted.id);
   await seedSharing(t.db, restricted.id, 'events', 'private');
+  await seedSharing(t.db, restricted.id, 'inventory', 'private');
   await seedSharing(t.db, restricted.id, 'equipment', 'selected');
   await seedSharing(t.db, restricted.id, 'location_history', 'selected');
   await seedGrant(t.db, restricted.id, 'equipment', grantee.id);
@@ -107,14 +108,15 @@ beforeAll(async () => {
 
   bare = await seedAccount(t.db, { name: 'Bare', owner: owner.id });
   await seedLatestState(t.db, bare.id, { lastSeen: NOW, gameState: 'LOGIN_SCREEN' });
+  await seedSharing(t.db, bare.id, 'equipment', 'private');
 });
 
 afterAll(async () => {
   await t.drop();
 });
 
-describe('default audiences (stats, events, activity, live location → guild; the rest private; D-82)', () => {
-  it('shows a guild member the guild categories and hides the private ones', async () => {
+describe('default audiences (every category → guild; D-96)', () => {
+  it('shows a guild member every category', async () => {
     const page = await getAccountPage(t.db, member.viewer, open.publicId, opts);
     expect(page?.account.relation).toBe('member');
     expect(page?.account.canManage).toBe(false);
@@ -123,8 +125,8 @@ describe('default audiences (stats, events, activity, live location → guild; t
     expect(page?.skills.visible).toBe(true);
     expect(page?.recentEvents.visible).toBe(true);
     expect(page?.location).toMatchObject({ visible: true, shared: true });
-    expect(page?.equipment).toEqual({ visible: false });
-    expect(page?.inventory).toEqual({ visible: false });
+    expect(page?.equipment).toMatchObject({ visible: true, shared: true });
+    expect(page?.inventory).toMatchObject({ visible: true, shared: true });
   });
 
   it('shows owners and contributors everything', async () => {
@@ -136,12 +138,11 @@ describe('default audiences (stats, events, activity, live location → guild; t
     }
   });
 
-  it('gates the histories by their categories', async () => {
+  it('shares the histories with a guild member too', async () => {
     expect(await getSessions(t.db, member.viewer, open.publicId, RANGE)).toEqual([]);
-    expect(await getEquipmentHistory(t.db, member.viewer, open.publicId, RANGE)).toBeNull();
-    expect(await getWealthHistory(t.db, member.viewer, open.publicId, RANGE)).toBeNull();
-    expect(await getLocationHistory(t.db, member.viewer, open.publicId, RANGE)).toBeNull();
-    expect(await getLocationHistory(t.db, owner.viewer, open.publicId, RANGE)).toEqual([]);
+    expect(await getEquipmentHistory(t.db, member.viewer, open.publicId, RANGE)).toEqual([]);
+    expect(await getWealthHistory(t.db, member.viewer, open.publicId, RANGE)).toEqual([]);
+    expect(await getLocationHistory(t.db, member.viewer, open.publicId, RANGE)).toEqual([]);
   });
 });
 
@@ -164,6 +165,14 @@ describe('private and selected audiences, grants', () => {
   it('ignores a grant while the audience is not selected', async () => {
     const asGrantee = await getAccountPage(t.db, grantee.viewer, restricted.publicId, opts);
     expect(asGrantee?.inventory).toEqual({ visible: false });
+  });
+
+  it('gates the histories by their categories', async () => {
+    expect(await getSessions(t.db, member.viewer, restricted.publicId, RANGE)).toEqual([]);
+    expect(await getEquipmentHistory(t.db, member.viewer, restricted.publicId, RANGE)).toBeNull();
+    expect(await getWealthHistory(t.db, member.viewer, restricted.publicId, RANGE)).toBeNull();
+    expect(await getLocationHistory(t.db, member.viewer, restricted.publicId, RANGE)).toBeNull();
+    expect(await getLocationHistory(t.db, owner.viewer, restricted.publicId, RANGE)).toEqual([]);
   });
 });
 
@@ -231,9 +240,10 @@ describe('redaction of event locations', () => {
   const locationOf = (e: { data: unknown }) =>
     ((e.data as { data?: Record<string, unknown> }).data ?? {}).location;
 
-  // A plain member has no location category on `open` once live location isn't shared (D-82).
+  // A plain member has no location category on `open` once neither is shared (D-96).
   beforeAll(async () => {
     await seedSharing(t.db, open.id, 'location_live', 'private');
+    await seedSharing(t.db, open.id, 'location_history', 'private');
   });
 
   it('strips death and superior locations without a location category', async () => {
@@ -296,9 +306,7 @@ describe('"not shared" versus not visible', () => {
 
   it('hides an account from a member when nothing of it is shared with them', async () => {
     const secret = await seedAccount(t.db, { owner: owner.id });
-    for (const category of ['stats', 'events', 'activity', 'location_live'] as const) {
-      await seedSharing(t.db, secret.id, category, 'private');
-    }
+    for (const category of CATEGORIES) await seedSharing(t.db, secret.id, category, 'private');
     expect(await getAccountPage(t.db, member.viewer, secret.publicId, opts)).toBeNull();
     expect(await getAccountPage(t.db, owner.viewer, secret.publicId, opts)).not.toBeNull();
   });

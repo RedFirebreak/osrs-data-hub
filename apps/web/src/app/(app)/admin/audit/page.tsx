@@ -7,9 +7,9 @@ import { getConfig } from '@hub/core';
 import { getDb } from '@hub/db';
 import { listAuditLog } from '@hub/server';
 import type { Metadata } from 'next';
-import { AUDIT_PAGE_SIZE } from '@/components/admin/admin-model';
 import { AdminSectionHeader } from '@/components/admin/admin-section';
 import { AuditLogList, type AuditEntryJson } from '@/components/admin/audit-log-list';
+import { AUDIT_PAGE_SIZE } from '@/lib/admin-rules';
 import { adminMetadata, requireAdmin } from '@/lib/session';
 
 export function generateMetadata(): Promise<Metadata> {

@@ -3,12 +3,13 @@
  */
 import { CATEGORIES, type Category } from '@hub/core';
 import type { Db } from '@hub/db';
-import { authenticateApiKey, createApiKey, type ApiKeyInfo, type ApiPrincipal } from './keys';
+import { authenticateApiKey, type ApiPrincipal, type UserApiPrincipal } from './key-auth';
+import { createApiKey, type ApiKeyInfo } from './keys';
 
 export interface TestKey {
   key: string;
   info: ApiKeyInfo;
-  principal: ApiPrincipal;
+  principal: UserApiPrincipal;
 }
 
 /**
@@ -35,6 +36,7 @@ export async function makeKey(
   );
   const auth = await authenticateApiKey(db, `Bearer ${key}`, now);
   if (!auth.ok) throw new Error(`makeKey: authentication failed (${auth.reason})`);
+  if (auth.principal.kind !== 'user') throw new Error('makeKey: not a user principal');
   return { key, info, principal: auth.principal };
 }
 

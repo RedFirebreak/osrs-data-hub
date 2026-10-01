@@ -1,9 +1,10 @@
 import { sql } from 'drizzle-orm';
-import { index, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import { check, index, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { users } from './auth';
 
 const tstz = (name: string) => timestamp(name, { withTimezone: true });
 
+/** Typed here only: `revoked_reason` has no CHECK constraint in the database. */
 export const DEVICE_REVOKE_REASONS = ['user', 'admin', 'offboarding'] as const;
 export type DeviceRevokeReason = (typeof DEVICE_REVOKE_REASONS)[number];
 
@@ -60,5 +61,6 @@ export const pairingCodes = pgTable(
       .on(t.code)
       .where(sql`${t.consumedAt} is null`),
     index('pairing_codes_user_idx').on(t.userId),
+    check('pairing_codes_code_chk', sql`${t.code} ~ '^[0-9]{5}$'`),
   ],
 );

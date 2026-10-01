@@ -1,0 +1,16 @@
+-- Snapshot-only migration: it changes nothing in the database.
+--
+-- 0001_timescale.sql created these CHECK constraints as hand-written SQL, so Drizzle's snapshot
+-- never held them and `drizzle-kit generate` could not notice a new sharing category, status or
+-- session end reason:
+--
+--   skills_kind_chk, users_status_chk, users_offboard_reason_chk, osrs_accounts_status_chk,
+--   account_links_role_chk, account_sharing_audience_chk, account_sharing_category_chk,
+--   account_share_grants_category_chk, play_sessions_end_reason_chk, pairing_codes_code_chk
+--
+-- They are now declared in packages/db/src/schema with check(), built from the shared value
+-- arrays, and this migration records them in meta/0008_snapshot.json. drizzle-kit generated an
+-- ALTER TABLE ... ADD CONSTRAINT for each one; those statements are left out because every
+-- database already has the constraint with the same definition (packages/db/src/schema.test.ts
+-- compares pg_get_constraintdef of each with what the schema declares). From here on a change to
+-- one of the arrays generates an ordinary DROP CONSTRAINT + ADD CONSTRAINT migration.

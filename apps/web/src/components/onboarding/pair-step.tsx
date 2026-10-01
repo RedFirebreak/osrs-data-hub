@@ -18,10 +18,10 @@ import {
   SendIcon,
 } from 'lucide-react';
 import { useId, useState } from 'react';
+import { CopyButton } from '@/components/common/copy-button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { CopyButton } from './copy-button';
 import { StepHeading } from './step-heading';
 import {
   POLL_INTERVAL_MS,
@@ -37,7 +37,7 @@ export interface PairStepProps {
   codeRequest: 'idle' | 'loading' | 'failed';
   codeError: string | null;
   /** The code in the URL is being looked up after a reload (loading, but not creating one). */
-  resuming?: boolean;
+  resuming: boolean;
   /** Milliseconds left on the code; null before the browser clock runs (hydration). */
   msLeft: number | null;
   expired: boolean;
@@ -72,7 +72,7 @@ export function PairStep(props: PairStepProps) {
     code,
     codeRequest,
     codeError,
-    resuming = false,
+    resuming,
     msLeft,
     expired,
     connected,

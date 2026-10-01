@@ -1,7 +1,14 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:recommended", "helpers:pinGitHubActionDigests"],
+  "minimumReleaseAge": "7 days",
+  "automerge": true,
   "packageRules": [
+    {
+      "description": "Everything automerges once CI is green (D-97) except a major: a green build can still hide a behaviour change, so a person reads the release notes first.",
+      "matchUpdateTypes": ["major"],
+      "automerge": false
+    },
     {
       "description": "compose.yaml, compose.dev.yaml and ci.yml pin the same TimescaleDB image, and the Kubernetes deployment mirrors it (docs/OPERATIONS.md §9): bump all three in one PR so they cannot drift.",
       "matchDatasources": ["docker"],

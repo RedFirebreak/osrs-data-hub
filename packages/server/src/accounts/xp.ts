@@ -16,14 +16,10 @@
  * ~1.3 ms per lookup at 1500 hourly rows, against ~0.01 ms on the raw hypertable).
  * Special-world payloads never write XP samples, so gains never include them.
  */
-import { OVERALL, floorTo, overallXp, type Principal } from '@hub/core';
+import { DAY_MS, HOUR_MS, MINUTE_MS, OVERALL, floorTo, overallXp, type Principal } from '@hub/core';
 import { latestState, skills as skillsTable, type DbOrTx } from '@hub/db';
 import { and, inArray, isNotNull, sql } from 'drizzle-orm';
-import { loadVisibleAccount, type AccessRestriction } from './load';
-
-const MINUTE_MS = 60 * 1000;
-const HOUR_MS = 60 * MINUTE_MS;
-const DAY_MS = 24 * HOUR_MS;
+import { loadVisibleAccount } from './load';
 
 export type Resolution = '5m' | '1h' | '1d';
 
@@ -55,8 +51,8 @@ export type XpByAccount = Map<number, XpBySkill>;
  * beyond (handoff §9). An explicit resolution is kept unless the range would have more than
  * MAX_SERIES_POINTS buckets at it, in which case the next coarser one is used (the response says
  * which), so a 5-minute request over a year can't return 100k points per skill. Unknown values are
- * treated as 'auto'. By span only: getXpSeries also moves 5m to 1h for a range older than the raw
- * retention (rawTierStart).
+ * treated as 'auto'. By span only: seriesResolution also moves 5m to 1h for a range older than the
+ * raw retention (rawTierStart).
  */
 export function pickResolution(from: Date, to: Date, requested: Resolution | 'auto'): Resolution {
   const span = Math.max(0, to.getTime() - from.getTime());
@@ -313,41 +309,74 @@ export interface XpSeries {
 
 /**
  * XP chart data for one account (stats category required, else null; also null when the account
- * isn't visible). Resolution per pickResolution, except that 5m becomes 1h when the range starts
- * before rawTierStart (the handoff's "5 min for ranges up to 7 days" assumes they are within the raw
- * tier; an old week would otherwise chart nothing). The source is xp_samples (5m), xp_hourly (1h) or
- * xp_daily (1d, UTC days). The range starts at `from` floored to the resolution, so a bucket that
- * straddles `from` is included, and ends with the bucket that starts at or before `to`.
- *
- * Every tier is change-only (a bucket exists only where the XP changed), so the value in effect when
- * the range starts, xp_at(start), is prepended as a point at the range start, unless a bucket starts
- * exactly there: charts then begin at the right value instead of at the first change. Unknown skill
- * names are left out; at most MAX_SERIES_SKILLS skills are read. `restrict` narrows the viewer's
- * access (the public API, D-70; see loadVisibleAccount).
+ * isn't visible): readXpSeries at seriesResolution, for the requested skills the hub knows. Unknown
+ * skill names are left out; at most MAX_SERIES_SKILLS skills are read. An Invalid Date is a
+ * RangeError before anything is read.
  */
 export async function getXpSeries(
   db: DbOrTx,
   viewer: Principal,
   publicId: string,
   opts: { skills: readonly string[]; from: Date; to: Date; resolution: Resolution | 'auto' },
-  restrict?: AccessRestriction,
 ): Promise<XpSeries | null> {
   assertValidDate(opts.from, 'from');
   assertValidDate(opts.to, 'to');
-  const found = await loadVisibleAccount(db, viewer, publicId, restrict);
+  const found = await loadVisibleAccount(db, viewer, publicId);
   if (!found || !found.access.categories.has('stats')) return null;
+  const resolution = await seriesResolution(db, opts.from, opts.to, opts.resolution);
+  const skills = await knownSkills(db, opts.skills);
+  return readXpSeries(db, found.account.id, { skills, from: opts.from, to: opts.to, resolution });
+}
 
-  let resolution = pickResolution(opts.from, opts.to, opts.resolution);
-  if (resolution === '5m') {
-    const rawStart = await rawTierStart(db);
-    const start = floorTo(opts.from, RESOLUTION_MS['5m']);
-    if (rawStart !== null && start.getTime() < rawStart.getTime()) resolution = '1h';
-  }
-  const names = await knownSkills(db, opts.skills);
+/**
+ * The resolution a series request is read at: pickResolution, except that 5m becomes 1h when the
+ * range starts before rawTierStart (the handoff's "5 min for ranges up to 7 days" assumes they are
+ * within the raw tier; an old week would otherwise chart nothing). It doesn't depend on the account,
+ * so a request for several accounts resolves it once.
+ */
+export async function seriesResolution(
+  db: DbOrTx,
+  from: Date,
+  to: Date,
+  requested: Resolution | 'auto',
+): Promise<Resolution> {
+  const resolution = pickResolution(from, to, requested);
+  if (resolution !== '5m') return resolution;
+  const rawStart = await rawTierStart(db);
+  const start = floorTo(from, RESOLUTION_MS['5m']);
+  return rawStart !== null && start.getTime() < rawStart.getTime() ? '1h' : resolution;
+}
+
+/** A series request as readXpSeries takes it; nothing in it depends on the account. */
+export interface XpSeriesRequest {
+  /** Skill names as the hub stores them, without duplicates; a name it doesn't know charts nothing. */
+  skills: readonly string[];
+  from: Date;
+  to: Date;
+  /** The resolution to read at (seriesResolution). */
+  resolution: Resolution;
+}
+
+/**
+ * XP chart data for one account, without a permission check: the caller may read the account's
+ * `stats`. The source is xp_samples (5m), xp_hourly (1h) or xp_daily (1d, UTC days). The range
+ * starts at `from` floored to the resolution, so a bucket that straddles `from` is included, and
+ * ends with the bucket that starts at or before `to`.
+ *
+ * Every tier is change-only (a bucket exists only where the XP changed), so the value in effect when
+ * the range starts, xp_at(start), is prepended as a point at the range start, unless a bucket starts
+ * exactly there: charts then begin at the right value instead of at the first change.
+ */
+export async function readXpSeries(
+  db: DbOrTx,
+  accountId: number,
+  opts: XpSeriesRequest,
+): Promise<XpSeries> {
+  const { resolution } = opts;
+  const names = [...opts.skills];
   if (names.length === 0 || opts.to.getTime() < opts.from.getTime()) {
     return { resolution, series: names.map((skill) => ({ skill, points: [] })) };
   }
-  const accountId = found.account.id;
   const start = floorTo(opts.from, RESOLUTION_MS[resolution]);
   const carried = await loadXpAt(db, [accountId], start, names);
   const rows = await db.execute<SeriesRow>(sql`

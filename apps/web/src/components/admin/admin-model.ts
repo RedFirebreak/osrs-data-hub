@@ -6,10 +6,12 @@
  * Only `import type` from @hub/server and @hub/db: the admin client components import this module,
  * and a value import would pull the server packages into the browser bundle (NEXT-12).
  */
+import { DAY_MS } from '@hub/core';
 import type { OffboardReason, UserStatus } from '@hub/db';
 import type { DeviceStatus, IngestMeta } from '@hub/server';
-
-const DAY_MS = 24 * 60 * 60 * 1000;
+import { AUDIT_PAGE_SIZE } from '@/lib/admin-rules';
+import type { FailureOptions } from '@/lib/api-client';
+import { isUuidLike } from '@/lib/guards';
 
 // --- Navigation --------------------------------------------------------------------------------
 
@@ -41,7 +43,7 @@ export function utcDateText(ms: number, withTime: boolean): string | null {
 // --- Users -------------------------------------------------------------------------------------
 
 /** Why a user is in grace, as the Users table says it. */
-export const OFFBOARD_REASON_LABELS: Readonly<Record<OffboardReason, string>> = {
+const OFFBOARD_REASON_LABELS: Readonly<Record<OffboardReason, string>> = {
   left_guild: 'Left the Discord server',
   lost_role: 'Lost the required role',
   admin: 'Offboarded by an admin',
@@ -273,13 +275,6 @@ export interface RawPayloadQuery {
   before?: { receivedAt: Date; id: string };
 }
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/** Whether `value` looks like a uuid. */
-export function isUuidLike(value: string): boolean {
-  return UUID_RE.test(value);
-}
-
 function first(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
 }
@@ -334,34 +329,7 @@ export function prettyPayload(body: string): { text: string; json: boolean } {
 
 // --- Audit log ---------------------------------------------------------------------------------
 
-/** Entries per "load more" of the audit log. */
-export const AUDIT_PAGE_SIZE = 50;
-
-const AUDIT_ACTION_LABELS: Readonly<Record<string, string>> = {
-  'user.offboarded': 'User offboarded',
-  'user.restored': 'User restored',
-  'user.deleted': 'User deleted',
-  'device.paired': 'Device paired',
-  'device.revoked': 'Device revoked',
-  'account.ownership_claimed': 'Ownership claimed',
-  'account.ownership_transferred': 'Ownership transferred',
-  'account.contributor_removed': 'Contributor removed',
-  'account.purged': 'Account purged',
-  'sharing.changed': 'Sharing changed',
-  'sharing.audience_changed': 'Sharing audience changed',
-  'raw_payload.viewed': 'Raw payload viewed',
-  'hub.decommissioned': 'Decommission switch',
-  'hub.guild_feed_changed': 'Guild feed settings changed',
-  'api_key.created': 'API key created',
-  'api_key.revoked': 'API key revoked',
-  'service_key.created': 'Service key created',
-  'service_key.revoked': 'Service key revoked',
-};
-
-/** A readable label for an audit action; the action itself when this version doesn't know it. */
-export function auditActionLabel(action: string): string {
-  return AUDIT_ACTION_LABELS[action] ?? action;
-}
+export { auditActionLabel } from './audit-labels';
 
 const META_VALUE_MAX = 80;
 
@@ -392,12 +360,12 @@ export function adminUserActionPath(userId: string, action: 'offboard' | 'restor
   return `/api/app/admin/users/${encodeURIComponent(userId)}/${action}`;
 }
 
-/** DELETE path that revokes any device. */
 /** The admin API path of one service key (D-88). */
 export function adminServiceKeyPath(keyId: string): string {
   return `/api/app/admin/service-keys/${encodeURIComponent(keyId)}`;
 }
 
+/** DELETE path that revokes any device. */
 export function adminDevicePath(deviceId: string): string {
   return `/api/app/admin/devices/${encodeURIComponent(deviceId)}`;
 }
@@ -417,32 +385,13 @@ export const DECOMMISSION_API_PATH = '/api/app/admin/decommission';
 export const GUILD_FEED_API_PATH = '/api/app/admin/guild-feed';
 
 /**
- * Whether the text typed into the decommission confirmation is the hub name. Both sides are
- * trimmed: HUB_NAME is cut to 64 characters after trimming, and that cut can end on a space nobody
- * types (the page shows the name without it).
+ * How a failed admin request is told (failureMessage, lib/api-client.ts): `fallback` when the hub
+ * gives no better text, and the admin pages' wording for 403 and 404.
  */
-export function decommissionConfirmMatches(typed: string | undefined, hubName: string): boolean {
-  const expected = hubName.trim();
-  return typed !== undefined && expected !== '' && typed.trim() === expected;
-}
-
-/** The `error.message` of an API error body, else `fallback`. */
-function errorBodyMessage(body: unknown, fallback: string): string {
-  if (typeof body === 'object' && body !== null && 'error' in body) {
-    const error = (body as { error: unknown }).error;
-    if (typeof error === 'object' && error !== null && 'message' in error) {
-      const message = (error as { message: unknown }).message;
-      if (typeof message === 'string' && message.trim() !== '') return message;
-    }
-  }
-  return fallback;
-}
-
-/** What to tell the admin when a request failed with `status` and `body`. */
-export function adminFailureMessage(status: number, body: unknown, fallback: string): string {
-  if (status === 401) return 'Your session has ended. Sign in again.';
-  if (status === 403) return errorBodyMessage(body, 'Only admins can do this.');
-  if (status === 404) return 'It no longer exists. Reload the page.';
-  if (status === 400 || status === 503) return errorBodyMessage(body, fallback);
-  return fallback;
+export function adminFailure(fallback: string): FailureOptions {
+  return {
+    fallback,
+    forbidden: 'Only admins can do this.',
+    notFound: 'It no longer exists. Reload the page.',
+  };
 }

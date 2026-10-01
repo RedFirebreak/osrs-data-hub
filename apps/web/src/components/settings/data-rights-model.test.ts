@@ -1,3 +1,4 @@
+import { SELF_DELETE_CONFIRMATION } from '@hub/server';
 import { describe, expect, it } from 'vitest';
 import {
   confirmsDeletion,
@@ -8,9 +9,11 @@ import {
 
 describe('confirmsDeletion', () => {
   it('takes "delete" in any case with surrounding space, as the server does', () => {
-    for (const ok of ['delete', 'DELETE', '  Delete ']) expect(confirmsDeletion(ok)).toBe(true);
+    for (const ok of ['delete', 'DELETE', '  Delete ']) {
+      expect(confirmsDeletion(ok, SELF_DELETE_CONFIRMATION)).toBe(true);
+    }
     for (const bad of ['', 'delet', 'deleted', 'delete!', 'de lete']) {
-      expect(confirmsDeletion(bad)).toBe(false);
+      expect(confirmsDeletion(bad, SELF_DELETE_CONFIRMATION)).toBe(false);
     }
   });
 });

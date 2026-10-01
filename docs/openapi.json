@@ -1,0 +1,3717 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "osrs-data-hub API",
+    "version": "1",
+    "summary": "The public, read-only API of osrs-data-hub.",
+    "description": "Read-only JSON API of this hub: OSRS account data sent by the HA Exporter RuneLite plugin, for Home Assistant, a Discord bot, a live map or your own scripts. Pull only: poll `/snapshot` and the `/events` cursor feed; there are no webhooks.\n\n## Authentication\nCreate a key on the hub's **API keys** page and send it on every request:\n\n    Authorization: Bearer ohub_<prefix>_<secret>\n\nA key is shown once. It reads only the categories chosen for it (stats, events, activity, live location, location history, equipment, inventory), only its account scope (every account its creator can see, or an explicit list), and only what its creator may see **right now**: the owners' sharing settings are evaluated on every request. A missing, malformed, unknown, revoked or expired key, or one whose creator left the guild, gets the same `401 unauthorized`. Cookies are never read.\n\n**Service keys** (Admin → Integrations) are for the guild's own integrations, such as its live map. A service key belongs to no user: it reads what the guild audience sees, i.e. the accounts and categories whose sharing audience is *guild* (never *private* or *selected*), it survives every offboarding, and it has its own rate limit (600 requests per minute unless the admin set another). Only service keys see `account_hash`, and they may name 50 accounts per bulk request instead of 10. `/me` tells the kinds apart (`key.kind`, `user` null).\n\n## Owner identity\nAccounts carry `owner` (`{ name, discord_id }`): the account's owner as the hub's guild page shows them to every member, or null when the account has no active owner. Contributors are never exposed.\n\n## Conventions\n- Success: `{ \"data\": …, \"meta\": { \"generated_at\": …, … } }`. Lists carry `meta.count`.\n- Errors: `{ \"error\": { \"code\": \"…\", \"message\": \"…\" } }`, plus `details` (field errors) on a 400.\n- Every key the hub defines is snake_case. Keys that are data (skill names such as `Attack`, equipment slots, item and account names) and an event's `data` object are passed through as they are.\n- Timestamps are ISO-8601 UTC; ids are opaque public ids (strings).\n- Query lists are comma-separated (`skills=attack,defence`); dates are ISO-8601 date-times with `Z` or an offset; unknown query parameters are ignored.\n- v1 only changes additively: new fields and endpoints may appear, so ignore keys you don't know.\n\n## Not found versus not shared\nAnything outside the key's reach answers **404 `not_found`** with exactly the body of an id that doesn't exist: an unknown account, one outside the key's scope, and one whose category the key can't read all look alike, so the API never reveals what exists. On `/accounts/{id}` and `/snapshot`, a section of a category the key can't read on that account is **omitted**; a section the key may read but the player's plugin never sent is `{ \"shared\": false, \"updated_at\": null }` (`/accounts/{id}`) or `null` (`/snapshot`). The plugin is the first privacy layer: the hub stores only what arrives.\n\n## Staleness\nA live location older than 2 minutes has `stale: true`: the player may be elsewhere now.\n\n## The events cursor\n`/events` is a cursor feed: start with `cursor=now` (or without a cursor for the newest events), then always pass the previous `meta.next_cursor`. Cursors are opaque strings and only move forward. The feed serves events stored at least 10 s ago, so a cursor never skips one that is still being committed: expect an event 10–15 s after it happened.\n\n## Rate limits\nPer key: 120 requests per sliding 60 s for a user key (a service key: 600, or the limit its admin set; `/me` reports it), and 1 request per 1 s on `/snapshot` for every key. Every authenticated response carries `X-RateLimit-Limit`, `X-RateLimit-Remaining` and `X-RateLimit-Reset` (seconds until the window frees a request: a delta, not a timestamp). Over a limit: `429 rate_limited` with an integer `Retry-After` in seconds. Failed authentications are limited to 30 per 60 s per client IP; past that, every request from that IP gets 429 until the window passes.\n\n## CORS\nEvery response, errors included, has `Access-Control-Allow-Origin: *` and exposes `ETag`, `Retry-After` and the `X-RateLimit-*` headers, so browser apps can call the API directly. No credentials: send the key in the Authorization header.\n\n## Caching\nResponses are `Cache-Control: no-store`, except `/snapshot` (`private, no-cache` with a weak ETag; `If-None-Match` → 304) and this document (`public, max-age=300`).\n\n## Errors\n400 `invalid_request` (a malformed parameter; `details` names it), 401 `unauthorized`, 404 `not_found`, 429 `rate_limited` (+ `Retry-After`), 503 `unavailable` (the hub is busy or its database is unreachable; retry after `Retry-After`), 500 `internal_error`."
+  },
+  "servers": [
+    {
+      "url": "https://hub.example.com/api/v1",
+      "description": "osrs-data-hub"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "Key",
+      "description": "The key itself."
+    },
+    {
+      "name": "Accounts",
+      "description": "Visible accounts and their current state."
+    },
+    {
+      "name": "Snapshot",
+      "description": "Everything at once, for polling."
+    },
+    {
+      "name": "XP and gains",
+      "description": "XP series and gains (`stats`)."
+    },
+    {
+      "name": "Events",
+      "description": "The cursor feed (`events`)."
+    },
+    {
+      "name": "Histories",
+      "description": "Sessions, equipment, wealth and locations."
+    },
+    {
+      "name": "Leaderboards",
+      "description": "Gains leaderboards (`stats`) and the loot leaderboard (`events`)."
+    },
+    {
+      "name": "Meta",
+      "description": "This document."
+    }
+  ],
+  "paths": {
+    "/me": {
+      "get": {
+        "operationId": "getMe",
+        "tags": [
+          "Key"
+        ],
+        "summary": "The key and its creator",
+        "description": "The key behind the request (kind, name, prefix, categories, scope, rate limit, expiry), its creator’s display name (`user`, null for a service key) and how many accounts it can see right now. Handy as a connection test.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK: `{ data, meta }`.",
+            "headers": {
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/X-RateLimit-Remaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/X-RateLimit-Reset"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/accounts": {
+      "get": {
+        "operationId": "listAccounts",
+        "tags": [
+          "Accounts"
+        ],
+        "summary": "List visible accounts",
+        "description": "Every account the key may see, sorted by name, each with its `owner` (the active owner as the guild page shows them, or null) and, for service keys, its `account_hash`. `online`, `world` and `last_seen` are null for accounts whose `activity` the key can’t read. `meta.count` is the number returned.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "names",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated display names, matched case-insensitively the way the game does (at most 100). With `names` and/or `ids`, only matching accounts are returned; names that match nothing are simply absent.",
+            "example": "Zezima,Lynx Titan"
+          },
+          {
+            "name": "ids",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated account ids (at most 100)."
+          },
+          {
+            "name": "online",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            },
+            "description": "`true`: only accounts in game now; `false`: only accounts known to be offline. Accounts whose `activity` the key can’t read never pass this filter."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK: `{ data, meta }`.",
+            "headers": {
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/X-RateLimit-Remaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/X-RateLimit-Reset"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/accounts/{id}": {
+      "get": {
+        "operationId": "getAccount",
+        "tags": [
+          "Accounts"
+        ],
+        "summary": "One account’s current state",
+        "description": "The account’s current state, section by section. A section of a category the key can’t read on this account is **omitted**; a readable section the player’s plugin never sent is `{ \"shared\": false, \"updated_at\": null }` (\"not shared\"), never an empty value. Every sent section carries `updated_at`.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9A-Za-z]{1,64}$"
+            },
+            "description": "The account's public id (opaque, base62), as `id` in `/accounts`.",
+            "example": "4fT9kQ2mXa7B"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK: `{ data, meta }`.",
+            "headers": {
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/X-RateLimit-Remaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/X-RateLimit-Reset"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/snapshot": {
+      "get": {
+        "operationId": "getSnapshot",
+        "tags": [
+          "Snapshot"
+        ],
+        "summary": "Current state of every visible account",
+        "description": "Built for polling every 2–10 s (the live map, Home Assistant). Limited to 1 request per 1 s per key, on top of the general limit.\n\nEach account carries `id`, `name`, `type`, `type_label`, `owner` and `categories` (and `account_hash` for service keys); every other field belongs to one category and is **omitted** when the key can’t read that category on the account, and **null** when it can but the plugin never sent it.\n\nSend the last `ETag` as `If-None-Match`: while nothing you would see has changed, the answer is `304 Not Modified` without a body (it still counts towards the rate limits). With `since` (the previous `meta.last_modified`), only accounts that changed after it are returned, re-sending those that changed up to 30 s before it; accounts whose `activity` the key can’t read are always returned, and an account that leaves the key’s scope simply stops appearing, so fetch without `since` now and then. A location older than 2 minutes has `stale: true`.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "Only accounts that changed after this time (pass the previous response’s `meta.last_modified`). Accounts changed up to 30 s before it are sent again (late commits), and accounts whose `activity` the key can’t read are always sent."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK: `{ data, meta }`.",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              },
+              "Last-Modified": {
+                "$ref": "#/components/headers/Last-Modified"
+              },
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/X-RateLimit-Remaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/X-RateLimit-Reset"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotResponse"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Not Modified: `If-None-Match` matched the current ETag. No body; the ETag, CORS and rate-limit headers are sent.",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              },
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/X-RateLimit-Remaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/X-RateLimit-Reset"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/accounts/{id}/xp": {
+      "get": {
+        "operationId": "getAccountXp",
+        "tags": [
+          "XP and gains"
+        ],
+        "summary": "XP series of one account",
+        "description": "XP per skill over time (`stats`). Defaults: Overall, the last 7 days, `resolution=auto`.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9A-Za-z]{1,64}$"
+            },
+            "description": "The account's public id (opaque, base62), as `id` in `/accounts`.",
+            "example": "4fT9kQ2mXa7B"
+          },
+          {
+            "name": "skills",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated skill names, case-insensitive (`attack,defence`, `overall`); at most 30. Default: Overall. An unknown skill is a 400."
+          },
+          {
+            "name": "resolution",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "auto",
+                "5m",
+                "1h",
+                "1d"
+              ]
+            },
+            "description": "Bucket size. `auto` (default): 5m up to 7 days, 1h up to 90 days, 1d beyond. The hub picks a coarser one when the range would have more than 5000 points, or starts before the 5-minute tier’s retention."
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "Start of the range (ISO-8601 date-time). Default: `to` − 7 days."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "End of the range (ISO-8601 date-time). Default: now."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK: `{ data, meta }`.",
+            "headers": {
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/X-RateLimit-Remaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/X-RateLimit-Reset"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/XpResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/xp": {
+      "get": {
+        "operationId": "getXp",
+        "tags": [
+          "XP and gains"
+        ],
+        "summary": "XP series of several accounts",
+        "description": "The same series for several accounts at once, in request order (`stats`): up to 10 accounts with a user key, 50 with a service key. An account the key can’t read makes the whole request 404, exactly like an unknown id.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "accounts",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated account ids: 1 to 10 with a user key, 1 to 50 with a service key. Each must be one whose `stats` the key may read, else 404."
+          },
+          {
+            "name": "skills",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated skill names, case-insensitive (`attack,defence`, `overall`); at most 30. Default: Overall. An unknown skill is a 400."
+          },
+          {
+            "name": "resolution",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "auto",
+                "5m",
+                "1h",
+                "1d"
+              ]
+            },
+            "description": "Bucket size. `auto` (default): 5m up to 7 days, 1h up to 90 days, 1d beyond. The hub picks a coarser one when the range would have more than 5000 points, or starts before the 5-minute tier’s retention."
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "Start of the range (ISO-8601 date-time). Default: `to` − 7 days."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "End of the range (ISO-8601 date-time). Default: now."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK: `{ data, meta }`.",
+            "headers": {
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/X-RateLimit-Remaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/X-RateLimit-Reset"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/XpMultiResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/accounts/{id}/gains": {
+      "get": {
+        "operationId": "getAccountGains",
+        "tags": [
+          "XP and gains"
+        ],
+        "summary": "Gains per skill",
+        "description": "XP gained per skill in a period or an explicit range (`stats`): every skill the account has, 0 when nothing was gained. Default `period=day`.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9A-Za-z]{1,64}$"
+            },
+            "description": "The account's public id (opaque, base62), as `id` in `/accounts`.",
+            "example": "4fT9kQ2mXa7B"
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "day",
+                "week",
+                "month",
+                "year"
+              ]
+            },
+            "description": "`day` = since local midnight in the key creator’s time zone (their hub settings); `week`/`month`/`year` = the last 7/30/365 days. Default `day`. Not together with `from`/`to`."
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "An explicit range instead of `period`."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "With `from`; default now."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK: `{ data, meta }`.",
+            "headers": {
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/X-RateLimit-Remaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/X-RateLimit-Reset"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GainsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/events": {
+      "get": {
+        "operationId": "getEvents",
+        "tags": [
+          "Events"
+        ],
+        "summary": "Event cursor feed",
+        "description": "Loot, level-ups, deaths, collection log, diaries, combat tasks and superiors of the accounts whose `events` the key may read, ordered by the order the hub stored them, for the Discord bot and Home Assistant automations.\n\n**Cursor semantics.** Start with `cursor=now` (no events, just the current cursor) or without a cursor (the newest `limit` events, default 100, at most 500). Then always pass the previous `meta.next_cursor`: you get the events after it, oldest first, and a new cursor. Fewer than `limit` events means \"caught up for now\". The cursor always moves forward, also past events your filters leave out, and is unchanged while nothing new has arrived. Cursors are opaque; keep them as strings.\n\nThe feed only serves events stored at least 10 s ago, so a cursor can never skip an event that is still being committed: expect an event 10–15 s after the hub received it. `occurred_at` is when it happened in game, `received_at` when the hub got it (the plugin may resend events up to ~10 minutes late).",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Omitted: the newest `limit` events and a cursor after them. `now`: no events, only the current cursor (start following from here). Otherwise a `meta.next_cursor` from an earlier response: the events after it, oldest first. Cursors are opaque."
+          },
+          {
+            "name": "types",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated event types: loot, pk_loot, death, level_up, collection_log, superior_spawn, achievement_diary, combat_task, or an unknown plugin type as sent. Default: every type.",
+            "example": "loot,level_up"
+          },
+          {
+            "name": "accounts",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated account ids (at most 100); each must be one whose `events` the key may read, else 404. Default: every such account."
+          },
+          {
+            "name": "min_value",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{1,16}$"
+            },
+            "description": "Only events with `value_gp` ≥ this (events without a value are left out)."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{1,16}$"
+            },
+            "description": "Events per page, 1 to 500. Default 100."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK: `{ data, meta }`.",
+            "headers": {
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/X-RateLimit-Remaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/X-RateLimit-Reset"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/accounts/{id}/sessions": {
+      "get": {
+        "operationId": "getAccountSessions",
+        "tags": [
+          "Histories"
+        ],
+        "summary": "Play sessions",
+        "description": "Play sessions overlapping the range, newest first (`activity`). Default: the last 30 days.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9A-Za-z]{1,64}$"
+            },
+            "description": "The account's public id (opaque, base62), as `id` in `/accounts`.",
+            "example": "4fT9kQ2mXa7B"
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "Start of the range (ISO-8601 date-time). Default: `to` − 30 days."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "End of the range (ISO-8601 date-time). Default: now."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK: `{ data, meta }`.",
+            "headers": {
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/X-RateLimit-Remaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/X-RateLimit-Reset"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/accounts/{id}/equipment-history": {
+      "get": {
+        "operationId": "getAccountEquipmentHistory",
+        "tags": [
+          "Histories"
+        ],
+        "summary": "Equipment change log",
+        "description": "Every change of the worn set in the range, newest first, each with the whole set after it (`equipment`). Default: the last 30 days.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9A-Za-z]{1,64}$"
+            },
+            "description": "The account's public id (opaque, base62), as `id` in `/accounts`.",
+            "example": "4fT9kQ2mXa7B"
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "Start of the range (ISO-8601 date-time). Default: `to` − 30 days."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "End of the range (ISO-8601 date-time). Default: now."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK: `{ data, meta }`.",
+            "headers": {
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/X-RateLimit-Remaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/X-RateLimit-Reset"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EquipmentHistoryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/accounts/{id}/wealth": {
+      "get": {
+        "operationId": "getAccountWealth",
+        "tags": [
+          "Histories"
+        ],
+        "summary": "Carried wealth per day",
+        "description": "Carried value (inventory + equipment at GE prices) per UTC day, oldest first (`inventory`). Default: the last 30 days.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9A-Za-z]{1,64}$"
+            },
+            "description": "The account's public id (opaque, base62), as `id` in `/accounts`.",
+            "example": "4fT9kQ2mXa7B"
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "Start of the range (ISO-8601 date-time). Default: `to` − 30 days."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "End of the range (ISO-8601 date-time). Default: now."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK: `{ data, meta }`.",
+            "headers": {
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/X-RateLimit-Remaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/X-RateLimit-Reset"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WealthResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/accounts/{id}/locations": {
+      "get": {
+        "operationId": "getAccountLocations",
+        "tags": [
+          "Histories"
+        ],
+        "summary": "Location trail",
+        "description": "The location trail, at most one point per minute, oldest first (`location_history`; kept 30 days). Default: the last 30 days.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9A-Za-z]{1,64}$"
+            },
+            "description": "The account's public id (opaque, base62), as `id` in `/accounts`.",
+            "example": "4fT9kQ2mXa7B"
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "Start of the range (ISO-8601 date-time). Default: `to` − 30 days."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "End of the range (ISO-8601 date-time). Default: now."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK: `{ data, meta }`.",
+            "headers": {
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/X-RateLimit-Remaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/X-RateLimit-Reset"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocationsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/locations": {
+      "get": {
+        "operationId": "getLocations",
+        "tags": [
+          "Histories"
+        ],
+        "summary": "Location trails of several accounts",
+        "description": "The location trails of several accounts in one call, in request order (`location_history`): up to 10 accounts with a user key, 50 with a service key, each trail exactly what `/accounts/{id}/locations` returns for the same range (at most one point per minute, oldest first, kept 30 days). An account the key can’t read makes the whole request 404. Default: the last 30 days.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "accounts",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated account ids: 1 to 10 with a user key, 1 to 50 with a service key. Each must be one whose `location_history` the key may read, else 404."
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "Start of the range (ISO-8601 date-time). Default: `to` − 30 days."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "End of the range (ISO-8601 date-time). Default: now."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK: `{ data, meta }`.",
+            "headers": {
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/X-RateLimit-Remaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/X-RateLimit-Reset"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocationsMultiResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/leaderboards/gains": {
+      "get": {
+        "operationId": "getGainsLeaderboards",
+        "tags": [
+          "Leaderboards"
+        ],
+        "summary": "Gains leaderboards",
+        "description": "The guild page’s gains leaderboards over the accounts whose `stats` the key may read: the top 10 per skill. Default `period=day`.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "skill",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": "One skill, case-insensitive (`overall` works). Without it: Overall first, then every skill anyone gained XP in."
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "day",
+                "week",
+                "month"
+              ]
+            },
+            "description": "`day` = since local midnight in the key creator’s time zone; `week`/`month` = the last 7/30 days. Default `day`."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK: `{ data, meta }`.",
+            "headers": {
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/X-RateLimit-Remaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/X-RateLimit-Reset"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeaderboardsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/leaderboards/loot": {
+      "get": {
+        "operationId": "getLootLeaderboard",
+        "tags": [
+          "Leaderboards"
+        ],
+        "summary": "Loot leaderboard",
+        "description": "The period’s most valuable drops over the accounts whose `events` the key may read: `loot` and `pk_loot` events with a value, not on a special world, highest `value_gp` first. Each entry’s `event` is exactly what `/events` serves (with `data.location` removed the same way), though it can appear here a few seconds before the `/events` cursor serves it. Default `period=day`, `limit=10` (at most 50).",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "period",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "day",
+                "week",
+                "month"
+              ]
+            },
+            "description": "`day` = since local midnight in the key creator’s time zone; `week`/`month` = the last 7/30 days. Default `day`."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{1,16}$"
+            },
+            "description": "Drops to return, 1 to 50. Default 10."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK: `{ data, meta }`.",
+            "headers": {
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/X-RateLimit-Remaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/X-RateLimit-Reset"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LootLeaderboardResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/openapi.json": {
+      "get": {
+        "operationId": "getOpenApi",
+        "tags": [
+          "Meta"
+        ],
+        "summary": "This document",
+        "description": "The OpenAPI 3.1 description of API v1. Public: no key, no rate limit.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "The OpenAPI document.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "ohub_<prefix>_<secret>",
+        "description": "An API key from the hub’s API keys page."
+      }
+    },
+    "schemas": {
+      "AccountRef": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Public account id."
+          },
+          "name": {
+            "type": "string",
+            "description": "Current display name."
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "description": "An account: its public id and current display name."
+      },
+      "Owner": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The owner’s display name on the hub."
+          },
+          "discord_id": {
+            "description": "The owner’s Discord user id; null for a user without one.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "discord_id"
+        ],
+        "description": "The account’s owner, as the guild page shows them to every member: for linking hub accounts to people. Never a contributor."
+      },
+      "AccountLocations": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "$ref": "#/components/schemas/AccountRef"
+          },
+          "points": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "at": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "ISO-8601 UTC."
+                },
+                "x": {
+                  "type": "integer"
+                },
+                "y": {
+                  "type": "integer"
+                },
+                "plane": {
+                  "type": "integer"
+                },
+                "world": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "is_on_boat": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "at",
+                "x",
+                "y",
+                "plane",
+                "world",
+                "is_on_boat"
+              ]
+            },
+            "description": "At most one point per minute, oldest first."
+          }
+        },
+        "required": [
+          "account",
+          "points"
+        ]
+      },
+      "Item": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "description": "null when the plugin didn’t send a name.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "quantity": {
+            "type": "integer"
+          },
+          "ge_price": {
+            "type": "integer",
+            "description": "Per-unit Grand Exchange price."
+          },
+          "ha_price": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Per-unit high-alchemy value; null when not sent."
+          },
+          "equipment_slot": {
+            "description": "HEAD, CAPE, WEAPON, … on equipment items; null in the inventory.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "inventory_slot": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Inventory slot 0–27 (left to right, then top to bottom) on inventory items from plugin 1.5.1; null from older plugins and on equipment."
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "quantity",
+          "ge_price",
+          "ha_price",
+          "equipment_slot",
+          "inventory_slot"
+        ],
+        "description": "An item as the plugin sent it (inventory: one entry per occupied slot)."
+      },
+      "Meter": {
+        "type": "object",
+        "properties": {
+          "current": {
+            "type": "integer"
+          },
+          "max": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "current",
+          "max"
+        ],
+        "description": "HP or prayer: the current (boosted, so it can exceed max) and the maximum."
+      },
+      "Skill": {
+        "type": "object",
+        "properties": {
+          "skill": {
+            "type": "string",
+            "description": "The plugin’s skill name (\"Attack\", …); \"Overall\" is derived by the hub."
+          },
+          "level": {
+            "type": "integer",
+            "description": "As sent: virtual above 99. For Overall, the real total level."
+          },
+          "real_level": {
+            "type": "integer",
+            "description": "min(level, 99); for Overall the real total level."
+          },
+          "xp": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "skill",
+          "level",
+          "real_level",
+          "xp"
+        ]
+      },
+      "Skills": {
+        "type": "object",
+        "properties": {
+          "total_level": {
+            "type": "integer",
+            "description": "Σ min(level, 99), as the game shows it."
+          },
+          "overall_xp": {
+            "type": "integer"
+          },
+          "skills": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Skill"
+            },
+            "description": "Overall first, then the in-game grid order."
+          }
+        },
+        "required": [
+          "total_level",
+          "overall_xp",
+          "skills"
+        ]
+      },
+      "Items": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Item"
+            }
+          },
+          "value": {
+            "type": "integer",
+            "description": "Σ ge_price × quantity."
+          }
+        },
+        "required": [
+          "items",
+          "value"
+        ]
+      },
+      "AccountSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "account_hash": {
+            "description": "The plugin’s salted SHA-224 `accountHash`, the account’s identity for anything the plugin sends to. **Service keys only**; omitted for user keys.",
+            "type": "string"
+          },
+          "type": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "0 normal, 1 IM, 2 UIM, 3 HCIM, 4 GIM, 5 HCGIM, 6 UGIM; null never sent."
+          },
+          "type_label": {
+            "type": "string",
+            "description": "\"Normal\", \"Ironman\", … (\"Unknown\" for null)."
+          },
+          "owner": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Owner"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The account’s owner; null when it has none or the owner is no longer an active member."
+          },
+          "online": {
+            "description": "In game now; null without `activity`.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "world": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Last known world; null without `activity`."
+          },
+          "last_seen": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "description": "ISO-8601 UTC."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "null without `activity`."
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "type",
+          "type_label",
+          "owner",
+          "online",
+          "world",
+          "last_seen"
+        ]
+      },
+      "AccountDetail": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "account_hash": {
+            "description": "The plugin’s salted SHA-224 `accountHash`, the account’s identity for anything the plugin sends to. **Service keys only**; omitted for user keys.",
+            "type": "string"
+          },
+          "type": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "0 normal, 1 IM, 2 UIM, 3 HCIM, 4 GIM, 5 HCGIM, 6 UGIM; null never sent."
+          },
+          "type_label": {
+            "type": "string",
+            "description": "\"Normal\", \"Ironman\", … (\"Unknown\" for null)."
+          },
+          "owner": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Owner"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The account’s owner; null when it has none or the owner is no longer an active member."
+          },
+          "first_seen": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the hub first saw the account."
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "stats",
+                "events",
+                "activity",
+                "location_live",
+                "location_history",
+                "equipment",
+                "inventory"
+              ]
+            },
+            "description": "What this key may read on this account right now."
+          },
+          "presence": {
+            "description": "`activity`. `{ \"shared\": false, \"updated_at\": null }` when the player’s plugin never sent it; the key omitted when the key can’t read the category on this account.",
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "shared": {
+                    "type": "boolean",
+                    "const": true
+                  },
+                  "updated_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "When the hub last received this section."
+                  },
+                  "online": {
+                    "type": "boolean",
+                    "description": "In game now."
+                  },
+                  "world": {
+                    "anyOf": [
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Last known world, also while offline."
+                  },
+                  "special_world": {
+                    "type": "boolean",
+                    "description": "The last known world is a special one (league, deadman, …)."
+                  },
+                  "game_state": {
+                    "description": "Last game state as sent (LOGGED_IN, LOGIN_SCREEN, HOPPING, …).",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "last_seen": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "When the hub last received anything for the account."
+                  }
+                },
+                "required": [
+                  "shared",
+                  "updated_at",
+                  "online",
+                  "world",
+                  "special_world",
+                  "game_state",
+                  "last_seen"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "shared": {
+                    "type": "boolean",
+                    "const": false
+                  },
+                  "updated_at": {
+                    "type": "null"
+                  }
+                },
+                "required": [
+                  "shared",
+                  "updated_at"
+                ]
+              }
+            ]
+          },
+          "vitals": {
+            "description": "`activity`: HP, prayer, spellbook. `{ \"shared\": false, \"updated_at\": null }` when the player’s plugin never sent it; the key omitted when the key can’t read the category on this account.",
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "shared": {
+                    "type": "boolean",
+                    "const": true
+                  },
+                  "updated_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "When the hub last received this section."
+                  },
+                  "hp": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/components/schemas/Meter"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "prayer": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/components/schemas/Meter"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "spellbook": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "shared",
+                  "updated_at",
+                  "hp",
+                  "prayer",
+                  "spellbook"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "shared": {
+                    "type": "boolean",
+                    "const": false
+                  },
+                  "updated_at": {
+                    "type": "null"
+                  }
+                },
+                "required": [
+                  "shared",
+                  "updated_at"
+                ]
+              }
+            ]
+          },
+          "skills": {
+            "description": "`stats`. Without `activity`, `updated_at` is cut to the UTC day (the exact time would be the last-seen time). `{ \"shared\": false, \"updated_at\": null }` when the player’s plugin never sent it; the key omitted when the key can’t read the category on this account.",
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "shared": {
+                    "type": "boolean",
+                    "const": true
+                  },
+                  "updated_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "When the hub last received this section."
+                  },
+                  "total_level": {
+                    "type": "integer",
+                    "description": "Σ min(level, 99), as the game shows it."
+                  },
+                  "overall_xp": {
+                    "type": "integer"
+                  },
+                  "skills": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/Skill"
+                    },
+                    "description": "Overall first, then the in-game grid order."
+                  }
+                },
+                "required": [
+                  "shared",
+                  "updated_at",
+                  "total_level",
+                  "overall_xp",
+                  "skills"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "shared": {
+                    "type": "boolean",
+                    "const": false
+                  },
+                  "updated_at": {
+                    "type": "null"
+                  }
+                },
+                "required": [
+                  "shared",
+                  "updated_at"
+                ]
+              }
+            ]
+          },
+          "location": {
+            "description": "`location_live`. `{ \"shared\": false, \"updated_at\": null }` when the player’s plugin never sent it; the key omitted when the key can’t read the category on this account.",
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "shared": {
+                    "type": "boolean",
+                    "const": true
+                  },
+                  "updated_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "When the hub last received this section."
+                  },
+                  "x": {
+                    "type": "integer"
+                  },
+                  "y": {
+                    "type": "integer"
+                  },
+                  "plane": {
+                    "type": "integer"
+                  },
+                  "is_on_boat": {
+                    "type": "boolean"
+                  },
+                  "stale": {
+                    "type": "boolean",
+                    "description": "No location received for more than 2 minutes: the player may be elsewhere now."
+                  }
+                },
+                "required": [
+                  "shared",
+                  "updated_at",
+                  "x",
+                  "y",
+                  "plane",
+                  "is_on_boat",
+                  "stale"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "shared": {
+                    "type": "boolean",
+                    "const": false
+                  },
+                  "updated_at": {
+                    "type": "null"
+                  }
+                },
+                "required": [
+                  "shared",
+                  "updated_at"
+                ]
+              }
+            ]
+          },
+          "equipment": {
+            "description": "`equipment`: worn items. `{ \"shared\": false, \"updated_at\": null }` when the player’s plugin never sent it; the key omitted when the key can’t read the category on this account.",
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "shared": {
+                    "type": "boolean",
+                    "const": true
+                  },
+                  "updated_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "When the hub last received this section."
+                  },
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/Item"
+                    }
+                  },
+                  "value": {
+                    "type": "integer",
+                    "description": "Σ ge_price × quantity."
+                  }
+                },
+                "required": [
+                  "shared",
+                  "updated_at",
+                  "items",
+                  "value"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "shared": {
+                    "type": "boolean",
+                    "const": false
+                  },
+                  "updated_at": {
+                    "type": "null"
+                  }
+                },
+                "required": [
+                  "shared",
+                  "updated_at"
+                ]
+              }
+            ]
+          },
+          "inventory": {
+            "description": "`inventory`. `{ \"shared\": false, \"updated_at\": null }` when the player’s plugin never sent it; the key omitted when the key can’t read the category on this account.",
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "shared": {
+                    "type": "boolean",
+                    "const": true
+                  },
+                  "updated_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "When the hub last received this section."
+                  },
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/Item"
+                    }
+                  },
+                  "value": {
+                    "type": "integer",
+                    "description": "Σ ge_price × quantity."
+                  }
+                },
+                "required": [
+                  "shared",
+                  "updated_at",
+                  "items",
+                  "value"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "shared": {
+                    "type": "boolean",
+                    "const": false
+                  },
+                  "updated_at": {
+                    "type": "null"
+                  }
+                },
+                "required": [
+                  "shared",
+                  "updated_at"
+                ]
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "type",
+          "type_label",
+          "owner",
+          "first_seen",
+          "categories"
+        ]
+      },
+      "SnapshotAccount": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "account_hash": {
+            "description": "The plugin’s salted SHA-224 `accountHash`, the account’s identity for anything the plugin sends to. **Service keys only**; omitted for user keys.",
+            "type": "string"
+          },
+          "type": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "0 normal, 1 IM, 2 UIM, 3 HCIM, 4 GIM, 5 HCGIM, 6 UGIM; null never sent."
+          },
+          "type_label": {
+            "type": "string",
+            "description": "\"Normal\", \"Ironman\", … (\"Unknown\" for null)."
+          },
+          "owner": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Owner"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The account’s owner; null when it has none or the owner is no longer an active member."
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "stats",
+                "events",
+                "activity",
+                "location_live",
+                "location_history",
+                "equipment",
+                "inventory"
+              ]
+            },
+            "description": "What this key may read on this account right now."
+          },
+          "online": {
+            "description": "`activity`: in game now. Omitted without it.",
+            "type": "boolean"
+          },
+          "world": {
+            "description": "`activity`: last known world. Omitted without it.",
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "special_world": {
+            "description": "`activity`. Omitted without it.",
+            "type": "boolean"
+          },
+          "game_state": {
+            "description": "`activity`: last game state as sent (LOGGED_IN, LOGIN_SCREEN, HOPPING, …); null once an in-game state timed out. Omitted without it.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_seen": {
+            "description": "`activity`: when the hub last heard from the account. Omitted without it.",
+            "type": "string",
+            "format": "date-time"
+          },
+          "hp": {
+            "description": "`activity`. Omitted without it.",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Meter"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "prayer": {
+            "description": "`activity`. Omitted without it.",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Meter"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "spellbook": {
+            "description": "`activity`. Omitted without it.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "location": {
+            "description": "`location_live`: null when never sent, omitted without the category. `stale` after 2 minutes without a location.",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SnapshotLocation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "skills": {
+            "description": "`stats`: null when never sent, omitted without the category.",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Skills"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "equipment": {
+            "description": "`equipment`: null when never sent, omitted without the category.",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Items"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "inventory": {
+            "description": "`inventory`: null when never sent, omitted without the category.",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Items"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "type",
+          "type_label",
+          "owner",
+          "categories"
+        ]
+      },
+      "SnapshotLocation": {
+        "type": "object",
+        "properties": {
+          "x": {
+            "type": "integer"
+          },
+          "y": {
+            "type": "integer"
+          },
+          "plane": {
+            "type": "integer"
+          },
+          "is_on_boat": {
+            "type": "boolean"
+          },
+          "stale": {
+            "type": "boolean",
+            "description": "No location received for more than 2 minutes: the player may be elsewhere now."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO-8601 UTC."
+          }
+        },
+        "required": [
+          "x",
+          "y",
+          "plane",
+          "is_on_boat",
+          "stale",
+          "updated_at"
+        ]
+      },
+      "XpSeries": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "$ref": "#/components/schemas/AccountRef"
+          },
+          "resolution": {
+            "type": "string",
+            "enum": [
+              "5m",
+              "1h",
+              "1d"
+            ],
+            "description": "The resolution used."
+          },
+          "from": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO-8601 UTC."
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO-8601 UTC."
+          },
+          "series": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "skill": {
+                  "type": "string"
+                },
+                "points": {
+                  "type": "array",
+                  "items": {
+                    "type": "array",
+                    "prefixItems": [
+                      {
+                        "type": "string",
+                        "format": "date-time",
+                        "description": "ISO-8601 UTC."
+                      },
+                      {
+                        "type": "integer"
+                      }
+                    ],
+                    "items": false,
+                    "minItems": 2,
+                    "maxItems": 2
+                  },
+                  "description": "[bucket start, XP at the end of that bucket], ascending. XP only changes where a point is; the value in effect at `from` is carried in as a first point at the range start."
+                }
+              },
+              "required": [
+                "skill",
+                "points"
+              ]
+            }
+          }
+        },
+        "required": [
+          "account",
+          "resolution",
+          "from",
+          "to",
+          "series"
+        ]
+      },
+      "Event": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Public event id (uuid v7)."
+          },
+          "type": {
+            "type": "string",
+            "description": "loot, pk_loot, death, level_up, collection_log, superior_spawn, achievement_diary, combat_task, or an unknown plugin type as sent."
+          },
+          "account": {
+            "$ref": "#/components/schemas/AccountRef"
+          },
+          "occurred_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "The plugin’s time, clamped to [received − 15 min, received]."
+          },
+          "received_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO-8601 UTC."
+          },
+          "value_gp": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Loot value in GP where the type has one."
+          },
+          "item_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "npc_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "skill": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "level": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "tier": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "points": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "special_world": {
+            "type": "boolean"
+          },
+          "data": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {},
+            "description": "The event as the plugin sent it (`{type, data, eventId, timestamp}`), passed through unchanged: its shape depends on `type`. `data.location` (deaths, superior spawns) is removed unless the key reads `location_live` or `location_history` on the account."
+          },
+          "title": {
+            "type": "string",
+            "description": "Short title, e.g. \"Loot\"."
+          },
+          "line": {
+            "type": "string",
+            "description": "One line, e.g. \"Zezima received Dragon warhammer (38.2M) from Lizardman shaman\"."
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "account",
+          "occurred_at",
+          "received_at",
+          "value_gp",
+          "item_id",
+          "npc_id",
+          "skill",
+          "level",
+          "tier",
+          "points",
+          "special_world",
+          "data",
+          "title",
+          "line"
+        ]
+      },
+      "MeResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "user",
+                      "service"
+                    ],
+                    "description": "`user`: a member’s own key, reading what its creator may see. `service`: an integration key an admin created; it belongs to nobody and reads what the guild audience sees (accounts and categories shared with the guild)."
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "prefix": {
+                    "type": "string",
+                    "description": "The key is `ohub_<prefix>_<secret>`."
+                  },
+                  "categories": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "stats",
+                        "events",
+                        "activity",
+                        "location_live",
+                        "location_history",
+                        "equipment",
+                        "inventory"
+                      ]
+                    }
+                  },
+                  "account_scope": {
+                    "type": "string",
+                    "enum": [
+                      "all_visible",
+                      "list"
+                    ],
+                    "description": "`all_visible`: every account the creator can see, evaluated on every request; `list`: an explicit list. Always `all_visible` for a service key."
+                  },
+                  "rate_limit_per_minute": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Requests this key may make per sliding minute (`X-RateLimit-Limit`)."
+                  },
+                  "expires_at": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "format": "date-time",
+                        "description": "ISO-8601 UTC."
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "kind",
+                  "name",
+                  "prefix",
+                  "categories",
+                  "account_scope",
+                  "rate_limit_per_minute",
+                  "expires_at"
+                ]
+              },
+              "user": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "name"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "The key’s creator; null for a service key."
+              },
+              "visible_accounts": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Accounts the key can see right now."
+              }
+            },
+            "required": [
+              "key",
+              "user",
+              "visible_accounts"
+            ]
+          },
+          "meta": {
+            "type": "object",
+            "properties": {
+              "generated_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "When the hub built this response."
+              }
+            },
+            "required": [
+              "generated_at"
+            ]
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ]
+      },
+      "AccountsResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AccountSummary"
+            }
+          },
+          "meta": {
+            "type": "object",
+            "properties": {
+              "generated_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "When the hub built this response."
+              },
+              "count": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "generated_at",
+              "count"
+            ]
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ]
+      },
+      "AccountResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/AccountDetail"
+          },
+          "meta": {
+            "type": "object",
+            "properties": {
+              "generated_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "When the hub built this response."
+              }
+            },
+            "required": [
+              "generated_at"
+            ]
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ]
+      },
+      "SnapshotResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SnapshotAccount"
+            }
+          },
+          "meta": {
+            "type": "object",
+            "properties": {
+              "generated_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "When the hub built this response."
+              },
+              "count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "last_modified": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "ISO-8601 UTC."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "The newest change among the accounts whose `activity` the key reads, for the next `since`; null when it reads none."
+              }
+            },
+            "required": [
+              "generated_at",
+              "count",
+              "last_modified"
+            ]
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ]
+      },
+      "XpResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/XpSeries"
+          },
+          "meta": {
+            "type": "object",
+            "properties": {
+              "generated_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "When the hub built this response."
+              }
+            },
+            "required": [
+              "generated_at"
+            ]
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ]
+      },
+      "XpMultiResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "object",
+            "properties": {
+              "resolution": {
+                "type": "string",
+                "enum": [
+                  "5m",
+                  "1h",
+                  "1d"
+                ]
+              },
+              "from": {
+                "type": "string",
+                "format": "date-time",
+                "description": "ISO-8601 UTC."
+              },
+              "to": {
+                "type": "string",
+                "format": "date-time",
+                "description": "ISO-8601 UTC."
+              },
+              "accounts": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/XpSeries"
+                },
+                "description": "In request order."
+              }
+            },
+            "required": [
+              "resolution",
+              "from",
+              "to",
+              "accounts"
+            ]
+          },
+          "meta": {
+            "type": "object",
+            "properties": {
+              "generated_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "When the hub built this response."
+              }
+            },
+            "required": [
+              "generated_at"
+            ]
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ]
+      },
+      "GainsResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "object",
+            "properties": {
+              "account": {
+                "$ref": "#/components/schemas/AccountRef"
+              },
+              "period": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "day",
+                      "week",
+                      "month",
+                      "year"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "null for an explicit from/to."
+              },
+              "from": {
+                "type": "string",
+                "format": "date-time",
+                "description": "ISO-8601 UTC."
+              },
+              "to": {
+                "type": "string",
+                "format": "date-time",
+                "description": "ISO-8601 UTC."
+              },
+              "gains": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "skill": {
+                      "type": "string"
+                    },
+                    "xp": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "skill",
+                    "xp"
+                  ]
+                },
+                "description": "Every skill the account has, Overall first, then the grid order."
+              }
+            },
+            "required": [
+              "account",
+              "period",
+              "from",
+              "to",
+              "gains"
+            ]
+          },
+          "meta": {
+            "type": "object",
+            "properties": {
+              "generated_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "When the hub built this response."
+              }
+            },
+            "required": [
+              "generated_at"
+            ]
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ]
+      },
+      "EventsResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Event"
+            }
+          },
+          "meta": {
+            "type": "object",
+            "properties": {
+              "generated_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "When the hub built this response."
+              },
+              "count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "next_cursor": {
+                "type": "string",
+                "description": "Pass as `cursor` next time. Always present; unchanged when nothing new has settled."
+              }
+            },
+            "required": [
+              "generated_at",
+              "count",
+              "next_cursor"
+            ]
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ]
+      },
+      "SessionsResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "object",
+            "properties": {
+              "account": {
+                "$ref": "#/components/schemas/AccountRef"
+              },
+              "from": {
+                "type": "string",
+                "format": "date-time",
+                "description": "ISO-8601 UTC."
+              },
+              "to": {
+                "type": "string",
+                "format": "date-time",
+                "description": "ISO-8601 UTC."
+              },
+              "sessions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "started_at": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "ISO-8601 UTC."
+                    },
+                    "ended_at": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time",
+                          "description": "ISO-8601 UTC."
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "description": "null while the session is open."
+                    },
+                    "last_seen_at": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "ISO-8601 UTC."
+                    },
+                    "duration_ms": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "worlds": {
+                      "type": "array",
+                      "items": {
+                        "type": "integer"
+                      }
+                    },
+                    "end_reason": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "logout",
+                            "shutdown",
+                            "disabled",
+                            "timeout"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "started_at",
+                    "ended_at",
+                    "last_seen_at",
+                    "duration_ms",
+                    "worlds",
+                    "end_reason"
+                  ]
+                },
+                "description": "Sessions overlapping the range, newest first."
+              }
+            },
+            "required": [
+              "account",
+              "from",
+              "to",
+              "sessions"
+            ]
+          },
+          "meta": {
+            "type": "object",
+            "properties": {
+              "generated_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "When the hub built this response."
+              }
+            },
+            "required": [
+              "generated_at"
+            ]
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ]
+      },
+      "EquipmentHistoryResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "object",
+            "properties": {
+              "account": {
+                "$ref": "#/components/schemas/AccountRef"
+              },
+              "from": {
+                "type": "string",
+                "format": "date-time",
+                "description": "ISO-8601 UTC."
+              },
+              "to": {
+                "type": "string",
+                "format": "date-time",
+                "description": "ISO-8601 UTC."
+              },
+              "changes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "changed_at": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "ISO-8601 UTC."
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Item"
+                      },
+                      "description": "The whole worn set after the change."
+                    }
+                  },
+                  "required": [
+                    "changed_at",
+                    "items"
+                  ]
+                },
+                "description": "Newest first."
+              }
+            },
+            "required": [
+              "account",
+              "from",
+              "to",
+              "changes"
+            ]
+          },
+          "meta": {
+            "type": "object",
+            "properties": {
+              "generated_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "When the hub built this response."
+              }
+            },
+            "required": [
+              "generated_at"
+            ]
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ]
+      },
+      "WealthResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "object",
+            "properties": {
+              "account": {
+                "$ref": "#/components/schemas/AccountRef"
+              },
+              "from": {
+                "type": "string",
+                "format": "date-time",
+                "description": "ISO-8601 UTC."
+              },
+              "to": {
+                "type": "string",
+                "format": "date-time",
+                "description": "ISO-8601 UTC."
+              },
+              "days": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "day": {
+                      "type": "string",
+                      "format": "date",
+                      "description": "UTC day."
+                    },
+                    "last_value": {
+                      "type": "integer",
+                      "description": "Carried value at the day’s last update (GE)."
+                    },
+                    "max_value": {
+                      "type": "integer",
+                      "description": "The day’s highest carried value."
+                    }
+                  },
+                  "required": [
+                    "day",
+                    "last_value",
+                    "max_value"
+                  ]
+                },
+                "description": "Oldest first."
+              }
+            },
+            "required": [
+              "account",
+              "from",
+              "to",
+              "days"
+            ]
+          },
+          "meta": {
+            "type": "object",
+            "properties": {
+              "generated_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "When the hub built this response."
+              }
+            },
+            "required": [
+              "generated_at"
+            ]
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ]
+      },
+      "LocationsResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "object",
+            "properties": {
+              "account": {
+                "$ref": "#/components/schemas/AccountRef"
+              },
+              "from": {
+                "type": "string",
+                "format": "date-time",
+                "description": "ISO-8601 UTC."
+              },
+              "to": {
+                "type": "string",
+                "format": "date-time",
+                "description": "ISO-8601 UTC."
+              },
+              "points": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "at": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "ISO-8601 UTC."
+                    },
+                    "x": {
+                      "type": "integer"
+                    },
+                    "y": {
+                      "type": "integer"
+                    },
+                    "plane": {
+                      "type": "integer"
+                    },
+                    "world": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "is_on_boat": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "at",
+                    "x",
+                    "y",
+                    "plane",
+                    "world",
+                    "is_on_boat"
+                  ]
+                },
+                "description": "At most one point per minute, oldest first."
+              }
+            },
+            "required": [
+              "account",
+              "from",
+              "to",
+              "points"
+            ]
+          },
+          "meta": {
+            "type": "object",
+            "properties": {
+              "generated_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "When the hub built this response."
+              }
+            },
+            "required": [
+              "generated_at"
+            ]
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ]
+      },
+      "LocationsMultiResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "object",
+            "properties": {
+              "from": {
+                "type": "string",
+                "format": "date-time",
+                "description": "ISO-8601 UTC."
+              },
+              "to": {
+                "type": "string",
+                "format": "date-time",
+                "description": "ISO-8601 UTC."
+              },
+              "accounts": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AccountLocations"
+                },
+                "description": "In request order; each trail is what `/accounts/{id}/locations` returns."
+              }
+            },
+            "required": [
+              "from",
+              "to",
+              "accounts"
+            ]
+          },
+          "meta": {
+            "type": "object",
+            "properties": {
+              "generated_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "When the hub built this response."
+              }
+            },
+            "required": [
+              "generated_at"
+            ]
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ]
+      },
+      "LeaderboardsResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "object",
+            "properties": {
+              "period": {
+                "type": "string",
+                "enum": [
+                  "day",
+                  "week",
+                  "month"
+                ]
+              },
+              "from": {
+                "type": "string",
+                "format": "date-time",
+                "description": "ISO-8601 UTC."
+              },
+              "to": {
+                "type": "string",
+                "format": "date-time",
+                "description": "ISO-8601 UTC."
+              },
+              "leaderboards": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "skill": {
+                      "type": "string"
+                    },
+                    "entries": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "rank": {
+                            "type": "integer",
+                            "minimum": 1
+                          },
+                          "account": {
+                            "$ref": "#/components/schemas/AccountRef"
+                          },
+                          "gain": {
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "rank",
+                          "account",
+                          "gain"
+                        ]
+                      },
+                      "description": "Highest gain first, at most 10; only accounts that gained XP."
+                    }
+                  },
+                  "required": [
+                    "skill",
+                    "entries"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "period",
+              "from",
+              "to",
+              "leaderboards"
+            ]
+          },
+          "meta": {
+            "type": "object",
+            "properties": {
+              "generated_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "When the hub built this response."
+              }
+            },
+            "required": [
+              "generated_at"
+            ]
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ]
+      },
+      "LootLeaderboardResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "object",
+            "properties": {
+              "period": {
+                "type": "string",
+                "enum": [
+                  "day",
+                  "week",
+                  "month"
+                ]
+              },
+              "from": {
+                "type": "string",
+                "format": "date-time",
+                "description": "ISO-8601 UTC."
+              },
+              "to": {
+                "type": "string",
+                "format": "date-time",
+                "description": "ISO-8601 UTC."
+              },
+              "entries": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "rank": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "event": {
+                      "$ref": "#/components/schemas/Event"
+                    }
+                  },
+                  "required": [
+                    "rank",
+                    "event"
+                  ]
+                },
+                "description": "Loot and PK loot with a value, not on a special world, that occurred in [from, to]: highest `value_gp` first (newest first on a tie), at most `limit`. Each `event` is exactly what `/events` serves."
+              }
+            },
+            "required": [
+              "period",
+              "from",
+              "to",
+              "entries"
+            ]
+          },
+          "meta": {
+            "type": "object",
+            "properties": {
+              "generated_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "When the hub built this response."
+              }
+            },
+            "required": [
+              "generated_at"
+            ]
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ]
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "invalid_request (400), unauthorized (401), not_found (404), rate_limited (429), unavailable (503), internal_error (500)."
+              },
+              "message": {
+                "type": "string"
+              },
+              "details": {
+                "description": "Field errors of a 400.",
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "path",
+                    "message"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "required": [
+          "error"
+        ]
+      }
+    },
+    "headers": {
+      "X-RateLimit-Limit": {
+        "description": "Requests allowed for this key per sliding 60 s (120 for a user key; a service key’s own limit).",
+        "schema": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "X-RateLimit-Remaining": {
+        "description": "Requests left in the current window, this one counted.",
+        "schema": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "X-RateLimit-Reset": {
+        "description": "Seconds (a delta, not a timestamp) until the oldest request in the window expires and Remaining goes up again; 0 when nothing is counted.",
+        "schema": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "Retry-After": {
+        "description": "Whole seconds to wait before retrying.",
+        "schema": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "ETag": {
+        "description": "Weak entity tag of this snapshot for this key; send it as If-None-Match.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "Last-Modified": {
+        "description": "HTTP date of the newest change among the accounts whose `activity` the key reads (absent when it reads none).",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "WWW-Authenticate": {
+        "description": "`Bearer`.",
+        "schema": {
+          "type": "string"
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "`invalid_request`: a parameter is malformed or out of range; `details` names it.",
+        "headers": {
+          "X-RateLimit-Limit": {
+            "$ref": "#/components/headers/X-RateLimit-Limit"
+          },
+          "X-RateLimit-Remaining": {
+            "$ref": "#/components/headers/X-RateLimit-Remaining"
+          },
+          "X-RateLimit-Reset": {
+            "$ref": "#/components/headers/X-RateLimit-Reset"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "`unauthorized`: the key is missing, malformed, unknown, revoked or expired, or its creator is no longer an active member. Always the same body.",
+        "headers": {
+          "WWW-Authenticate": {
+            "$ref": "#/components/headers/WWW-Authenticate"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "`not_found`: the account doesn’t exist or isn’t readable with this key (the two are indistinguishable).",
+        "headers": {
+          "X-RateLimit-Limit": {
+            "$ref": "#/components/headers/X-RateLimit-Limit"
+          },
+          "X-RateLimit-Remaining": {
+            "$ref": "#/components/headers/X-RateLimit-Remaining"
+          },
+          "X-RateLimit-Reset": {
+            "$ref": "#/components/headers/X-RateLimit-Reset"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "TooManyRequests": {
+        "description": "`rate_limited`: over a per-key limit (with the X-RateLimit-* headers) or, before authentication, the client IP’s failed-authentication limit.",
+        "headers": {
+          "Retry-After": {
+            "$ref": "#/components/headers/Retry-After"
+          },
+          "X-RateLimit-Limit": {
+            "$ref": "#/components/headers/X-RateLimit-Limit"
+          },
+          "X-RateLimit-Remaining": {
+            "$ref": "#/components/headers/X-RateLimit-Remaining"
+          },
+          "X-RateLimit-Reset": {
+            "$ref": "#/components/headers/X-RateLimit-Reset"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Unavailable": {
+        "description": "`unavailable`: the hub is busy or its database is unreachable; retry after Retry-After.",
+        "headers": {
+          "Retry-After": {
+            "$ref": "#/components/headers/Retry-After"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      }
+    }
+  }
+}

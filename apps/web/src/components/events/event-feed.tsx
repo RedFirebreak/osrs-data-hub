@@ -1,6 +1,7 @@
 /**
  * A list of events (FeedEvent from @hub/server: already permission-checked and redacted for the
- * viewer, with describeEvent's line and icon hint). Each row: icon, the line (linking to the account
+ * viewer, with describeEvent's line and icon hint). Each row: icon (the game icon of the item or
+ * skill it names, else the hint's lucide icon; D-95), the line (linking to the account
  * page unless `linkAccounts` is false), a relative time, a value badge for loot, and a "Special world"
  * badge when flagged.
  *
@@ -10,33 +11,32 @@
  *
  *   <EventFeed events={card.recentEvents} now={now} compact linkAccounts={false} />
  */
-import { formatGp } from '@hub/core';
+import { formatGp, isLootEvent } from '@hub/core';
 import type { FeedEvent } from '@hub/server';
 import Link from 'next/link';
+import { stackTone } from '@/components/account-page/items';
 import { accountHref } from '@/components/accounts/account-link';
 import { SpecialWorldBadge } from '@/components/accounts/special-world-badge';
+import { RelativeTime } from '@/components/time/relative-time';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { EventIconBadge } from './event-icon';
-import { RelativeTime } from './relative-time';
 
-/** Event types whose valueGp is a loot value (a death's is the value lost, already in the line). */
-const LOOT_TYPES: ReadonlySet<string> = new Set(['loot', 'pk_loot']);
-
-/** The loot value to badge, or null (no value, zero, or not a loot event). */
+/**
+ * The loot value to badge, or null (no value, zero, or not a loot event: a death's valueGp is the
+ * value lost, already in its line).
+ */
 export function lootValue(event: Pick<FeedEvent, 'type' | 'valueGp'>): number | null {
   const v = event.valueGp;
-  return LOOT_TYPES.has(event.type) && v !== null && Number.isFinite(v) && v > 0 ? v : null;
+  return isLootEvent(event.type) && v !== null && Number.isFinite(v) && v > 0 ? v : null;
 }
 
 /**
  * The in-game coin stack colours: yellow below 100K, white from 100K, green from 10M (readable in
- * both themes).
+ * both themes), in the shades for a filled badge.
  */
 export function valueTone(value: number): string {
-  if (value >= 10_000_000) return 'text-emerald-700 dark:text-emerald-300';
-  if (value >= 100_000) return 'text-foreground';
-  return 'text-amber-700 dark:text-amber-300';
+  return stackTone(value, true);
 }
 
 export interface EventFeedProps {
@@ -104,6 +104,7 @@ export function EventFeedItem({
       <EventIconBadge
         icon={event.icon}
         label={event.title}
+        game={event}
         className={compact ? 'size-7' : undefined}
       />
       <div className="min-w-0 flex-1">

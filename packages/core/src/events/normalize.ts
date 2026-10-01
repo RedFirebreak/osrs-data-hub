@@ -1,19 +1,18 @@
+import { isRecord } from '../guards';
+import { INT32_MAX, INT32_MIN, SMALLINT_MAX, SMALLINT_MIN } from '../ints';
 import { stripNul } from '../json';
 import type { RawEvent } from '../payload/types';
 import { clampEventTime } from '../time';
 import { parseCombatTaskName } from './combat-task';
 import {
-  EVENT_TYPE_MAP,
+  knownPluginEventType,
+  type KnownEventType,
   type NormalizedEvent,
   type NormalizeResult,
   type ShutdownReason,
 } from './types';
 import { itemsValue } from './values';
 
-const INT32_MIN = -2_147_483_648;
-const INT32_MAX = 2_147_483_647;
-const SMALLINT_MIN = -32_768;
-const SMALLINT_MAX = 32_767;
 /**
  * levelUp elements kept per event: the plugin sends at most one per skill plus Combat (25 today;
  * parsePayload allows 64 skills). It bounds sub_index (a smallint) and the rows per event, each of
@@ -45,8 +44,9 @@ const NO_COLUMNS: Columns = {
 
 /**
  * Normalizes plugin events into `events` rows (handoff §7.5):
- * - type: EVENT_TYPE_MAP for known types; unknown types kept as sent. The type is cleaned (see text
- *   columns below) before anything else, so a type that reads as a known name is treated as one.
+ * - type: the stored name of a known plugin type (EVENT_TYPES); unknown types kept as sent. The type
+ *   is cleaned (see text columns below) before anything else, so a type that reads as a known name
+ *   is treated as one.
  * - occurredAt: clampEventTime(event.timestamp, recv).
  * - clientShutdown: not a row; data "Logout" | "Shutdown" | "Disabled" → shutdown reason
  *   logout | shutdown | disabled (anything else → 'shutdown'). The LAST one wins.
@@ -102,12 +102,12 @@ export function normalizeEvents(events: readonly RawEvent[], recv: Date): Normal
       skipped += 1;
       continue;
     }
-    const type = Object.hasOwn(EVENT_TYPE_MAP, pluginType)
-      ? EVENT_TYPE_MAP[pluginType as keyof typeof EVENT_TYPE_MAP]
-      : pluginType;
+    // By the plugin's name only: a type sent under a stored name ('level_up') is an unknown type.
+    const known = knownPluginEventType(pluginType);
+    const type = known ?? pluginType;
     const base = { pluginEventId, type, occurredAt, data: stripNul(event.raw) };
 
-    if (pluginType === 'levelUp') {
+    if (known === 'level_up') {
       if (!Array.isArray(event.data)) {
         skipped += 1;
         continue;
@@ -123,29 +123,29 @@ export function normalizeEvents(events: readonly RawEvent[], recv: Date): Normal
       continue;
     }
 
-    rows.push({ ...base, subIndex: 0, ...NO_COLUMNS, ...columnsFor(pluginType, event.data) });
+    rows.push({ ...base, subIndex: 0, ...NO_COLUMNS, ...columnsFor(known, event.data) });
   }
 
   return { events: rows, shutdown, skipped };
 }
 
 function parseLevelUp(element: unknown): { skill: string; level: number } | null {
-  if (!isObject(element)) return null;
+  if (!isRecord(element)) return null;
   const skill = typeof element.skill === 'string' ? stripNul(element.skill).trim() : '';
   const level = smallint(element.level);
   if (skill === '' || level === null) return null;
   return { skill, level };
 }
 
-/** Type-specific columns by plugin type, for every type but levelUp (unknown types get none). */
-function columnsFor(pluginType: string, data: unknown): Partial<Columns> {
-  const d = isObject(data) ? data : {};
-  switch (pluginType) {
+/** Type-specific columns, for every type but level_up (unknown types get none). */
+function columnsFor(type: KnownEventType | undefined, data: unknown): Partial<Columns> {
+  const d = isRecord(data) ? data : {};
+  switch (type) {
     case 'loot':
-    case 'pkLoot':
+    case 'pk_loot':
       return {
         valueGp: recomputedValue(d.items) ?? gp(d.totalValue),
-        itemId: int32(isObject(d.highestValueItem) ? d.highestValueItem.id : undefined),
+        itemId: int32(isRecord(d.highestValueItem) ? d.highestValueItem.id : undefined),
         npcId: int32(d.npcId),
       };
     case 'death':
@@ -153,23 +153,19 @@ function columnsFor(pluginType: string, data: unknown): Partial<Columns> {
         valueGp: recomputedValue(d.lostItems) ?? gp(d.valueLost),
         npcId: int32(d.killerNpcId),
       };
-    case 'collectionLog': {
+    case 'collection_log': {
       const itemId = int32(d.itemId);
       return { valueGp: gp(d.value), itemId: itemId !== null && itemId >= 0 ? itemId : null };
     }
-    case 'superiorSpawn':
+    case 'superior_spawn':
       return { npcId: int32(d.npcId) };
-    case 'achievementDiary':
+    case 'achievement_diary':
       return { tier: tier(d.tier) };
-    case 'combatTask':
+    case 'combat_task':
       return { tier: tier(d.tier), points: smallint(parseCombatTaskName(d.taskName).points) };
     default:
       return {};
   }
-}
-
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 /**
@@ -179,7 +175,7 @@ function isObject(value: unknown): value is Record<string, unknown> {
 function recomputedValue(items: unknown): number | null {
   if (!Array.isArray(items)) return null;
   const valid = items.every(
-    (item) => isObject(item) && Number.isInteger(item.gePrice) && Number.isInteger(item.quantity),
+    (item) => isRecord(item) && Number.isInteger(item.gePrice) && Number.isInteger(item.quantity),
   );
   return valid ? itemsValue(items) : null;
 }

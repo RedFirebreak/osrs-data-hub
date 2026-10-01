@@ -4,6 +4,7 @@
  * failed-authentication limit per IP (answered before any database access), the per-key limits with
  * their headers, the 1/s /snapshot limit, and the hub_api_* metrics they record.
  */
+import { pathToFileURL } from 'node:url';
 import { users, type DbHandle } from '@hub/db';
 import { API_RATE_LIMIT, FAILED_AUTH_LIMIT, getMetrics, revokeApiKey } from '@hub/server';
 import { eq } from 'drizzle-orm';
@@ -12,18 +13,9 @@ import { getApiLimits, setApiLimitsForTests } from '@/lib/api-v1/with-api-key';
 import { withTestDb, type WebTestContext } from '@/lib/test-utils';
 import * as catchAll from './[[...rest]]/route';
 import * as accountRoute from './accounts/[id]/route';
-import * as equipmentRoute from './accounts/[id]/equipment-history/route';
-import * as gainsRoute from './accounts/[id]/gains/route';
-import * as locationsRoute from './accounts/[id]/locations/route';
-import * as sessionsRoute from './accounts/[id]/sessions/route';
-import * as wealthRoute from './accounts/[id]/wealth/route';
-import * as accountXpRoute from './accounts/[id]/xp/route';
-import * as accountsRoute from './accounts/route';
-import * as eventsRoute from './events/route';
-import * as leaderboardRoute from './leaderboards/gains/route';
-import * as lootLeaderboardRoute from './leaderboards/loot/route';
 import * as meRoute from './me/route';
 import * as openapiRoute from './openapi.json/route';
+import { v1RouteFiles } from './route-files';
 import * as snapshotRoute from './snapshot/route';
 import {
   ACCOUNT_404,
@@ -98,27 +90,16 @@ describe('CORS', () => {
   });
 
   it('answers OPTIONS on every v1 route with 204, the preflight headers, no auth and no body', async () => {
-    const routes = [
-      meRoute,
-      accountsRoute,
-      accountRoute,
-      accountXpRoute,
-      gainsRoute,
-      sessionsRoute,
-      equipmentRoute,
-      wealthRoute,
-      locationsRoute,
-      snapshotRoute,
-      xpRoute,
-      eventsRoute,
-      leaderboardRoute,
-      lootLeaderboardRoute,
-      openapiRoute,
-      catchAll,
-    ];
-    for (const route of routes) {
-      const res = route.OPTIONS();
-      expect(res.status).toBe(204);
+    // Every route.ts under app/api/v1, the catch-all included: a new route can't be left out.
+    const files = v1RouteFiles();
+    expect(files.length).toBeGreaterThanOrEqual(17);
+    for (const { file } of files) {
+      const route = (await import(/* @vite-ignore */ pathToFileURL(file).href)) as {
+        OPTIONS?: () => Response;
+      };
+      expect(route.OPTIONS, file).toBeTypeOf('function');
+      const res = route.OPTIONS!();
+      expect(res.status, file).toBe(204);
       expectCors(res);
       expect(res.headers.get('access-control-allow-methods')).toBe('GET, OPTIONS');
       expect(res.headers.get('access-control-allow-headers')).toBe(

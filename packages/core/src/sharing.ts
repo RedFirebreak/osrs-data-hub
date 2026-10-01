@@ -1,3 +1,5 @@
+import { isRecord } from './guards';
+
 export const CATEGORIES = [
   'stats',
   'events',
@@ -12,18 +14,30 @@ export type Category = (typeof CATEGORIES)[number];
 export const AUDIENCES = ['private', 'guild', 'selected'] as const;
 export type Audience = (typeof AUDIENCES)[number];
 
+/** A hub user: `active`, or in `grace` while offboarding (sees nothing until restored). */
+export const USER_STATUSES = ['active', 'grace'] as const;
+export type UserStatus = (typeof USER_STATUSES)[number];
+
+/** An OSRS account: `active`, or `hidden` while its owner is in grace and nobody took it over. */
+export const ACCOUNT_STATUSES = ['active', 'hidden'] as const;
+export type AccountStatus = (typeof ACCOUNT_STATUSES)[number];
+
+/** How a user is linked to an account their device reported. */
+export const LINK_ROLES = ['owner', 'contributor'] as const;
+export type LinkRole = (typeof LINK_ROLES)[number];
+
 /**
- * Handoff §10 defaults (D-22), with live location shared with the guild (D-82). A missing
- * account_sharing row means the default.
+ * Every category is shared with the guild by default (D-96, superseding the handoff §10 defaults of
+ * D-22 and D-82). A missing account_sharing row means the default.
  */
 export const DEFAULT_AUDIENCE: Readonly<Record<Category, Audience>> = {
   stats: 'guild',
   events: 'guild',
   activity: 'guild',
   location_live: 'guild',
-  location_history: 'private',
-  equipment: 'private',
-  inventory: 'private',
+  location_history: 'guild',
+  equipment: 'guild',
+  inventory: 'guild',
 };
 
 export const CATEGORY_LABELS: Readonly<Record<Category, { label: string; covers: string }>> = {
@@ -37,14 +51,15 @@ export const CATEGORY_LABELS: Readonly<Record<Category, { label: string; covers:
     covers: 'online status, world, sessions and playtime, HP, prayer, spellbook',
   },
   location_live: { label: 'Live location', covers: 'current coordinates (for the live map)' },
-  location_history: { label: 'Location history', covers: 'the 30-day trail' },
+  // No number of days: how long the trail is kept is LOCATION_RETENTION_DAYS (the privacy page says).
+  location_history: { label: 'Location history', covers: 'the trail of past positions' },
   equipment: { label: 'Equipment', covers: 'current gear and its change log' },
   inventory: { label: 'Inventory', covers: 'current inventory and wealth history' },
 };
 
 export interface Viewer {
   userId: string;
-  status: 'active' | 'grace';
+  status: UserStatus;
   isAdmin: boolean;
 }
 
@@ -79,9 +94,9 @@ export function isAdminPrincipal(principal: Principal): boolean {
 
 /** Everything about an account that decides who may see what. */
 export interface AccountAccess {
-  status: 'active' | 'hidden';
+  status: AccountStatus;
   ownerUserId: string | null;
-  links: readonly { userId: string; role: 'owner' | 'contributor'; blocked: boolean }[];
+  links: readonly { userId: string; role: LinkRole; blocked: boolean }[];
   /** Explicit audiences; missing categories use DEFAULT_AUDIENCE. */
   sharing: Readonly<Partial<Record<Category, Audience>>>;
   grants: readonly { category: Category; userId: string }[];
@@ -193,17 +208,13 @@ function isAudience(value: unknown): value is Audience {
 /**
  * Removes location data from event data the viewer may not see: `data.location` is stripped unless
  * categories include location_live or location_history. In v1.5 only death and superior_spawn events
- * carry one, but the rule applies to every event whatever `type` says (fail closed): unknown types are
+ * carry one, but the rule applies to every event whatever its type (fail closed): unknown types are
  * stored as sent and newer plugins may add fields to known types, and a `location` is coordinates
- * either way. So `type` doesn't change the result. `eventData` is the stored original event
+ * either way. So the function doesn't take the type. `eventData` is the stored original event
  * {type, data, eventId, timestamp}; returns a copy (or the same object when nothing changes); the input
  * is never mutated. A top-level `location` (inner data passed by mistake) is stripped too.
  */
-export function redactEventData(
-  type: string,
-  eventData: unknown,
-  categories: ReadonlySet<Category>,
-): unknown {
+export function redactEventData(eventData: unknown, categories: ReadonlySet<Category>): unknown {
   if (categories.has('location_live') || categories.has('location_history')) return eventData;
   if (!isRecord(eventData)) return eventData;
 
@@ -220,10 +231,6 @@ export function redactEventData(
     out.data = data;
   }
   return out;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 export function isCategory(value: unknown): value is Category {

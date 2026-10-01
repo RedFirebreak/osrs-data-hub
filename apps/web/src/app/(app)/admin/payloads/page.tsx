@@ -25,7 +25,7 @@ import { DateTime } from '@/components/admin/date-time';
 import { RawPayloadDialog } from '@/components/admin/raw-payload-dialog';
 import { RawPayloadFilters } from '@/components/admin/raw-payload-filters';
 import { deviceName } from '@/components/devices/device-model';
-import { RelativeTime } from '@/components/events/relative-time';
+import { RelativeTime } from '@/components/time/relative-time';
 import { Button } from '@/components/ui/button';
 import {
   Table,

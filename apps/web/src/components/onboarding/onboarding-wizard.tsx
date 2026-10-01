@@ -22,6 +22,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useEffectEvent, useReducer, useRef, useState } from 'react';
 import { useLiveStatus, useLiveSubscription } from '@/components/live/live-provider';
 import { Card, CardContent } from '@/components/ui/card';
+import { failureMessage, refreshesPage, sendJson, type FailureOptions } from '@/lib/api-client';
 import { DoneStep } from './done-step';
 import { FirstDataStep } from './first-data-step';
 import { InstallStep } from './install-step';
@@ -30,7 +31,6 @@ import { useSecondClock } from './use-second-clock';
 import {
   POLL_INTERVAL_CONNECTED_MS,
   POLL_INTERVAL_MS,
-  apiErrorMessage,
   asDeviceMessage,
   asPairingMessage,
   codeMsLeft,
@@ -53,6 +53,10 @@ import { WizardProgress } from './wizard-progress';
 export interface OnboardingWizardProps {
   /** PAIRING_CODE_TTL_SECONDS: how long a new code is valid. */
   ttlSeconds: number;
+  /** MAX_ACTIVE_PAIRING_CODES: how many codes the hub keeps active per user (older ones retire). */
+  maxActiveCodes: number;
+  /** DEVICE_LABEL_MAX: the longest device label the hub keeps. */
+  labelMax: number;
   /** MIN_PLUGIN_VERSION, e.g. "1.5". */
   minPluginVersion: string;
   /** APP_URL's origin: the base URL of a code resumed after a reload (the lookup doesn't repeat it). */
@@ -61,8 +65,16 @@ export interface OnboardingWizardProps {
   resumeCodeId: string | null;
 }
 
+/** A refused code request says why in the hub's own words, whatever the status. */
+const CODE_FAILURE: FailureOptions = {
+  fallback: "The hub couldn't create a code. Try again in a moment.",
+  hubMessageFor: 'any',
+};
+
 export function OnboardingWizard({
   ttlSeconds,
+  maxActiveCodes,
+  labelMax,
   minPluginVersion,
   baseUrl,
   resumeCodeId,
@@ -121,7 +133,7 @@ export function OnboardingWizard({
 
   // The codes that may still be paired, or the consumed one while waiting for the first data. A
   // string key, so the interval restarts only when the set changes (not on every clock tick).
-  const pollKey = codesToPoll(state, now).join(' ');
+  const pollKey = codesToPoll(state, now, maxActiveCodes).join(' ');
   const pollMs = connected ? POLL_INTERVAL_CONNECTED_MS : POLL_INTERVAL_MS;
 
   useEffect(() => {
@@ -187,38 +199,20 @@ export function OnboardingWizard({
   async function createCode(): Promise<void> {
     const seq = ++requestSeq.current;
     dispatch({ type: 'codeRequested' });
-    try {
-      const res = await fetch('/api/app/pairing-codes', {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ label: label.trim() || null }),
-      });
-      const receivedAt = Date.now();
-      const body: unknown = await res.json().catch(() => null);
-      if (seq !== requestSeq.current) return; // a newer request (Regenerate) wins
-      if (res.status === 401) {
-        dispatch({ type: 'codeFailed', message: 'Your session has ended. Sign in again.' });
-        router.refresh();
-        return;
-      }
-      const code = res.ok ? parseCreatedCode(body, receivedAt, ttlSeconds) : null;
-      if (code) {
-        dispatch({ type: 'codeCreated', code });
-      } else {
-        dispatch({
-          type: 'codeFailed',
-          message: apiErrorMessage(body, "The hub couldn't create a code. Try again in a moment."),
-        });
-      }
-    } catch {
-      if (seq === requestSeq.current) {
-        dispatch({
-          type: 'codeFailed',
-          message: "Couldn't reach the hub. Check your connection and try again.",
-        });
-      }
+    const res = await sendJson('/api/app/pairing-codes', {
+      method: 'POST',
+      json: { label: label.trim() || null },
+    });
+    const receivedAt = Date.now();
+    if (seq !== requestSeq.current) return; // a newer request (Regenerate) wins
+    const code = res.ok ? parseCreatedCode(res.body, receivedAt, ttlSeconds) : null;
+    if (code) {
+      dispatch({ type: 'codeCreated', code });
+      return;
     }
+    dispatch({ type: 'codeFailed', message: failureMessage(res.status, res.body, CODE_FAILURE) });
+    // Signed out elsewhere: the layout's requireUser() sends the browser to /login.
+    if (refreshesPage(res.status, CODE_FAILURE)) router.refresh();
   }
 
   function startPairing(): void {
@@ -249,6 +243,7 @@ export function OnboardingWizard({
               headingRef={headingRef}
               minPluginVersion={minPluginVersion}
               label={label}
+              labelMax={labelMax}
               onLabelChange={setLabel}
               onNext={startPairing}
             />

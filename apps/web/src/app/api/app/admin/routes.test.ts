@@ -3,7 +3,7 @@
  * foreign Origin on mutations), and each route's happy path against seeded data.
  */
 import { randomUUID } from 'node:crypto';
-import { DEFAULT_GUILD_FEED_FILTER, setConfigForTests } from '@hub/core';
+import { DAY_MS, DEFAULT_GUILD_FEED_FILTER, setConfigForTests } from '@hub/core';
 import { auditLog, devices, rawPayloads, session, users } from '@hub/db';
 import { getGuildFeedFilter, isDecommissioned } from '@hub/server';
 import { and, desc, eq } from 'drizzle-orm';
@@ -23,7 +23,6 @@ let adminCookie: string;
 let memberCookie: string;
 
 const GRACE_DAYS = 14;
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 beforeAll(async () => {
   ctx = await withTestDb({ label: 'adminapi', env: { OFFBOARD_GRACE_DAYS: String(GRACE_DAYS) } });

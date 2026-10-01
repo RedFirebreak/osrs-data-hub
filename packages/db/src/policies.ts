@@ -5,6 +5,7 @@
  * `add_*_policy(if_not_exists => true)` does NOT update a policy whose arguments differ (it only
  * warns), so each policy is compared first and replaced only when it differs (TSDB-3).
  */
+import { MIN_XP_RAW_RETENTION_DAYS } from '@hub/core';
 import { sql, type SQL } from 'drizzle-orm';
 import type { Db, Tx } from './client';
 
@@ -20,16 +21,19 @@ export interface PolicyConfig {
  * inside the raw retention (TSDB-1).
  */
 export const CAGG_REFRESH_START_DAYS = 7;
-const MIN_RAW_RETENTION_DAYS = CAGG_REFRESH_START_DAYS * 2;
 
+/**
+ * The raw XP retention may not be below MIN_XP_RAW_RETENTION_DAYS, twice the refresh window. The
+ * number lives in @hub/core, where the config schema applies the same minimum to the variable.
+ */
 export function validatePolicyConfig(c: PolicyConfig): void {
   const ints = [c.xpRawRetentionDays, c.locationRetentionDays, c.rawPayloadRetentionHours];
   if (!ints.every((n) => Number.isInteger(n) && n > 0)) {
     throw new Error('retention settings must be positive integers');
   }
-  if (c.xpRawRetentionDays < MIN_RAW_RETENTION_DAYS) {
+  if (c.xpRawRetentionDays < MIN_XP_RAW_RETENTION_DAYS) {
     throw new Error(
-      `XP_RAW_RETENTION_DAYS must be at least ${MIN_RAW_RETENTION_DAYS}: the hourly/daily XP ` +
+      `XP_RAW_RETENTION_DAYS must be at least ${MIN_XP_RAW_RETENTION_DAYS}: the hourly/daily XP ` +
         `aggregates refresh the last ${CAGG_REFRESH_START_DAYS} days, and refreshing a range whose raw ` +
         'data was dropped erases the aggregated history',
     );

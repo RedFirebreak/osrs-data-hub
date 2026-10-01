@@ -71,21 +71,9 @@ async function currentUserFrom(h: Headers, disableRefresh = false): Promise<Curr
 }
 
 /**
- * The session of the current page request (server components), or null when signed out or on any
- * error (the database being down included). Never renews the session (see the file comment).
- * Deduplicated per render with React cache().
+ * Session + fresh viewer of the current page request; errors propagate. Never renews the session
+ * (see the file comment). Deduplicated per render with React cache().
  */
-export const getSession = cache(async (): Promise<AuthSession | null> => {
-  try {
-    return await sessionFrom(await headers(), true);
-  } catch (err) {
-    // headers() bails out of prerendering by throwing; that must reach Next, not become "signed out".
-    unstable_rethrow(err);
-    return null;
-  }
-});
-
-/** Session + fresh viewer of the current page request, without renewal; errors propagate. */
 const pageUser = cache(async (): Promise<CurrentUser | null> =>
   currentUserFrom(await headers(), true),
 );
@@ -99,6 +87,7 @@ export const getViewer = cache(async (): Promise<CurrentUser | null> => {
   try {
     return await pageUser();
   } catch (err) {
+    // headers() bails out of prerendering by throwing; that must reach Next, not become "signed out".
     unstable_rethrow(err);
     return null;
   }
@@ -117,7 +106,6 @@ export async function requireUser(): Promise<CurrentUser> {
   return current;
 }
 
-/** For admin pages: requireUser, then notFound() for non-admins (admin pages don't admit they exist). */
 /**
  * The <title> of an admin page: `<section> · Admin · <hub>` for an active admin; for everyone else the
  * title of the 404 they get, so the tab doesn't admit the page exists (requireAdmin answers 404).
@@ -131,6 +119,7 @@ export async function adminMetadata(section: string | null): Promise<Metadata> {
   return { title: section ? `${section} · Admin · ${hubName}` : `Admin · ${hubName}` };
 }
 
+/** For admin pages: requireUser, then notFound() for non-admins (admin pages don't admit they exist). */
 export async function requireAdmin(): Promise<CurrentUser> {
   const current = await requireUser();
   if (!current.viewer.isAdmin) notFound();

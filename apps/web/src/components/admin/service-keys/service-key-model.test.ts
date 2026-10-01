@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { fieldErrorsFrom } from '@/lib/api-client';
 import {
+  SERVICE_KEY_FIELDS,
   emptyServiceKeyForm,
   parseRateLimit,
   serviceKeyBody,
-  serviceKeyFieldErrors,
   validateServiceKeyForm,
 } from './service-key-model';
 
@@ -77,17 +78,21 @@ describe('parseRateLimit and serviceKeyBody', () => {
   });
 });
 
-describe('serviceKeyFieldErrors', () => {
+describe('SERVICE_KEY_FIELDS', () => {
   it('keeps the first message per known field and ignores the rest', () => {
     expect(
-      serviceKeyFieldErrors([
-        { path: 'rateLimitPerMinute', message: 'too big' },
-        { path: 'rateLimitPerMinute', message: 'second' },
-        { path: 'categories.0', message: 'unknown' },
-        { path: 'secret', message: 'nope' },
-        'garbage',
-      ]),
+      fieldErrorsFrom(
+        [
+          { path: 'rateLimitPerMinute', message: 'too big' },
+          { path: 'rateLimitPerMinute', message: 'second' },
+          { path: 'categories.0', message: 'unknown' },
+          { path: 'accountPublicIds', message: 'not a field of a service key' },
+          { path: 'secret', message: 'nope' },
+          'garbage',
+        ],
+        SERVICE_KEY_FIELDS,
+      ),
     ).toEqual({ rateLimitPerMinute: 'too big', categories: 'unknown' });
-    expect(serviceKeyFieldErrors(null)).toEqual({});
+    expect(fieldErrorsFrom(null, SERVICE_KEY_FIELDS)).toEqual({});
   });
 });

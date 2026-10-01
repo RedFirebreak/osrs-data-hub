@@ -20,7 +20,9 @@
  *
  * Only `import type` from @hub/server: this module is bundled for the browser (NEXT-12).
  */
+import { isRecord } from '@hub/core';
 import type { DeviceFirstData, DeviceMessage, PairingMessage } from '@hub/server';
+import { isUuidLike } from '@/lib/guards';
 
 export type WizardStep = 1 | 2 | 3 | 4;
 
@@ -37,10 +39,6 @@ export const SUBMIT_TIMEOUT_MS = 60_000;
 export const POLL_INTERVAL_MS = 3_000;
 /** Safety polling interval while the stream is open (a message lost in a reconnect isn't replayed). */
 export const POLL_INTERVAL_CONNECTED_MS = 15_000;
-/** Longest device label kept by the hub (DEVICE_LABEL_MAX in @hub/server). */
-export const DEVICE_LABEL_MAX_LENGTH = 64;
-/** Active codes the hub keeps per user (MAX_ACTIVE_PAIRING_CODES in @hub/server); older ones retire. */
-export const MAX_ACTIVE_CODES = 3;
 
 /** A pairing code as the wizard keeps it. */
 export interface WizardCode {
@@ -274,13 +272,21 @@ export function isCodeExpired(state: WizardState, now: number): boolean {
 /**
  * The codes to poll with GET /api/app/pairing-codes/[id] at `now` (browser clock; null before it
  * runs). Before pairing (steps 1 and 2): every code of this wizard the hub may still accept — the
- * newest MAX_ACTIVE_CODES within their lifetime, the shown one first and not once the hub said it
+ * newest `maxActiveCodes` within their lifetime, the shown one first and not once the hub said it
  * expired — because the player may have typed an older one (Regenerate, or Back and Next) and the
  * reducer accepts any of them; polling only the shown one would leave the wizard waiting forever
  * when the live message is lost. After pairing: the consumed code on step 3 until the first data
  * arrived. Empty otherwise.
+ *
+ * `maxActiveCodes` is how many codes the hub keeps active per user before it retires the oldest
+ * (MAX_ACTIVE_PAIRING_CODES in @hub/server, which the page hands down: this module is bundled for
+ * the browser and can't import it).
  */
-export function codesToPoll(state: WizardState, now: number | null): string[] {
+export function codesToPoll(
+  state: WizardState,
+  now: number | null,
+  maxActiveCodes: number,
+): string[] {
   if (state.deviceId !== null) {
     return state.step === 3 && state.firstData === null && state.pairedCodeId !== null
       ? [state.pairedCodeId]
@@ -288,7 +294,7 @@ export function codesToPoll(state: WizardState, now: number | null): string[] {
   }
   if (state.step > 2 || now === null) return [];
   return state.codeIds
-    .slice(-MAX_ACTIVE_CODES)
+    .slice(-maxActiveCodes)
     .reverse()
     .filter(
       (id) =>
@@ -360,10 +366,6 @@ export function describeRole(data: Pick<DeviceFirstData, 'role' | 'ownerName'>):
   return data.ownerName
     ? `Linked as contributor; owner is ${data.ownerName}`
     : 'Linked as contributor';
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 const CODE_RE = /^[0-9]{5}$/;
@@ -444,23 +446,13 @@ export function parsePolledStatus(body: unknown): PolledCodeStatus | null {
   };
 }
 
-/** The `error.message` of an /api/app error body, else `fallback`. */
-export function apiErrorMessage(body: unknown, fallback: string): string {
-  if (isRecord(body) && isRecord(body.error) && typeof body.error.message === 'string') {
-    return body.error.message;
-  }
-  return fallback;
-}
-
 /** The query parameter that carries the wizard's code across a reload: `/onboarding?code=<id>`. */
 export const RESUME_PARAM = 'code';
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** The code id from the page's search params when it can be one (a uuid), else null. */
 export function parseResumeParam(value: string | string[] | undefined): string | null {
   const first = Array.isArray(value) ? value[0] : value;
-  return typeof first === 'string' && UUID_RE.test(first) ? first.toLowerCase() : null;
+  return typeof first === 'string' && isUuidLike(first) ? first.toLowerCase() : null;
 }
 
 /**

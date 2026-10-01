@@ -69,6 +69,10 @@ beforeAll(async () => {
   ownerKey = await makeKey(ctx, world.ownerId);
   // The alt shares nothing with the guild: only its owner (and their key) may see it.
   for (const c of CATEGORIES) await setAudience(ctx, world.alt.hash, c, 'private');
+  // The main keeps three categories from the guild (every category is guild by default, D-96).
+  for (const c of ['location_history', 'equipment', 'inventory'] as const) {
+    await setAudience(ctx, world.main.hash, c, 'private');
+  }
 });
 beforeEach(() => {
   clock = freshLimits();

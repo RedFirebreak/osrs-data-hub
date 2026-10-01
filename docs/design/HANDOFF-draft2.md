@@ -686,7 +686,7 @@ METRICS_TOKEN=                           # protects /metrics
 ## 18. Open points
 
 1. **Loot volume:** if players set very low loot thresholds, `events` grows. One option is a hub-side floor that stores small loot only as daily totals (`loot_daily`). It isn't in the MVP; watch the metrics.
-2. **Item icons and metadata** for the UI: pick a source (the OSRS Wiki or RuneLite's static assets) and check its URL and terms.
+2. **Item icons and metadata** for the UI: pick a source (the OSRS Wiki or RuneLite's static assets) and check its URL and terms. *Status (2026-09-30):* closed for icons. Item, skill and equipment-slot icons come from the central osrs-icons CDN (`https://icons.scapekeeper.com`, rendered from the game cache, configurable through `OSRS_ICONS_URL`); see ARCHITECTURE.md D-95. Item metadata beyond what the plugin sends (names, prices) is still out of scope.
 3. **Live map freshness:** confirm `/snapshot` at 1 request per second per key is enough. If not, consider a client-initiated SSE variant for API keys later (still no webhooks). *Status (2026-09-30):* the map polls within the limit; the SSE variant is deferred with the reasons in ARCHITECTURE.md D-93.
 4. **Hosting details:** domain, VM, TLS, and which reverse proxy.
 5. **v1.5 on the Plugin Hub:** once it's live, remove the side-load note from §15 and M0.

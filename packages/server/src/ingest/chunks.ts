@@ -13,15 +13,14 @@
  * written to and committed: the lock is taken only for the first payloads of a new day (location) or
  * week (XP), and after a restart. A wrong guess costs nothing worse than before: the in-process retry.
  */
-import { XP_BUCKET_MS, floorTo, type SnapshotPlan } from '@hub/core';
+import { DAY_MS, XP_BUCKET_MS, floorTo, type SnapshotPlan } from '@hub/core';
 import type { Db, Tx } from '@hub/db';
 import { sql } from 'drizzle-orm';
 
-const DAY_MS = 86_400_000;
 /** chunk_time_interval of the hypertables ingest writes (packages/db/drizzle/0001_timescale.sql). */
 const CHUNK_INTERVAL_MS = { xp_samples: 7 * DAY_MS, location_samples: DAY_MS } as const;
 /** Advisory lock (CHUNK_LOCK_CLASS, 0) of a transaction that may create a chunk: 'OC'. */
-export const CHUNK_LOCK_CLASS = 0x4f43;
+const CHUNK_LOCK_CLASS = 0x4f43;
 /** Ranges remembered per database handle; far more than a year of days and weeks. */
 const MAX_KNOWN_CHUNKS = 1_000;
 

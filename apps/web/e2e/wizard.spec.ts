@@ -114,8 +114,34 @@ test('a member pairs RuneLite with the wizard and sees the account on the dashbo
   await expect(page.getByText("You're the owner")).toBeVisible();
   await page.getByRole('button', { name: 'Continue' }).click();
 
-  // Step 4: done, on to the dashboard.
+  // Step 4: done. The owner sees who can see the account: everything is shared with the guild by
+  // default (D-96), with the account page's controls to change it right there.
   await expect(page.getByRole('heading', { name: "You're all set" })).toBeVisible();
+  const sharing = page.getByRole('region', { name: `Who can see ${ZEZIMA}` });
+  for (const category of [
+    'Stats',
+    'Events',
+    'Activity',
+    'Live location',
+    'Location history',
+    'Equipment',
+    'Inventory',
+  ]) {
+    await expect(sharing.getByLabel(category, { exact: true })).toHaveText('Guild');
+  }
+  // A change saves at once (and back again: retries share the database).
+  const inventory = sharing.getByLabel('Inventory', { exact: true });
+  await inventory.click();
+  await page.getByRole('option', { name: /^Private/ }).click();
+  await expect(inventory).toHaveText('Private');
+  await expect(
+    page.locator('[data-sonner-toast]').filter({ hasText: 'Inventory is now private' }),
+  ).toBeVisible();
+  await inventory.click();
+  await page.getByRole('option', { name: /^Guild/ }).click();
+  await expect(inventory).toHaveText('Guild');
+
+  // On to the dashboard.
   await page.getByRole('link', { name: 'Go to the dashboard' }).click();
   await expect(page).toHaveURL(`${HUB_URL}/`);
   const accounts = page.getByRole('region', { name: 'Your accounts' });

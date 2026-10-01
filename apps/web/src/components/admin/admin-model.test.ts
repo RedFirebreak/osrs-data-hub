@@ -1,11 +1,12 @@
+import { AUDIT_ACTIONS } from '@hub/server';
 import { describe, expect, it } from 'vitest';
+import { failureMessage } from '@/lib/api-client';
 import {
-  adminFailureMessage,
+  adminFailure,
   auditActionLabel,
   auditLogApiPath,
   auditMetaEntries,
   countsByLabel,
-  decommissionConfirmMatches,
   describeIngestMeta,
   formatBytes,
   graceDaysLeft,
@@ -187,6 +188,20 @@ describe('audit log', () => {
   it('labels known actions and passes unknown ones through', () => {
     expect(auditActionLabel('device.revoked')).toBe('Device revoked');
     expect(auditActionLabel('something.new')).toBe('something.new');
+    // Not a label of its own, so not an Object.prototype member either.
+    expect(auditActionLabel('constructor')).toBe('constructor');
+  });
+
+  it('labels every action the hub writes, and retired ones old rows still hold', () => {
+    for (const action of AUDIT_ACTIONS) {
+      expect(auditActionLabel(action), action).toMatch(/^[A-Z][A-Za-z ]+$/);
+    }
+    expect(auditActionLabel('sharing.grant_added')).toBe('Sharing grant added');
+    expect(auditActionLabel('sharing.grant_removed')).toBe('Sharing grant removed');
+    expect(auditActionLabel('account.contributor_blocked')).toBe('Contributor blocked');
+    expect(auditActionLabel('account.contributor_unblocked')).toBe('Contributor unblocked');
+    expect(auditActionLabel('user.exported')).toBe('User data downloaded');
+    expect(auditActionLabel('sharing.changed')).toBe('Sharing changed');
   });
 
   it('turns meta into key/value text, nested values as JSON, long ones cut', () => {
@@ -236,33 +251,19 @@ describe('countsByLabel', () => {
   });
 });
 
-describe('decommissionConfirmMatches', () => {
-  it('needs the hub name exactly, ignoring surrounding spaces on both sides', () => {
-    expect(decommissionConfirmMatches('Test Hub', 'Test Hub')).toBe(true);
-    expect(decommissionConfirmMatches('  Test Hub ', 'Test Hub')).toBe(true);
-    // HUB_NAME cut to 64 characters can end on a space.
-    expect(decommissionConfirmMatches('A'.repeat(63), `${'A'.repeat(63)} `)).toBe(true);
-    expect(decommissionConfirmMatches('test hub', 'Test Hub')).toBe(false);
-    expect(decommissionConfirmMatches('Test  Hub', 'Test Hub')).toBe(false);
-    expect(decommissionConfirmMatches(undefined, 'Test Hub')).toBe(false);
-    expect(decommissionConfirmMatches('', ' ')).toBe(false);
-  });
-});
-
-describe('adminFailureMessage', () => {
+describe('adminFailure', () => {
   const body = { error: { code: 'invalid', message: "you can't offboard yourself" } };
+  const message = (status: number, b: unknown) =>
+    failureMessage(status, b, adminFailure('fallback'));
 
   it('uses the hub message for 400/403/503 and fixed texts otherwise', () => {
-    expect(adminFailureMessage(400, body, 'fallback')).toBe("you can't offboard yourself");
-    expect(adminFailureMessage(503, null, 'fallback')).toBe('fallback');
-    expect(adminFailureMessage(403, null, 'fallback')).toBe('Only admins can do this.');
-    expect(adminFailureMessage(401, body, 'fallback')).toBe(
-      'Your session has ended. Sign in again.',
-    );
-    expect(adminFailureMessage(404, body, 'fallback')).toBe(
-      'It no longer exists. Reload the page.',
-    );
-    expect(adminFailureMessage(500, body, 'fallback')).toBe('fallback');
+    expect(message(400, body)).toBe("you can't offboard yourself");
+    expect(message(503, null)).toBe('fallback');
+    expect(message(403, null)).toBe('Only admins can do this.');
+    expect(message(403, body)).toBe("you can't offboard yourself");
+    expect(message(401, body)).toBe('Your session has ended. Sign in again.');
+    expect(message(404, body)).toBe('It no longer exists. Reload the page.');
+    expect(message(500, body)).toBe('fallback');
   });
 });
 

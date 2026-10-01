@@ -8,9 +8,8 @@
  * client-safe (the tooltip parts are client components).
  */
 import { EyeOffIcon } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
+import { ExplainedBadge } from './explained-badge';
 
 export interface NotSharedBadgeProps {
   /** What isn't sent, for the explanation, e.g. "inventory" → "…don't send inventory". */
@@ -23,21 +22,13 @@ export function notSharedExplanation(what?: string): string {
 }
 
 export function NotSharedBadge({ what, className }: NotSharedBadgeProps) {
-  const explanation = notSharedExplanation(what);
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Badge
-          variant="outline"
-          tabIndex={0}
-          className={cn('cursor-help text-muted-foreground', className)}
-        >
-          <EyeOffIcon aria-hidden data-icon="inline-start" />
-          Not shared
-          <span className="sr-only">: {explanation}</span>
-        </Badge>
-      </TooltipTrigger>
-      <TooltipContent>{explanation}</TooltipContent>
-    </Tooltip>
+    <ExplainedBadge
+      explanation={notSharedExplanation(what)}
+      className={cn('text-muted-foreground', className)}
+    >
+      <EyeOffIcon aria-hidden data-icon="inline-start" />
+      Not shared
+    </ExplainedBadge>
   );
 }

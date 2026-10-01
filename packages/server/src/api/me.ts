@@ -3,7 +3,8 @@ import { CATEGORIES, type Category } from '@hub/core';
 import { apiKeys, users, type ApiKeyKind, type DbOrTx } from '@hub/db';
 import { eq } from 'drizzle-orm';
 import { loadApiAccounts } from './access';
-import { keyRateLimit, type ApiKeyScope, type ApiPrincipal } from './keys';
+import type { ApiPrincipal } from './key-auth';
+import { keyRateLimit, type ApiKeyScope } from './keys';
 
 export interface ApiMe {
   key: {
@@ -50,7 +51,7 @@ export async function apiMe(db: DbOrTx, principal: ApiPrincipal): Promise<ApiMe>
     .where(eq(apiKeys.id, principal.keyId));
   if (!key) throw new Error('apiMe: the authenticated key is gone');
   let user: { name: string } | null = null;
-  if (principal.userId !== null) {
+  if (principal.kind === 'user') {
     const [creator] = await db
       .select({ name: users.name })
       .from(users)

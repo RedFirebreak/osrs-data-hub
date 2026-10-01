@@ -8,7 +8,7 @@
  */
 import type { DeviceSummary } from '@hub/server';
 import { AccountLink } from '@/components/accounts/account-link';
-import { RelativeTime } from '@/components/events/relative-time';
+import { RelativeTime } from '@/components/time/relative-time';
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 import { DeviceLabelEditor } from './device-label-editor';
@@ -20,6 +20,8 @@ export interface DeviceCardProps {
   device: DeviceSummary;
   /** The page's render time (ISO). */
   now: string;
+  /** Longest device label the hub keeps (DEVICE_LABEL_MAX), for the rename field. */
+  labelMax: number;
 }
 
 function Field({
@@ -39,7 +41,7 @@ function Field({
   );
 }
 
-export function DeviceCard({ device, now }: DeviceCardProps) {
+export function DeviceCard({ device, now, labelMax }: DeviceCardProps) {
   const revoked = device.status === 'revoked';
   const name = deviceName(device.label);
   return (
@@ -49,7 +51,12 @@ export function DeviceCard({ device, now }: DeviceCardProps) {
       className={cn(revoked && 'bg-muted/30')}
     >
       <CardHeader className="flex flex-wrap items-center justify-between gap-2">
-        <DeviceLabelEditor deviceId={device.id} label={device.label} className="min-w-0" />
+        <DeviceLabelEditor
+          deviceId={device.id}
+          label={device.label}
+          labelMax={labelMax}
+          className="min-w-0"
+        />
         <DeviceStatusBadge status={device.status} />
       </CardHeader>
       <CardContent>

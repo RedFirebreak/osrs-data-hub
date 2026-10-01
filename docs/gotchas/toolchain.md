@@ -16,6 +16,8 @@ Build, lint, test and package tooling (TypeScript, ESLint, Prettier, pnpm, tsup,
 | [TOOL-7](#tool-7) | After `pnpm format`, `tools/check_gotchas.py` reports `has no '*Source: ...*' line` for every entry and doc tables are re-padded, or tests that splice a payload fixture as a string fail (`expected [] to deeply equal [ 'player.inventory' ]`). |
 | [TOOL-8](#tool-8) | A Playwright run whose `globalSetup` creates the app's database fails with `Timed out waiting 60000ms from config.webServer`, or the server logs `database "…" does not exist` at start although `globalSetup` created it. |
 | [TOOL-9](#tool-9) | On a Windows clone `pnpm format:check` flags nearly every file (`Code style issues found in 548 files`), untouched ones like `apps/web/tsconfig.json` included, while the same content with the CRs stripped passes; or it still fails that way after pulling the commit that adds `.gitattributes`, with `git ls-files --eol` still showing `w/crlf`. |
+| [TOOL-10](#tool-10) | On Windows `pnpm test:e2e` never starts the server: `e2e: next build failed (spawnSync pnpm ENOENT)`, or with `E2E_SKIP_BUILD=1` `Error [ERR_UNSUPPORTED_ESM_URL_SCHEME]: … Received protocol 'e:'`. |
+| [TOOL-11](#tool-11) | On Windows every `docker` command fails with `failed to connect to the docker API at npipe:////./pipe/dockerDesktopLinuxEngine` (or hangs), `pnpm test` reports `Cannot reach the test database`, and Docker Desktop shows a crash dialog on start instead of its dashboard. |
 | [ZOD-1](#zod-1) | Unknown or new fields in a plugin payload vanish after parsing: stored event data lacks keys the plugin sent. |
 
 ### PGBOSS-1
@@ -48,7 +50,7 @@ scrape already at 1. Prometheus' `increase()` and `rate()` measure change betwee
 series with no earlier sample has no change to measure: `increase(x[1h])` is 0 however recently it
 appeared. The first failure after every process restart (or ever) therefore never fires an
 `increase(...) > 0` alert. Fix: create every series of a fixed label set at 0 when the registry is built:
-`counter.inc(labels, 0)` and `histogram.zero(labels)` for each known combination (`initSeries` in
+`counter.inc(labels, 0)` and `histogram.zero(labels)` for each known combination (`fixedCounter` and `initSeries` in
 packages/server/src/metrics.ts). Label values that are only known at run time (an HTTP status) can't be
 pre-created; don't alert on their first appearance.
 
@@ -173,6 +175,31 @@ stay CRLF. With a clean working tree, delete the tracked files and check them ou
 `git ls-files -z | xargs -0 rm -f && git checkout -- .` (or clone again).
 
 *Source: `OBSERVED` (this repo, Windows 11, Git for Windows with system `core.autocrlf=true`, prettier 3.9.9, 2026-09-29: 548 files flagged; after adding `.gitattributes`, `git checkout-index -a -f` left 594 files CRLF until they were deleted and checked out again)*
+
+### TOOL-10
+**On Windows `pnpm test:e2e` never starts the server: `e2e: next build failed (spawnSync pnpm ENOENT)`, or with `E2E_SKIP_BUILD=1` `Error [ERR_UNSUPPORTED_ESM_URL_SCHEME]: … Received protocol 'e:'`.**
+Two Node behaviours that only differ on Windows, both in `apps/web/e2e/serve.mjs`. pnpm is installed as
+`pnpm.cmd`, and `spawn`/`spawnSync` without a shell don't resolve `.cmd` files, so `spawnSync('pnpm', …)`
+fails with ENOENT. And `--import` in `NODE_OPTIONS` takes a module specifier, i.e. a URL: an absolute
+Windows path such as `E:\…\mock-discord.mjs` parses as a URL with scheme `e:`. Pass
+`shell: process.platform === 'win32'` to the spawn, and `pathToFileURL(path).href` to `--import`.
+Linux CI never sees either.
+
+*Source: `OBSERVED` (e2e screenshots on Windows 11, Node 22.14, 2026-09-30)*
+
+### TOOL-11
+**On Windows every `docker` command fails with `failed to connect to the docker API at npipe:////./pipe/dockerDesktopLinuxEngine` (or hangs), `pnpm test` reports `Cannot reach the test database`, and Docker Desktop shows a crash dialog on start instead of its dashboard.**
+Docker Desktop's backend crashes while starting; `%LOCALAPPDATA%\Docker\log\host\com.docker.backend.exe.log`
+says `backend crashed … initializing Inference manager: listening on unix://…/Docker/run/dockerInference:
+remove …/dockerInference: The file cannot be accessed by the system`. The previous session left its
+socket files (`dockerInference`, `dockerEthernetVfkit`, …: 0 bytes, reparse points) in
+`%LOCALAPPDATA%\Docker\run`, and Windows lets nothing delete them: not Docker, not `Remove-Item -Force`,
+not `del /f`. Quit Docker Desktop, rename the directory (`Rename-Item "$env:LOCALAPPDATA\Docker\run"
+run.stale`; renaming the parent works where deleting the files doesn't), and start Docker Desktop again:
+it recreates `run` and the engine is up within seconds. Then `docker compose -f compose.dev.yaml up -d`.
+The `wsl -l -v` state `docker-desktop  Stopped` is a consequence, not the cause.
+
+*Source: `OBSERVED` (Docker Desktop 4.79.0 on Windows 11, 2026-10-01)*
 
 ### ZOD-1
 **Unknown or new fields in a plugin payload vanish after parsing: stored event data lacks keys the plugin sent.**

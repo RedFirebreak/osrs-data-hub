@@ -4,8 +4,7 @@
  * chart can show them next to the archived payloads. Like the Prometheus counters it lives in one
  * process (on globalThis through getMetrics, NEXT-3) and starts empty when the process restarts.
  */
-
-const MINUTE_MS = 60_000;
+import { MINUTE_MS } from '@hub/core';
 
 /** A count per key for one minute. */
 export interface RecentMinute {

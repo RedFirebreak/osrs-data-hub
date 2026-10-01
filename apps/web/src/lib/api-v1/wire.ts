@@ -5,35 +5,40 @@
  * key converter: some keys are data — skill names ("Attack"), equipment slots, item and account
  * names — and an event's `data` object passes through exactly as the hub stored it.
  *
+ * The mappers Download my data needs too (items, skills, presence, vitals, location, a wealth day,
+ * an event's own fields) live once in @hub/server (export/wire.ts); `_SharedMappersMatchSchemas`
+ * below holds their result types to the schemas.
+ *
  * Omitted vs null matters (/accounts/{id}, /snapshot): a field the key's categories don't cover is
  * left out, a readable field the plugin never sent is null or `{ shared: false }`. The mappers keep
  * that distinction: they copy a field only when the read model has it.
  */
-import type {
-  ApiAccountDetail,
-  ApiAccountSummary,
-  ApiEquipment,
-  ApiEquipmentHistory,
-  ApiEvent,
-  ApiGains,
-  ApiInventory,
-  ApiItem,
-  ApiLeaderboards,
-  ApiLocation,
-  ApiLocations,
-  ApiLocationsMulti,
-  ApiLootLeaderboard,
-  ApiMe,
-  ApiOwner,
-  ApiPresence,
-  ApiSection,
-  ApiSessions,
-  ApiSkills,
-  ApiSnapshotAccount,
-  ApiVitals,
-  ApiWealth,
-  ApiXpMulti,
-  ApiXpSeries,
+import {
+  wireEventFields,
+  wireItem,
+  wireItems,
+  wireLocation,
+  wirePresence,
+  wireSection,
+  wireSkills,
+  wireVitals,
+  wireWealthDay,
+  type ApiAccountDetail,
+  type ApiAccountSummary,
+  type ApiEquipmentHistory,
+  type ApiEvent,
+  type ApiGains,
+  type ApiLeaderboards,
+  type ApiLocations,
+  type ApiLocationsMulti,
+  type ApiLootLeaderboard,
+  type ApiMe,
+  type ApiOwner,
+  type ApiSessions,
+  type ApiSnapshotAccount,
+  type ApiWealth,
+  type ApiXpMulti,
+  type ApiXpSeries,
 } from '@hub/server';
 import type {
   WireAccountDetail,
@@ -42,6 +47,7 @@ import type {
   WireEvent,
   WireGains,
   WireItem,
+  WireItems,
   WireLeaderboards,
   WireLocations,
   WireLocationsMulti,
@@ -51,68 +57,41 @@ import type {
   WireSessions,
   WireSkills,
   WireSnapshotAccount,
+  WireSnapshotLocation,
   WireWealth,
   WireXpMulti,
   WireXpSeries,
 } from './schemas';
 
-type Section<W> = ({ shared: true; updated_at: string } & W) | { shared: false; updated_at: null };
+export { wireItem };
 
-function section<T extends object, W extends object>(
-  s: ApiSection<T>,
-  map: (data: T) => W,
-): Section<W> {
-  if (!s.shared) return { shared: false, updated_at: null };
-  return { shared: true, updated_at: s.updatedAt, ...map(s as T) };
-}
+/** `true` when `A` and `B` are each assignable to the other, else `false`. */
+type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+type Assert<T extends true> = T;
 
-export function wireItem(item: ApiItem): WireItem {
-  return {
-    id: item.id,
-    name: item.name,
-    quantity: item.quantity,
-    ge_price: item.gePrice,
-    ha_price: item.haPrice,
-    equipment_slot: item.equipmentSlot,
-    inventory_slot: item.inventorySlot,
-  };
-}
+/** A section of /accounts/{id}: as wireSection builds it from mapper `M`, and as its schema types it. */
+type Built<M extends (data: never) => object> = ReturnType<
+  typeof wireSection<object, ReturnType<M>>
+>;
+type SectionOf<K extends keyof WireAccountDetail> = NonNullable<WireAccountDetail[K]>;
 
-function wireItems(items: ApiEquipment | ApiInventory): { items: WireItem[]; value: number } {
-  return { items: items.items.map(wireItem), value: items.value };
-}
-
-/** Skill names are data: `skill` is copied as the plugin spells it. */
-function wireSkills(skills: ApiSkills): WireSkills {
-  return {
-    total_level: skills.totalLevel,
-    overall_xp: skills.overallXp,
-    skills: skills.skills.map((s) => ({
-      skill: s.skill,
-      level: s.level,
-      real_level: s.realLevel,
-      xp: s.xp,
-    })),
-  };
-}
-
-function wirePresence(p: ApiPresence) {
-  return {
-    online: p.online,
-    world: p.world,
-    special_world: p.specialWorld,
-    game_state: p.gameState,
-    last_seen: p.lastSeen,
-  };
-}
-
-function wireVitals(v: ApiVitals) {
-  return { hp: v.hp, prayer: v.prayer, spellbook: v.spellbook };
-}
-
-function wireLocation(l: ApiLocation) {
-  return { x: l.x, y: l.y, plane: l.plane, is_on_boat: l.isOnBoat, stale: l.stale };
-}
+/**
+ * D-77's compile-time check for the mappers shared with @hub/server: each one's result must be
+ * exactly the type its response schema infers. A key added, dropped, renamed or retyped on one
+ * side alone makes its entry `false`, which `Assert` refuses.
+ */
+type _SharedMappersMatchSchemas = [
+  Assert<Same<ReturnType<typeof wireItem>, WireItem>>,
+  Assert<Same<ReturnType<typeof wireItems>, WireItems>>,
+  Assert<Same<ReturnType<typeof wireSkills>, WireSkills>>,
+  Assert<Same<Built<typeof wirePresence>, SectionOf<'presence'>>>,
+  Assert<Same<Built<typeof wireVitals>, SectionOf<'vitals'>>>,
+  Assert<Same<Built<typeof wireLocation>, SectionOf<'location'>>>,
+  Assert<Same<Built<typeof wireItems>, SectionOf<'equipment'>>>,
+  Assert<Same<ReturnType<typeof wireLocation> & { updated_at: string }, WireSnapshotLocation>>,
+  Assert<Same<ReturnType<typeof wireWealthDay>, WireWealth['days'][number]>>,
+  Assert<Same<ReturnType<typeof wireEventFields>, Omit<WireEvent, 'account'>>>,
+];
 
 export function wireMe(me: ApiMe): WireMe {
   return {
@@ -165,12 +144,12 @@ export function wireAccountDetail(d: ApiAccountDetail): WireAccountDetail {
     first_seen: d.firstSeen,
     categories: d.categories,
   };
-  if (d.presence) out.presence = section(d.presence, wirePresence);
-  if (d.vitals) out.vitals = section(d.vitals, wireVitals);
-  if (d.skills) out.skills = section(d.skills, wireSkills);
-  if (d.location) out.location = section(d.location, wireLocation);
-  if (d.equipment) out.equipment = section(d.equipment, wireItems);
-  if (d.inventory) out.inventory = section(d.inventory, wireItems);
+  if (d.presence) out.presence = wireSection(d.presence, wirePresence);
+  if (d.vitals) out.vitals = wireSection(d.vitals, wireVitals);
+  if (d.skills) out.skills = wireSection(d.skills, wireSkills);
+  if (d.location) out.location = wireSection(d.location, wireLocation);
+  if (d.equipment) out.equipment = wireSection(d.equipment, wireItems);
+  if (d.inventory) out.inventory = wireSection(d.inventory, wireItems);
   return out;
 }
 
@@ -233,35 +212,10 @@ export function wireGains(g: ApiGains): WireGains {
   };
 }
 
-/**
- * The stored event is always an object (the plugin's event from the raw payload, D-31); anything
- * else would be a storage bug, sent as an empty object rather than breaking the documented type.
- */
-function eventData(data: unknown): Record<string, unknown> {
-  return typeof data === 'object' && data !== null && !Array.isArray(data)
-    ? (data as Record<string, unknown>)
-    : {};
-}
-
+/** The event's own fields are the shared mapper's; the API puts the account after `type`. */
 export function wireEvent(e: ApiEvent): WireEvent {
-  return {
-    id: e.id,
-    type: e.type,
-    account: { id: e.account.id, name: e.account.name },
-    occurred_at: e.occurredAt,
-    received_at: e.receivedAt,
-    value_gp: e.valueGp,
-    item_id: e.itemId,
-    npc_id: e.npcId,
-    skill: e.skill,
-    level: e.level,
-    tier: e.tier,
-    points: e.points,
-    special_world: e.specialWorld,
-    data: eventData(e.data),
-    title: e.title,
-    line: e.line,
-  };
+  const { id, type, ...rest } = wireEventFields(e);
+  return { id, type, account: { id: e.account.id, name: e.account.name }, ...rest };
 }
 
 export function wireSessions(h: ApiSessions): WireSessions {
@@ -295,7 +249,7 @@ export function wireWealth(h: ApiWealth): WireWealth {
     account: { id: h.account.id, name: h.account.name },
     from: h.from,
     to: h.to,
-    days: h.days.map((d) => ({ day: d.day, last_value: d.lastValue, max_value: d.maxValue })),
+    days: h.days.map(wireWealthDay),
   };
 }
 

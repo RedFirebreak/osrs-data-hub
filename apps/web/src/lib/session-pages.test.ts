@@ -3,6 +3,7 @@
  * way a Server Component render sees it: the request's headers, and a cookie store whose set() throws
  * (Next only lets Server Actions and Route Handlers write cookies).
  */
+import { DAY_MS } from '@hub/core';
 import { session } from '@hub/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -24,8 +25,6 @@ vi.mock('next/headers', () => ({
       },
     }),
 }));
-
-const DAY = 24 * 60 * 60 * 1000;
 
 let ctx: WebTestContext;
 
@@ -95,10 +94,10 @@ describe('page session helpers', () => {
   it('never extends the session from a page render, where the cookie cannot be renewed', async () => {
     const userId = await signedInPage();
     // Signed in two days ago: past Better Auth's updateAge (1 day), so a read would refresh it.
-    const expiresAt = new Date(Date.now() + 5 * DAY);
+    const expiresAt = new Date(Date.now() + 5 * DAY_MS);
     await ctx.t.db
       .update(session)
-      .set({ expiresAt, updatedAt: new Date(Date.now() - 2 * DAY) })
+      .set({ expiresAt, updatedAt: new Date(Date.now() - 2 * DAY_MS) })
       .where(eq(session.userId, userId));
     const stored = async () =>
       (await ctx.t.db.select().from(session).where(eq(session.userId, userId)))[0]!.expiresAt;
@@ -111,7 +110,7 @@ describe('page session helpers', () => {
 
     // A route handler may: Next adds the renewed cookie to its response.
     await requireApiUser(ctx.request('/api/live/stream', { cookie: page.headers.get('cookie')! }));
-    expect((await stored()).getTime()).toBeGreaterThan(Date.now() + 6 * DAY);
+    expect((await stored()).getTime()).toBeGreaterThan(Date.now() + 6 * DAY_MS);
   });
 
   it('a database failure is an error for requireUser, not a redirect to /login', async () => {

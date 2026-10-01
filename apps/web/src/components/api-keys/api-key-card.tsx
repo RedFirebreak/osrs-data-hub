@@ -12,10 +12,10 @@
 import { CATEGORY_LABELS } from '@hub/core';
 import type { ApiKeyInfo, ApiKeyStatus } from '@hub/server';
 import { AccountLink } from '@/components/accounts/account-link';
-import { formatInZone } from '@/components/account/dates';
-import { RelativeTime } from '@/components/events/relative-time';
+import { RelativeTime } from '@/components/time/relative-time';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
+import { formatInZone } from '@/lib/dates';
 import { cn } from '@/lib/utils';
 import {
   HIDDEN_ACCOUNT_LABEL,
@@ -38,7 +38,7 @@ const STATUS_TONES: Readonly<Record<ApiKeyStatus, string>> = {
   revoked: 'border-border bg-muted text-muted-foreground',
 };
 
-export function ApiKeyStatusBadge({ status }: { status: ApiKeyStatus }) {
+function ApiKeyStatusBadge({ status }: { status: ApiKeyStatus }) {
   return (
     <Badge variant="outline" className={STATUS_TONES[status]}>
       <span aria-hidden className="size-1.5 rounded-full bg-current" />

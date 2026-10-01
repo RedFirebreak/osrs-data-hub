@@ -2,7 +2,8 @@
  * Privacy (handoff §16, public): what is stored and for how long (the retention table of
  * ARCHITECTURE §8, with this deployment's values from getConfig()), who can see what (the sharing
  * categories and defaults, handoff §10), that the plugin decides what is sent (D-4), hosting in the
- * Netherlands (GDPR), and what "Download my data" (D-79) and "Delete my data" (D-78) do.
+ * Netherlands (GDPR), the icon server the browser loads pictures from (D-95), and what "Download my
+ * data" (D-79) and "Delete my data" (D-78) do.
  */
 import { CATEGORIES, CATEGORY_LABELS, DEFAULT_AUDIENCE, getConfig, type Audience } from '@hub/core';
 import { SELF_DELETE_UNDO_DAYS } from '@hub/server';
@@ -55,6 +56,8 @@ export default async function PrivacyPage() {
   await connection();
   const config = getConfig();
   const guild = config.discord.guildName;
+  // The icon CDN the browser loads pictures from (D-95); null when icons are off.
+  const iconsHost = config.osrsIconsUrl ? new URL(config.osrsIconsUrl).host : null;
 
   const retention: { data: string; kept: string }[] = [
     {
@@ -166,6 +169,14 @@ export default async function PrivacyPage() {
               For each sign-in the hub keeps the IP address and browser it came from until it
               expires. There is no tracking or advertising.
             </li>
+            {iconsHost && (
+              <li>
+                Item, skill and equipment-slot pictures load from {iconsHost}, an icon server for
+                OSRS tools. Your browser fetches them directly, so that server sees your IP address
+                and which pictures a page shows, as any website would; nothing else about you or
+                your accounts is sent to it.
+              </li>
+            )}
             <li>Your settings (toast filter, time zone).</li>
           </ul>
         </Section>
@@ -175,8 +186,10 @@ export default async function PrivacyPage() {
             Account data is shared by category. The account&apos;s owner (by default the first
             player whose plugin reported it) chooses per category who sees it:{' '}
             <strong>Private</strong> (the owner and the players who also play the account),{' '}
-            <strong>Guild</strong> (every active member) or <strong>Selected people</strong>. The
-            defaults are:
+            <strong>Guild</strong> (every active member) or <strong>Selected people</strong>. A new
+            account starts with the defaults below; its owner sees them, and can change them, on the
+            last step of pairing and on the account&apos;s page. An account the hub knew before a
+            default changed keeps what it had until its owner changes it.
           </p>
           <div className="overflow-x-auto rounded-lg ring-1 ring-foreground/10">
             <Table>

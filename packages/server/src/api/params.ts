@@ -3,22 +3,22 @@
  * zod first; these checks keep the read models safe on their own (they are exported and callable
  * directly) and throw ApiError('invalid') with a message that names the parameter.
  */
+import { DAY_MS } from '@hub/core';
 import { ApiError } from './errors';
-
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
  * What a public id can look like (D-46: 12 base62 characters; longer ones exist in tests). Anything
- * else can't be one and is never sent to the database: Postgres refuses NUL in text (DB-1).
+ * else can't be one and is never sent to the database: Postgres refuses NUL in text (DB-1). The one
+ * definition: the web layer's schemas, routes and pages use this pattern or isPublicIdLike.
  */
-const PUBLIC_ID_RE = /^[0-9A-Za-z]{1,64}$/;
+export const PUBLIC_ID_PATTERN = /^[0-9A-Za-z]{1,64}$/;
 
 /** Most ids or names one list parameter (`ids`, `names`, `accounts`) may carry. */
 export const MAX_LIST_PARAM = 100;
 
 /** True when `value` has the shape of a public id (so it may be looked up). */
 export function isPublicIdLike(value: unknown): value is string {
-  return typeof value === 'string' && PUBLIC_ID_RE.test(value);
+  return typeof value === 'string' && PUBLIC_ID_PATTERN.test(value);
 }
 
 /** Throws ApiError('invalid') unless `value` is a valid Date. */

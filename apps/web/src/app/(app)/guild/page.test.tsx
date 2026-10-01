@@ -2,6 +2,7 @@
  * The guild page as a Server Component render sees it: who gets through, members with the accounts
  * the viewer can see, the activity feed (private events left out) and the gains leaderboards.
  */
+import { CATEGORIES } from '@hub/core';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderToReadableStream } from 'react-dom/server';
 import { accountSeeder, skillMap, type AccountSeeder } from '@/app/api/app/accounts/test-seed';
@@ -95,7 +96,7 @@ describe('guild page', () => {
     ]);
     await seed.event(main.id, { type: 'loot', valueGp: 38_200_000 });
     const secret = await seed.account({ owner: bob, name: 'Hermit' });
-    for (const category of ['stats', 'events', 'activity', 'location_live'] as const) {
+    for (const category of CATEGORIES) {
       await seed.sharing(secret.id, category, 'private');
     }
     await seed.event(secret.id, { type: 'death' });

@@ -26,6 +26,7 @@ import type { AccountWithAccess } from '../accounts/load';
 import { listApiKeys } from '../api/keys';
 import { listDevices } from '../devices/devices';
 import { getUserSettings } from '../settings/user-settings';
+import { isUuid } from '../uuid';
 import { keysetPages } from './json';
 
 export type UserRow = NonNullable<Awaited<ReturnType<typeof loadUserRow>>>;
@@ -288,8 +289,6 @@ async function readAuditPage(db: Db, userId: string, afterId: number | null, lim
 /** What replaces another person's id in an exported audit entry. */
 export const REDACTED_ID = '[redacted]';
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 /** Which ids an exported audit entry may keep: the user's own, and everyone else's user ids. */
 export interface AuditIds {
   /** The user's id and their devices' and API keys' ids: kept. */
@@ -321,7 +320,7 @@ export async function auditIds(db: Db, userId: string): Promise<AuditIds> {
 export function wireAuditFor(userId: string, ids: AuditIds) {
   const redact = (value: unknown): unknown => {
     if (typeof value === 'string') {
-      const foreign = ids.others.has(value) || (UUID_RE.test(value) && !ids.own.has(value));
+      const foreign = ids.others.has(value) || (isUuid(value) && !ids.own.has(value));
       return foreign ? REDACTED_ID : value;
     }
     if (Array.isArray(value)) return value.map(redact);

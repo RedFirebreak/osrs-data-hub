@@ -107,13 +107,20 @@ export async function seedLink(
   });
 }
 
+/** Sets the audience of one category; a second call for the same category replaces the first. */
 export async function seedSharing(
   db: Db,
   accountId: number,
   category: Category,
   audience: Audience,
 ): Promise<void> {
-  await db.insert(accountSharing).values({ accountId, category, audience });
+  await db
+    .insert(accountSharing)
+    .values({ accountId, category, audience })
+    .onConflictDoUpdate({
+      target: [accountSharing.accountId, accountSharing.category],
+      set: { audience },
+    });
 }
 
 export async function seedGrant(

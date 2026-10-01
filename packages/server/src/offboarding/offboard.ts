@@ -1,3 +1,4 @@
+import { DAY_MS } from '@hub/core';
 import {
   accountLinks,
   apiKeys,
@@ -12,7 +13,7 @@ import {
   type UserStatus,
 } from '@hub/db';
 import { and, asc, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
-import { audit } from '../audit';
+import { SYSTEM_ACTOR, audit } from '../audit';
 import { getMetrics, type HubMetrics } from '../metrics';
 import {
   auditTransfer,
@@ -23,7 +24,6 @@ import {
   type AuditActor,
 } from './accounts';
 
-const DAY_MS = 86_400_000;
 /** Offboarding waits for ingest's per-account locks; ingest holds them for at most a few seconds. */
 const LOCK_TIMEOUT = '10s';
 
@@ -246,7 +246,8 @@ async function unhideOwnAccounts(
 /** Attribution: an explicit label wins; the system otherwise, unless a user acted. */
 function auditActor(opts: { actorUserId?: string | null; actorLabel?: string }): AuditActor {
   const actorUserId = opts.actorUserId ?? null;
-  return { actorUserId, actorLabel: opts.actorLabel ?? (actorUserId ? null : 'system') };
+  const fallback = actorUserId ? null : SYSTEM_ACTOR.actorLabel;
+  return { actorUserId, actorLabel: opts.actorLabel ?? fallback };
 }
 
 interface GraceState {

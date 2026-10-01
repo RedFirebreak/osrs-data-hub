@@ -10,9 +10,9 @@ import { getDb } from '@hub/db';
 import { GUILD_FEED_EVENTS, getGuildOverview, getUserSettings } from '@hub/server';
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
-import { EventTimeline } from '@/components/account/event-timeline';
-import { eventTypeOptions } from '@/components/account/event-types';
-import { SectionCard } from '@/components/account/section-card';
+import { SectionCard } from '@/components/common/section-card';
+import { EventTimeline } from '@/components/events/event-timeline';
+import { eventTypeOptions } from '@/components/events/event-types';
 import { Leaderboards } from '@/components/guild/leaderboards';
 import { MemberList } from '@/components/guild/member-list';
 import { AutoRefresh } from '@/components/shell/auto-refresh';
@@ -35,7 +35,7 @@ export default async function GuildPage() {
       <Suspense fallback={<GuildSkeleton />}>
         <GuildContent userId={user.id} viewer={viewer} />
       </Suspense>
-      <AutoRefresh everyMs={60_000} />
+      <AutoRefresh />
     </div>
   );
 }

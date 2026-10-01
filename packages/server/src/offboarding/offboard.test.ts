@@ -2,7 +2,7 @@ import { accountLinks, apiKeys, auditLog, devices, osrsAccounts, session, users 
 import { createTestDatabase, type TestDatabase } from '@hub/db/testing';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { ACCOUNT_LOCK_CLASS } from '../ingest/store';
+import { ACCOUNT_LOCK_CLASS } from '../ingest/lock';
 import { createTestMetrics } from '../metrics';
 import { countsBy } from '../metrics-test-support';
 import { takeOverFromOwnerInGrace } from './accounts';

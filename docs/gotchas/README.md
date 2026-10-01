@@ -1,6 +1,6 @@
 # Gotchas
 
-83 traps, grouped into five files, found while building osrs-data-hub. Each is written up
+86 traps, grouped into five files, found while building osrs-data-hub. Each is written up
 once under a stable ID and referenced by ID from everywhere else, so there is exactly one place to edit
 when something changes. Package-agnostic: things that are true of the shared layer (the HA Exporter
 plugin protocol, Next.js, Better Auth, Drizzle, Postgres/TimescaleDB, pg-boss, the Discord API, and the
@@ -24,9 +24,9 @@ defeats the point of them being separate.
 |---|---|---|
 | [auth.md](auth.md) | `AUTH`, `DISCORD` — Better Auth 1.7 (Discord provider, Drizzle adapter, hooks, sessions, endpoints) and the Discord HTTP API (OAuth, guild member lookups) | 14 |
 | [database.md](database.md) | `DB`, `TSDB` — Postgres behaviour, drizzle-orm 0.45 and drizzle-kit 0.31 (queries, errors, the migrator), and TimescaleDB 2.30 (hypertables, compression, continuous aggregates, policies, the Docker image) | 27 |
-| [nextjs.md](nextjs.md) | `NEXT` — Next.js 16 (route handlers, server actions, RSC, proxy.ts, instrumentation, basePath, standalone output, the dev and build CLI) | 16 |
+| [nextjs.md](nextjs.md) | `NEXT` — Next.js 16 (route handlers, server actions, RSC, proxy.ts, instrumentation, basePath, standalone output, the dev and build CLI) | 17 |
 | [plugin.md](plugin.md) | `PLUGIN` — the HA Exporter v1.5 wire protocol as seen from the hub (payload shapes, Gson serialization, the OkHttp transport, status handling, the retry queue, the pairing panel) | 13 |
-| [toolchain.md](toolchain.md) | `PGBOSS`, `PROM`, `TOOL`, `ZOD` — build, lint, test and package tooling (TypeScript, ESLint, Prettier, pnpm, tsup, shadcn, Playwright, Docker base images, Git line endings) and the pg-boss, prom-client and zod libraries | 13 |
+| [toolchain.md](toolchain.md) | `PGBOSS`, `PROM`, `TOOL`, `ZOD` — build, lint, test and package tooling (TypeScript, ESLint, Prettier, pnpm, tsup, shadcn, Playwright, Docker base images, Git line endings) and the pg-boss, prom-client and zod libraries | 15 |
 | [open-questions.md](open-questions.md) | read from docs, not yet observed — no IDs, not in the index | — |
 
 **Source key.** Every entry ends with the source it was settled from:
@@ -104,6 +104,7 @@ The `gotcha` skill walks this, including a trap that fits no existing file.
 | [NEXT-14](nextjs.md#next-14) | Next.js | An unknown id's page shows the not-found UI but answers HTTP 200, with `<meta name="robots" content="noindex">` in its HTML, while a `notFound()` from a layout answers 404. |
 | [NEXT-15](nextjs.md#next-15) | Next.js | `pnpm dev` or a tsx script in a workspace package ignores the repo-root `.env` (`DATABASE_URL is not set`), and starting Next as `node --env-file=… next dev` exits at once with code 9: `--env-file-if-exists= is not allowed in NODE_OPTIONS`. |
 | [NEXT-16](nextjs.md#next-16) | Next.js | A streamed download logs an error such as `export: failed while streaming` with `TypeError: Invalid state: Controller is already closed` whenever the client cancels it halfway (a closed tab, an aborted `fetch`). |
+| [NEXT-17](nextjs.md#next-17) | Next.js | A setting read as `process.env.NEXT_PUBLIC_*` keeps the value it had when the image was built: changing it in `.env` or the pod's environment and restarting has no effect in client components (it is `undefined` when the build had none). |
 | **[plugin.md](plugin.md)** | | |
 | [PLUGIN-1](plugin.md#plugin-1) | Plugin | Ingest answers 400 to payloads sent at client start and right after login, or a player shows offline for a moment during loading screens and world hops. |
 | [PLUGIN-2](plugin.md#plugin-2) | Plugin | A player's data silently stops arriving (no error on either side) and the access log shows a 3xx on `/api/osrs-data/*`, or a body-less `GET /api/osrs-data/events` carrying `X-Osrs-Token`. |
@@ -131,6 +132,8 @@ The `gotcha` skill walks this, including a trap that fits no existing file.
 | [TOOL-7](toolchain.md#tool-7) | Toolchain | After `pnpm format`, `tools/check_gotchas.py` reports `has no '*Source: ...*' line` for every entry and doc tables are re-padded, or tests that splice a payload fixture as a string fail (`expected [] to deeply equal [ 'player.inventory' ]`). |
 | [TOOL-8](toolchain.md#tool-8) | Toolchain | A Playwright run whose `globalSetup` creates the app's database fails with `Timed out waiting 60000ms from config.webServer`, or the server logs `database "…" does not exist` at start although `globalSetup` created it. |
 | [TOOL-9](toolchain.md#tool-9) | Toolchain | On a Windows clone `pnpm format:check` flags nearly every file (`Code style issues found in 548 files`), untouched ones like `apps/web/tsconfig.json` included, while the same content with the CRs stripped passes; or it still fails that way after pulling the commit that adds `.gitattributes`, with `git ls-files --eol` still showing `w/crlf`. |
+| [TOOL-10](toolchain.md#tool-10) | Toolchain | On Windows `pnpm test:e2e` never starts the server: `e2e: next build failed (spawnSync pnpm ENOENT)`, or with `E2E_SKIP_BUILD=1` `Error [ERR_UNSUPPORTED_ESM_URL_SCHEME]: … Received protocol 'e:'`. |
+| [TOOL-11](toolchain.md#tool-11) | Toolchain | On Windows every `docker` command fails with `failed to connect to the docker API at npipe:////./pipe/dockerDesktopLinuxEngine` (or hangs), `pnpm test` reports `Cannot reach the test database`, and Docker Desktop shows a crash dialog on start instead of its dashboard. |
 | [ZOD-1](toolchain.md#zod-1) | zod | Unknown or new fields in a plugin payload vanish after parsing: stored event data lacks keys the plugin sent. |
 
 ## Retired IDs

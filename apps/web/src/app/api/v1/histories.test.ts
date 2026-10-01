@@ -3,6 +3,7 @@
  * fixtures: the documented shapes, each history gated by its own category (the one 404, D-70), the
  * default 30-day range and 400 for bad ranges.
  */
+import { DAY_MS } from '@hub/core';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   EquipmentHistoryResponse,
@@ -24,6 +25,7 @@ import {
   idParams,
   makeKey,
   seedWorld,
+  setAudience,
   v1Request,
   type TestKey,
   type World,
@@ -59,15 +61,13 @@ function call(handler: Handler, key: TestKey, id: string, query = '') {
   return handler(v1Request(ctx, `/accounts/${id}/x${query}`, { key: key.key }), idParams(id));
 }
 
-const DAY = 24 * 60 * 60 * 1000;
-
 describe('history endpoints', () => {
   it('sessions: the open session, newest first, over the last 30 days by default', async () => {
     const res = await call(getSessions, ownerKey, world.main.id);
     expect(res.status).toBe(200);
     const { data } = expectShape(SessionsResponse, await res.json());
     expect(data.account).toEqual({ id: world.main.id, name: world.main.name });
-    expect(Date.parse(data.to) - Date.parse(data.from)).toBe(30 * DAY);
+    expect(Date.parse(data.to) - Date.parse(data.from)).toBe(30 * DAY_MS);
     expect(data.sessions.length).toBeGreaterThanOrEqual(1);
     expect(data.sessions[0]).toMatchObject({ ended_at: null, end_reason: null, worlds: [302] });
   });
@@ -110,6 +110,10 @@ describe('history endpoints', () => {
   });
 
   it('gates each history by its own category: a plain member reads only sessions', async () => {
+    // activity stays guild (the default, D-96); the other histories' categories are private.
+    for (const category of ['equipment', 'inventory', 'location_history'] as const) {
+      await setAudience(ctx, world.main.hash, category, 'private');
+    }
     expect((await call(getSessions, memberKey, world.main.id)).status).toBe(200);
     for (const handler of [getEquipment, getWealth, getLocations]) {
       const res = await handler(

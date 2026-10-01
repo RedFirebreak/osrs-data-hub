@@ -23,6 +23,12 @@ export const API_KEY_KINDS = ['user', 'service'] as const;
 export type ApiKeyKind = (typeof API_KEY_KINDS)[number];
 
 /**
+ * `all_visible`: whatever the key's principal can see, on every request; `list`: `account_ids`.
+ * Like `kind`, typed here only: neither column has a CHECK constraint in the database.
+ */
+export const API_KEY_ACCOUNT_SCOPES = ['all_visible', 'list'] as const;
+
+/**
  * Public API keys (Milestone 3). Shown once as ohub_<prefix>_<secret>; only sha256(secret) stored.
  * A user key has its creator in `user_id` (cascade: the key goes with the user); a service key has
  * none (D-88) and records who created it in `created_by_user_id`, which offboarding leaves alone.
@@ -43,7 +49,7 @@ export const apiKeys = pgTable(
     prefix: text('prefix').notNull(),
     secretHash: text('secret_hash').notNull(),
     categories: text('categories').array().notNull(),
-    accountScope: text('account_scope', { enum: ['all_visible', 'list'] })
+    accountScope: text('account_scope', { enum: API_KEY_ACCOUNT_SCOPES })
       .default('all_visible')
       .notNull(),
     accountIds: integer('account_ids').array(),

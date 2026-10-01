@@ -3,10 +3,8 @@
  * table's day/week/month/year, the guild leaderboards). "Today" starts at local midnight, which is
  * the only period that depends on the time zone; the others are rolling windows.
  */
+import { DAY_MS, HOUR_MS } from '@hub/core';
 import { DEFAULT_TIMEZONE } from '../settings/user-settings';
-
-const HOUR_MS = 60 * 60 * 1000;
-const DAY_MS = 24 * HOUR_MS;
 
 export interface PeriodStarts {
   /** Local midnight of `now`'s day in the time zone. */

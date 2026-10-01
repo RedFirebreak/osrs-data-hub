@@ -4,7 +4,7 @@
  * account page's timeline, the dashboard, toasts and the public API are not filtered: the events are
  * stored and shown everywhere else as before.
  */
-import { LOOT_EVENT_TYPES } from './events/types';
+import { isLootEvent } from './events/types';
 import { MAX_REAL_LEVEL } from './skills';
 
 export interface GuildFeedFilter {
@@ -27,8 +27,6 @@ export const MAX_GUILD_FEED_MIN_LOOT_VALUE = 2 ** 31;
  * It only appears in levelUp events (payload/parse.ts).
  */
 export const COMBAT_LEVEL_SKILL = 'Combat';
-
-const LOOT_TYPES: ReadonlySet<string> = new Set(LOOT_EVENT_TYPES);
 
 /** Whether a level_up row is a virtual level: a skill (not Combat) past 99. */
 export function isVirtualLevelUp(event: {
@@ -53,7 +51,7 @@ export function inGuildFeed(
   event: { type: string; valueGp: number | null; skill: string | null; level: number | null },
   filter: GuildFeedFilter,
 ): boolean {
-  if (LOOT_TYPES.has(event.type) && (event.valueGp ?? 0) < filter.minLootValue) return false;
+  if (isLootEvent(event.type) && (event.valueGp ?? 0) < filter.minLootValue) return false;
   if (!filter.showVirtualLevels && isVirtualLevelUp(event)) return false;
   return true;
 }

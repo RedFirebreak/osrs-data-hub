@@ -38,6 +38,58 @@ const optionalString = z
   .optional()
   .transform((v) => (v && v.trim() !== '' ? v.trim() : undefined));
 
+/** Where the hub's item, skill and equipment-slot icons come from by default (D-95). */
+const DEFAULT_OSRS_ICONS_URL = 'https://icons.scapekeeper.com';
+
+/**
+ * OSRS_ICONS_URL (D-95): unset → the default CDN; empty → icons off (null); otherwise an http(s) base
+ * URL, trailing slashes removed. Read at runtime like every other variable: a NEXT_PUBLIC_* value
+ * would be baked into the prebuilt image (NEXT-17).
+ */
+const iconsUrl = z
+  .string()
+  .optional()
+  .transform((v, ctx) => {
+    if (v === undefined) return DEFAULT_OSRS_ICONS_URL;
+    const trimmed = v.trim().replace(/\/+$/, '');
+    if (trimmed === '') return null;
+    let url: URL;
+    try {
+      url = new URL(trimmed);
+    } catch {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'must be an absolute URL including https://, or empty to turn icons off',
+      });
+      return z.NEVER;
+    }
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+      ctx.addIssue({ code: 'custom', message: 'must start with https:// (or http://)' });
+      return z.NEVER;
+    }
+    // Icon URLs are `${base}/items/…`: a query, fragment or credentials would end up in the middle.
+    if (url.search || url.hash || url.username || url.password) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'must be a plain base URL, without ?query, #fragment or user:password@',
+      });
+      return z.NEVER;
+    }
+    return trimmed;
+  });
+
+/**
+ * The lowest XP_RAW_RETENTION_DAYS: twice the 7 days the hourly and daily XP aggregates are refreshed
+ * over (CAGG_REFRESH_START_DAYS in packages/db/src/policies.ts, whose validatePolicyConfig applies
+ * this minimum too). A refresh over a range whose raw rows retention already dropped erases the
+ * aggregated history (TSDB-1).
+ */
+export const MIN_XP_RAW_RETENTION_DAYS = 14;
+
+const logLevel = z
+  .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
+  .default('info');
+
 const EnvSchema = z.object({
   APP_URL: z
     .string()
@@ -85,7 +137,7 @@ const EnvSchema = z.object({
   ADMIN_DISCORD_USER_IDS: csv,
   OFFBOARD_GRACE_DAYS: int(30, 0),
   PAIRING_CODE_TTL_SECONDS: int(300, 30),
-  XP_RAW_RETENTION_DAYS: int(365, 14),
+  XP_RAW_RETENTION_DAYS: int(365, MIN_XP_RAW_RETENTION_DAYS),
   LOCATION_RETENTION_DAYS: int(30, 1),
   RAW_PAYLOAD_RETENTION_HOURS: int(72, 1),
   AUDIT_LOG_RETENTION_DAYS: int(730, 1),
@@ -93,40 +145,54 @@ const EnvSchema = z.object({
   TRUST_PROXY_HOPS: int(1, 0),
   METRICS_TOKEN: optionalString,
   WORKER_METRICS_PORT: int(9464, 0),
-  LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
+  LOG_LEVEL: logLevel,
+  OSRS_ICONS_URL: iconsUrl,
 });
 
-export interface HubConfig {
-  appUrl: URL;
-  /** APP_URL origin, e.g. "https://hub.example.com" (no trailing slash). */
-  appOrigin: string;
-  hubName: string;
-  minPluginVersion: string;
-  databaseUrl: string | undefined;
-  authSecret: string | undefined;
-  discord: {
-    clientId: string | undefined;
-    clientSecret: string | undefined;
-    botToken: string | undefined;
-    guildId: string | undefined;
-    guildName: string;
-    requiredRoleIds: string[];
-    adminRoleIds: string[];
-    adminUserIds: string[];
+/** Every environment variable the config reads (the admin Configuration page lists them all). */
+export const CONFIG_ENV_NAMES: readonly string[] = Object.keys(EnvSchema.shape);
+
+/**
+ * Env → the config the code reads. A variable gets its field name here and nowhere else: HubConfig
+ * is this function's return type, so a new variable is one line in EnvSchema and one line here.
+ */
+function toConfig(e: z.output<typeof EnvSchema>) {
+  return {
+    appUrl: e.APP_URL,
+    /** APP_URL origin, e.g. "https://hub.example.com" (no trailing slash). */
+    appOrigin: e.APP_URL.origin,
+    hubName: hubNameFrom(e.HUB_NAME),
+    minPluginVersion: e.MIN_PLUGIN_VERSION,
+    databaseUrl: e.DATABASE_URL,
+    authSecret: e.AUTH_SECRET,
+    discord: {
+      clientId: e.DISCORD_CLIENT_ID,
+      clientSecret: e.DISCORD_CLIENT_SECRET,
+      botToken: e.DISCORD_BOT_TOKEN,
+      guildId: e.DISCORD_GUILD_ID,
+      guildName: e.DISCORD_GUILD_NAME ?? 'the guild',
+      requiredRoleIds: e.DISCORD_REQUIRED_ROLE_IDS,
+      adminRoleIds: e.DISCORD_ADMIN_ROLE_IDS,
+      adminUserIds: e.ADMIN_DISCORD_USER_IDS,
+    },
+    offboardGraceDays: e.OFFBOARD_GRACE_DAYS,
+    pairingCodeTtlSeconds: e.PAIRING_CODE_TTL_SECONDS,
+    xpRawRetentionDays: e.XP_RAW_RETENTION_DAYS,
+    locationRetentionDays: e.LOCATION_RETENTION_DAYS,
+    rawPayloadRetentionHours: e.RAW_PAYLOAD_RETENTION_HOURS,
+    auditLogRetentionDays: e.AUDIT_LOG_RETENTION_DAYS,
+    ingestMaxBodyBytes: e.INGEST_MAX_BODY_KB * 1024,
+    trustProxyHops: e.TRUST_PROXY_HOPS,
+    metricsToken: e.METRICS_TOKEN,
+    /** The worker's /metrics port (D-84); 0 = no endpoint. */
+    workerMetricsPort: e.WORKER_METRICS_PORT,
+    logLevel: e.LOG_LEVEL,
+    /** Base URL of the OSRS icon CDN without a trailing slash; null = icons off (D-95). */
+    osrsIconsUrl: e.OSRS_ICONS_URL,
   };
-  offboardGraceDays: number;
-  pairingCodeTtlSeconds: number;
-  xpRawRetentionDays: number;
-  locationRetentionDays: number;
-  rawPayloadRetentionHours: number;
-  auditLogRetentionDays: number;
-  ingestMaxBodyBytes: number;
-  trustProxyHops: number;
-  metricsToken: string | undefined;
-  /** The worker's /metrics port (D-84); 0 = no endpoint. */
-  workerMetricsPort: number;
-  logLevel: 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace' | 'silent';
 }
+
+export type HubConfig = ReturnType<typeof toConfig>;
 
 export class ConfigError extends Error {
   override name = 'ConfigError';
@@ -155,35 +221,18 @@ export function parseConfig(env: Record<string, string | undefined> = process.en
       'Invalid configuration:\n  DISCORD_REQUIRED_ROLE_IDS: must not contain the guild id (@everyone); leave it empty to allow every member',
     );
   }
-  return {
-    appUrl: e.APP_URL,
-    appOrigin: e.APP_URL.origin,
-    hubName: hubNameFrom(e.HUB_NAME),
-    minPluginVersion: e.MIN_PLUGIN_VERSION,
-    databaseUrl: e.DATABASE_URL,
-    authSecret: e.AUTH_SECRET,
-    discord: {
-      clientId: e.DISCORD_CLIENT_ID,
-      clientSecret: e.DISCORD_CLIENT_SECRET,
-      botToken: e.DISCORD_BOT_TOKEN,
-      guildId: e.DISCORD_GUILD_ID,
-      guildName: e.DISCORD_GUILD_NAME ?? 'the guild',
-      requiredRoleIds: e.DISCORD_REQUIRED_ROLE_IDS,
-      adminRoleIds: e.DISCORD_ADMIN_ROLE_IDS,
-      adminUserIds: e.ADMIN_DISCORD_USER_IDS,
-    },
-    offboardGraceDays: e.OFFBOARD_GRACE_DAYS,
-    pairingCodeTtlSeconds: e.PAIRING_CODE_TTL_SECONDS,
-    xpRawRetentionDays: e.XP_RAW_RETENTION_DAYS,
-    locationRetentionDays: e.LOCATION_RETENTION_DAYS,
-    rawPayloadRetentionHours: e.RAW_PAYLOAD_RETENTION_HOURS,
-    auditLogRetentionDays: e.AUDIT_LOG_RETENTION_DAYS,
-    ingestMaxBodyBytes: e.INGEST_MAX_BODY_KB * 1024,
-    trustProxyHops: e.TRUST_PROXY_HOPS,
-    metricsToken: e.METRICS_TOKEN,
-    workerMetricsPort: e.WORKER_METRICS_PORT,
-    logLevel: e.LOG_LEVEL,
-  };
+  return toConfig(e);
+}
+
+/**
+ * LOG_LEVEL as the logger reads it. The logger exists before the config is validated (it is what
+ * reports a ConfigError), so it can't take `logLevel` from getConfig(); it applies the same rule to
+ * the raw value. An invalid value gives the default here, so the logger still starts and
+ * parseConfig's error, which names the variable, is the one the operator sees.
+ */
+export function logLevelFromEnv(raw: string | undefined): HubConfig['logLevel'] {
+  const r = logLevel.safeParse(raw);
+  return r.success ? r.data : logLevel.parse(undefined);
 }
 
 const g = globalThis as unknown as { __hubConfig?: HubConfig };

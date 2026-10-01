@@ -25,15 +25,8 @@ import { MAX_BULK_ACCOUNTS, MAX_BULK_ACCOUNTS_SERVICE, loadApiAccounts } from '.
 import { apiGetAccount, apiListAccounts } from './accounts';
 import { ApiError } from './errors';
 import { apiLocations, apiLocationsMulti } from './history';
-import {
-  ApiKeyError,
-  MAX_ACTIVE_KEYS,
-  authenticateApiKey,
-  createApiKey,
-  listApiKeys,
-  revokeApiKey,
-  type ApiPrincipal,
-} from './keys';
+import { authenticateApiKey, type ApiPrincipal } from './key-auth';
+import { ApiKeyError, MAX_ACTIVE_KEYS, createApiKey, listApiKeys, revokeApiKey } from './keys';
 import { MAX_KEY_RATE_LIMIT, SERVICE_KEY_RATE_LIMIT } from './limits';
 import { apiMe } from './me';
 import {
@@ -51,7 +44,7 @@ let admin: SeededUser;
 let member: SeededUser;
 let owner: SeededUser;
 let contributor: SeededUser;
-/** Owned by `owner`, contributed to by `contributor`, default sharing (guild for 4 categories). */
+/** Owned by `owner`, contributed to by `contributor`, default sharing (guild for every category). */
 let shared: SeededAccount;
 /** Owned by `owner`, everything private. */
 let hidden: SeededAccount;
@@ -272,11 +265,9 @@ describe('listServiceKeys and revokeServiceKey', () => {
         keyId: '00000000-0000-7000-8000-000000000000',
       }),
     ).toBe(false);
-    // And the user-key path never touches a service key, even as admin.
+    // And the user-key path never touches a service key, not even its creator's.
     const { info } = await serviceKey();
-    expect(await revokeApiKey(t.db, { userId: admin.id, keyId: info.id, asAdmin: true })).toBe(
-      false,
-    );
+    expect(await revokeApiKey(t.db, { userId: admin.id, keyId: info.id })).toBe(false);
     await expect(
       revokeServiceKey(t.db, { actor: member.viewer, keyId: info.id }),
     ).rejects.toBeInstanceOf(AdminError);
@@ -304,7 +295,7 @@ describe('a service key’s access (D-89)', () => {
     const { principal } = await serviceKey({ categories: [...CATEGORIES] });
     expect(await visibleIds(principal)).toEqual([orphan.publicId, shared.publicId].sort());
     const detail = present(await apiGetAccount(t.db, principal, shared.publicId, NOW));
-    expect(detail.categories).toEqual(['stats', 'events', 'activity', 'location_live']);
+    expect(detail.categories).toEqual([...CATEGORIES]);
     expect(await apiGetAccount(t.db, principal, hidden.publicId, NOW)).toBeNull();
     expect(await apiGetAccount(t.db, principal, selected.publicId, NOW)).toBeNull();
     // The member with grants sees the selected account; the service key still doesn't.
@@ -480,7 +471,9 @@ describe('bulk history (D-92)', () => {
   });
 
   it('is gated by location_history: a service key gets the one 404 for accounts that keep it private', async () => {
-    // location_history defaults to private (D-22), so the guild audience reads no trail...
+    // The account keeps its trail private (the default is guild, D-96), so the guild audience reads
+    // no trail...
+    await seedSharing(t.db, shared.id, 'location_history', 'private');
     const { principal } = await serviceKey({ categories: ['location_history'] });
     const closed = await apiLocationsMulti(t.db, principal, { ids: [shared.publicId] }, NOW).catch(
       (e: unknown) => e,

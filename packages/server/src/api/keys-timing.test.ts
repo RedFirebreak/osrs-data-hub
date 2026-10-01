@@ -8,7 +8,8 @@ import { sha256Hex } from '@hub/core';
 import { createTestDatabase, type TestDatabase } from '@hub/db/testing';
 import { afterAll, beforeAll, beforeEach, expect, it, vi } from 'vitest';
 import { seedUser } from '../accounts/test-support';
-import { authenticateApiKey, createApiKey } from './keys';
+import { authenticateApiKey } from './key-auth';
+import { createApiKey } from './keys';
 
 const spy = vi.hoisted(() => ({ calls: [] as [string, string][] }));
 

@@ -12,9 +12,9 @@
  *   <AccountPresence publicId={card.publicId} presence={card.presence} now={now} />
  */
 import type { Presence, Section } from '@hub/server';
-import { RelativeTime } from '@/components/events/relative-time';
 import { useLivePresence } from '@/components/live/live-provider';
 import { liveIsNewer } from '@/components/live/live-state';
+import { RelativeTime } from '@/components/time/relative-time';
 import { cn } from '@/lib/utils';
 import { NotSharedBadge } from './not-shared-badge';
 import { OnlineDot } from './online-dot';
@@ -25,8 +25,6 @@ export interface AccountPresenceProps {
   presence: Section<Presence>;
   /** Server render time (ISO) for hydration-stable "last seen". */
   now?: string;
-  /** Dot and "Online"/"Offline" only (no world, no last seen). */
-  compact?: boolean;
   className?: string;
 }
 
@@ -37,13 +35,7 @@ interface ShownPresence {
   lastSeen: string | null;
 }
 
-export function AccountPresence({
-  publicId,
-  presence,
-  now,
-  compact = false,
-  className,
-}: AccountPresenceProps) {
+export function AccountPresence({ publicId, presence, now, className }: AccountPresenceProps) {
   const live = useLivePresence(publicId);
   if (!presence.visible) return null;
 
@@ -70,18 +62,18 @@ export function AccountPresence({
       <span className={cn(shown.online && 'font-medium text-foreground')}>
         {shown.online ? 'Online' : 'Offline'}
       </span>
-      {!compact && shown.online && shown.world !== null && (
+      {shown.online && shown.world !== null && (
         <span>
           <span aria-hidden>· </span>World {shown.world}
         </span>
       )}
-      {!compact && !shown.online && shown.lastSeen !== null && (
+      {!shown.online && shown.lastSeen !== null && (
         <span>
           <span aria-hidden>· </span>
           <RelativeTime date={shown.lastSeen} now={now} prefix="last seen" />
         </span>
       )}
-      {!compact && shown.online && shown.specialWorld && <SpecialWorldBadge />}
+      {shown.online && shown.specialWorld && <SpecialWorldBadge />}
     </span>
   );
 }
