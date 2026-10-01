@@ -16,7 +16,7 @@ import type {
   TooltipComponentOption,
 } from 'echarts/components';
 import type { ComposeOption } from 'echarts/core';
-import { DATE_TIME_OPTIONS, formatInZone } from '@/components/account/dates';
+import { DATE_TIME_OPTIONS, formatInZone } from '@/lib/dates';
 
 export type ChartOption = ComposeOption<
   | BarSeriesOption

@@ -5,7 +5,7 @@
  */
 import type { PlaytimeDay } from '@/components/charts/options';
 import { startOfLocalDay, type PlaySession } from '@hub/server';
-import { localDate } from './dates';
+import { localDate } from '@/lib/dates';
 
 const HOUR_MS = 60 * 60 * 1000;
 

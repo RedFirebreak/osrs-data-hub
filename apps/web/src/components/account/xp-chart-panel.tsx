@@ -22,8 +22,8 @@ import {
   type XpRange,
 } from '@/components/charts/ranges';
 import { Button } from '@/components/ui/button';
+import { formatInZone } from '@/lib/dates';
 import { cn } from '@/lib/utils';
-import { formatInZone } from './dates';
 import { SkillSelect, defaultSkill } from './skill-select';
 
 export interface XpChartPanelProps {

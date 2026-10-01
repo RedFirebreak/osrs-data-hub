@@ -9,7 +9,7 @@ import { PlaytimeChart } from '@/components/charts/playtime-chart';
 import type { PlaytimeDay } from '@/components/charts/options';
 import { Stat } from '@/components/shell/stat';
 import { Badge } from '@/components/ui/badge';
-import { DATE_TIME_OPTIONS, formatInZone } from './dates';
+import { DATE_TIME_OPTIONS, formatInZone } from '@/lib/dates';
 import { sessionEndLabel } from './items';
 
 /** Sessions listed under the chart. */

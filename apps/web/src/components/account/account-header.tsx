@@ -9,7 +9,7 @@ import { EyeOffIcon, UserRoundIcon } from 'lucide-react';
 import { AccountPresence } from '@/components/accounts/account-presence';
 import { AccountTypeBadge } from '@/components/accounts/account-type-badge';
 import { Badge } from '@/components/ui/badge';
-import { formatInZone } from './dates';
+import { formatInZone } from '@/lib/dates';
 import { UserAvatar } from './user-avatar';
 
 /** Previous names listed before "and N more". */

@@ -14,12 +14,12 @@ import {
 import { ArrowRightIcon } from 'lucide-react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { formatInZone } from '@/components/account/dates';
 import { eventTypeOptions } from '@/components/events/event-types';
 import { DeleteDataCard } from '@/components/settings/delete-data-card';
 import { ExportDataCard } from '@/components/settings/export-data-card';
 import { PageHeader } from '@/components/shell/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { formatInZone } from '@/lib/dates';
 import { requireUser } from '@/lib/session';
 import { SettingsForm } from './settings-form';
 

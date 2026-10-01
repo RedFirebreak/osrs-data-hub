@@ -25,8 +25,8 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import { dayOnlyLabel } from '@/lib/dates';
 import { cn } from '@/lib/utils';
-import { dayOnlyLabel } from './dates';
 
 export interface SectionCardProps {
   title: string;
