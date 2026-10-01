@@ -7,7 +7,13 @@
 import type { OffboardReason, UserStatus } from '@hub/db';
 import { UserRoundCheckIcon, UserRoundXIcon } from 'lucide-react';
 import { toast } from 'sonner';
-import { adminUserActionPath, offboardReasonLabel, pluralDays, userActions } from './admin-model';
+import {
+  adminFailure,
+  adminUserActionPath,
+  offboardReasonLabel,
+  pluralDays,
+  userActions,
+} from './admin-model';
 import { ConfirmAction } from './confirm-action';
 
 export interface UserActionsProps {
@@ -64,7 +70,7 @@ export function UserActions({
           }
           confirmLabel="Restore user"
           request={{ path: adminUserActionPath(userId, 'restore'), method: 'POST' }}
-          failure="Couldn't restore the user. Try again in a moment."
+          failure={adminFailure("Couldn't restore the user. Try again in a moment.")}
           onDone={(body) => {
             const unhidden = count(body, 'unhidden');
             toast.success(`${name} restored`, {
@@ -109,7 +115,7 @@ export function UserActions({
           }
           confirmLabel="Offboard user"
           request={{ path: adminUserActionPath(userId, 'offboard'), method: 'POST' }}
-          failure="Couldn't offboard the user. Try again in a moment."
+          failure={adminFailure("Couldn't offboard the user. Try again in a moment.")}
           onDone={(body) => {
             const devices = count(body, 'revokedDevices');
             const transferred = count(body, 'transferred');
