@@ -34,9 +34,10 @@ export const accountId = z.string().regex(PUBLIC_ID_PATTERN, 'not an account id'
 
 /**
  * An event cursor (a seq) as a client sends it back: a non-negative safe integer in plain digits,
- * 0 included; anything else (absent, garbage) is null, "no cursor".
+ * 0 included; anything else (absent, garbage) is null, "no cursor". The browser's own parseSeq
+ * (components/live/live-state.ts) reads an event's seq instead: strictly positive, numbers too.
  */
-export function parseSeq(raw: string | null | undefined): number | null {
+export function parseSeqCursor(raw: string | null | undefined): number | null {
   const value = raw?.trim() ?? '';
   if (!/^\d{1,16}$/.test(value)) return null;
   const n = Number(value);
