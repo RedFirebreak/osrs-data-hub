@@ -78,6 +78,14 @@ const iconsUrl = z
     return trimmed;
   });
 
+/**
+ * The lowest XP_RAW_RETENTION_DAYS: twice the 7 days the hourly and daily XP aggregates are refreshed
+ * over (CAGG_REFRESH_START_DAYS in packages/db/src/policies.ts, whose validatePolicyConfig applies
+ * this minimum too). A refresh over a range whose raw rows retention already dropped erases the
+ * aggregated history (TSDB-1).
+ */
+export const MIN_XP_RAW_RETENTION_DAYS = 14;
+
 const logLevel = z
   .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
   .default('info');
@@ -129,7 +137,7 @@ const EnvSchema = z.object({
   ADMIN_DISCORD_USER_IDS: csv,
   OFFBOARD_GRACE_DAYS: int(30, 0),
   PAIRING_CODE_TTL_SECONDS: int(300, 30),
-  XP_RAW_RETENTION_DAYS: int(365, 14),
+  XP_RAW_RETENTION_DAYS: int(365, MIN_XP_RAW_RETENTION_DAYS),
   LOCATION_RETENTION_DAYS: int(30, 1),
   RAW_PAYLOAD_RETENTION_HOURS: int(72, 1),
   AUDIT_LOG_RETENTION_DAYS: int(730, 1),
