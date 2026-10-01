@@ -6,8 +6,15 @@
  *   <NotSharedCard title="Inventory" what="the inventory" />   // visible, never sent (D-4)
  *
  * Sections the viewer may not see are not rendered at all (handoff §10); only a section the viewer
- * may see but the plugin never sent gets the "Not shared" card.
+ * may see but the plugin never sent gets the "Not shared" card. `dataSection` applies that rule to a
+ * read model's Section, so a new section of the account page is one call:
+ *
+ *   dataSection(page.vitals, {
+ *     id: 'vitals', title: 'Vitals', what: 'HP, prayer or the spellbook', now,
+ *     content: (vitals) => <VitalsContent vitals={vitals} />,
+ *   })
  */
+import type { Section } from '@hub/server';
 import { RelativeTime } from '@/components/events/relative-time';
 import { NotSharedBadge } from '@/components/accounts/not-shared-badge';
 import {
@@ -119,5 +126,60 @@ export function NotSharedCard({ title, id, what, className }: NotSharedCardProps
       action={<NotSharedBadge what={what} />}
       description={`The player's plugin doesn't send ${what}; nothing is stored or shown.`}
     />
+  );
+}
+
+export interface DataSectionOptions<T> {
+  /** Anchor id; also the element's key. */
+  id: string;
+  title: string;
+  /** What isn't sent, for the "Not shared" card ("the inventory"). */
+  what: string;
+  /** Server render time (ISO), for "Updated 3 min ago". */
+  now: string;
+  /** The section's times are day-only, in this time zone (D-50; SectionCardProps.updatedDayIn). */
+  updatedDayIn?: string;
+  description?: (data: T) => React.ReactNode;
+  contentClassName?: string;
+  /** The card's content, from the section's data. */
+  content: (data: T) => React.ReactNode;
+}
+
+/**
+ * One section of the account page from the read model's `Section`, in its three states (handoff §10,
+ * D-4): null when the viewer may not see it (nothing is rendered), the "Not shared" card when the
+ * plugin never sent it, else the card with its data and when the hub last received it.
+ *
+ * A function rather than a component: the page lays out its columns by which sections exist, and a
+ * component would always be an element.
+ */
+export function dataSection<T>(
+  section: Section<T>,
+  {
+    id,
+    title,
+    what,
+    now,
+    updatedDayIn,
+    description,
+    contentClassName,
+    content,
+  }: DataSectionOptions<T>,
+): React.ReactElement | null {
+  if (!section.visible) return null;
+  if (!section.shared) return <NotSharedCard key={id} id={id} title={title} what={what} />;
+  return (
+    <SectionCard
+      key={id}
+      id={id}
+      title={title}
+      updatedAt={section.updatedAt}
+      now={now}
+      updatedDayIn={updatedDayIn}
+      description={description?.(section.data)}
+      contentClassName={contentClassName}
+    >
+      {content(section.data)}
+    </SectionCard>
   );
 }

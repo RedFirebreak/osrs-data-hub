@@ -197,6 +197,22 @@ export function stackLabel(quantity: number): string {
   return String(Math.floor(quantity));
 }
 
+/**
+ * The in-game coin-stack colour of an amount, as text classes readable in both themes: yellow below
+ * 100K, white from 100K, green from 10M (stackLabel's steps). Used for stack sizes on item tiles and,
+ * with `onBadge`, for GP values on a filled badge. The dark theme's green differs between the two
+ * (emerald-400 on a tile, emerald-300 on a badge); each keeps the shade it had.
+ */
+export function stackTone(amount: number, onBadge = false): string {
+  if (amount >= 10_000_000) {
+    return onBadge
+      ? 'text-emerald-700 dark:text-emerald-300'
+      : 'text-emerald-700 dark:text-emerald-400';
+  }
+  if (amount >= 100_000) return 'text-foreground';
+  return 'text-amber-700 dark:text-amber-300';
+}
+
 export interface MeterFill {
   /** Bar width, 0…100 (a boosted value past the maximum draws a full bar). */
   percent: number;

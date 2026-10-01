@@ -14,6 +14,7 @@
 import { formatGp } from '@hub/core';
 import type { FeedEvent } from '@hub/server';
 import Link from 'next/link';
+import { stackTone } from '@/components/account/items';
 import { accountHref } from '@/components/accounts/account-link';
 import { SpecialWorldBadge } from '@/components/accounts/special-world-badge';
 import { Badge } from '@/components/ui/badge';
@@ -32,12 +33,10 @@ export function lootValue(event: Pick<FeedEvent, 'type' | 'valueGp'>): number | 
 
 /**
  * The in-game coin stack colours: yellow below 100K, white from 100K, green from 10M (readable in
- * both themes).
+ * both themes), in the shades for a filled badge.
  */
 export function valueTone(value: number): string {
-  if (value >= 10_000_000) return 'text-emerald-700 dark:text-emerald-300';
-  if (value >= 100_000) return 'text-foreground';
-  return 'text-amber-700 dark:text-amber-300';
+  return stackTone(value, true);
 }
 
 export interface EventFeedProps {

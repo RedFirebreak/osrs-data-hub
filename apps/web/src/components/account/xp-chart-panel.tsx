@@ -9,7 +9,7 @@
 import { formatGain } from '@hub/core';
 import type { XpSeries } from '@hub/server';
 import { AlertCircleIcon, RotateCwIcon } from 'lucide-react';
-import { useCallback, useEffect, useId, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ChartSkeleton, LazyEChart } from '@/components/charts/lazy-echart';
 import { xpChartOption, type ChartTheme } from '@/components/charts/options';
 import {
@@ -20,14 +20,8 @@ import {
   type XpRange,
 } from '@/components/charts/ranges';
 import { Button } from '@/components/ui/button';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { cn } from '@/lib/utils';
+import { SkillSelect, defaultSkill } from './skill-select';
 
 export interface XpChartPanelProps {
   publicId: string;
@@ -67,8 +61,7 @@ export function XpChartPanel({
   firstSeen,
   defaultRange = '30d',
 }: XpChartPanelProps) {
-  const id = useId();
-  const [skill, setSkill] = useState(skills.includes('Overall') ? 'Overall' : (skills[0] ?? ''));
+  const [skill, setSkill] = useState(() => defaultSkill(skills));
   const [range, setRange] = useState<XpRange>(defaultRange);
   const [attempt, setAttempt] = useState(0);
   const [loaded, setLoaded] = useState<Loaded | null>(null);
@@ -113,23 +106,12 @@ export function XpChartPanel({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <label htmlFor={`${id}-skill`} className="sr-only">
-            Skill
-          </label>
-          <Select value={skill} onValueChange={setSkill}>
-            <SelectTrigger id={`${id}-skill`} size="sm" className="min-w-36">
-              <SelectValue placeholder="Skill" />
-            </SelectTrigger>
-            <SelectContent position="popper" className="max-h-72">
-              {skills.map((s) => (
-                <SelectItem key={s} value={s}>
-                  {s}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        <SkillSelect
+          skills={skills}
+          value={skill}
+          onChange={setSkill}
+          className="flex items-center gap-2"
+        />
         <div
           role="group"
           aria-label="Time range"

@@ -9,13 +9,7 @@
 import { formatGp, formatNumber, type ItemData } from '@hub/core';
 import { ItemIcon, SlotIcon } from '@/components/icons/osrs-icon';
 import { cn } from '@/lib/utils';
-import { entryValue, itemName, stackLabel } from './items';
-
-function stackTone(quantity: number): string {
-  if (quantity >= 10_000_000) return 'text-emerald-700 dark:text-emerald-400';
-  if (quantity >= 100_000) return 'text-foreground';
-  return 'text-amber-700 dark:text-amber-300';
-}
+import { entryValue, itemName, stackLabel, stackTone } from './items';
 
 export function ItemTile({
   item,
