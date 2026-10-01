@@ -31,7 +31,7 @@ import {
 } from '@hub/db';
 import { and, eq, sql } from 'drizzle-orm';
 import { loadAccountAccess } from '../accounts/access';
-import { audit } from '../audit';
+import { audit, type AuditAction } from '../audit';
 import { lockAccount as takeAccountLock } from '../ingest/store';
 import { SharingError } from './errors';
 
@@ -369,7 +369,7 @@ async function auditChange(
   actor: Viewer,
   actedAsAdmin: boolean,
   publicId: string,
-  action: string,
+  action: AuditAction,
   meta: Record<string, unknown>,
 ): Promise<void> {
   await audit(tx, {

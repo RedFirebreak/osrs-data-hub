@@ -13,6 +13,7 @@ import {
   or,
   sql,
 } from 'drizzle-orm';
+import type { AuditAction } from '../audit';
 import {
   avatarUrl,
   displayName,
@@ -227,7 +228,7 @@ async function windowCounts(
     .where(
       and(
         gt(auditLog.at, since),
-        eq(auditLog.action, 'user.offboarded'),
+        eq(auditLog.action, 'user.offboarded' satisfies AuditAction),
         eq(auditLog.targetType, 'user'),
         eq(auditLog.actorLabel, REVERIFY_ACTOR),
         isNull(auditLog.actorUserId),
