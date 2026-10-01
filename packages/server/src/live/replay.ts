@@ -13,7 +13,7 @@ import { toEventMessage, type LiveEventMessage } from './messages';
 /** How far back a reconnect or a poll reaches (handoff §11: "replays the last 5 minutes"). */
 export const LIVE_REPLAY_MAX_AGE_MS = 5 * 60 * 1000;
 export const REPLAY_DEFAULT_LIMIT = 200;
-export const REPLAY_MAX_LIMIT = 1000;
+const REPLAY_MAX_LIMIT = 1000;
 /**
  * The `settleMs` the polling fallback should pass (DB-4). Ingest inserts events last and commits right
  * after, within its 3 s lock and 8 s statement timeouts, so after 10 s no lower seq is still pending.

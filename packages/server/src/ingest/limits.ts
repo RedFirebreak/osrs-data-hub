@@ -8,8 +8,8 @@ import {
 import type { HubMetrics } from '../metrics';
 
 /** Per-device bucket (handoff §7.6): bursts up to 30, 5 per second sustained. */
-export const INGEST_BUCKET_CAPACITY = 30;
-export const INGEST_REFILL_PER_SECOND = 5;
+const INGEST_BUCKET_CAPACITY = 30;
+const INGEST_REFILL_PER_SECOND = 5;
 /**
  * Shortest pause asked of a rate-limited device (handoff §7.6, ARCHITECTURE §6: "429 + Retry-After:
  * 3"). At 5/s the bucket has a token back after 0.2 s, which would say 1; the plugin drops snapshots

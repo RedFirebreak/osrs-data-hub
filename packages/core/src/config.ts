@@ -39,7 +39,7 @@ const optionalString = z
   .transform((v) => (v && v.trim() !== '' ? v.trim() : undefined));
 
 /** Where the hub's item, skill and equipment-slot icons come from by default (D-95). */
-export const DEFAULT_OSRS_ICONS_URL = 'https://icons.scapekeeper.com';
+const DEFAULT_OSRS_ICONS_URL = 'https://icons.scapekeeper.com';
 
 /**
  * OSRS_ICONS_URL (D-95): unset → the default CDN; empty → icons off (null); otherwise an http(s) base

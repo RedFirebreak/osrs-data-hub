@@ -20,7 +20,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "db:generate": "pnpm --filter @hub/db generate",
-    "db:migrate": "pnpm --filter @hub/db migrate",
+    "db:migrate": "pnpm --filter @hub/worker migrate",
     "db:check": "pnpm --filter @hub/db check",
     "gotchas": "python3 tools/check_gotchas.py"
   },

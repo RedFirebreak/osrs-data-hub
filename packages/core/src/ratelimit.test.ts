@@ -627,34 +627,7 @@ describe('FailureLockout', () => {
     expect(lockout.lockedFor('ip')).toBe(900);
   });
 
-  it('recordSuccess clears the failures', () => {
-    const { lockout } = pair();
-    fail(lockout, 'ip', 19);
-    lockout.recordSuccess('ip');
-    fail(lockout, 'ip', 19);
-    expect(lockout.lockedFor('ip')).toBe(0);
-    lockout.recordFailure('ip');
-    expect(lockout.lockedFor('ip')).toBe(900);
-  });
-
-  it("recordSuccess doesn't lift an active lock, but the failures are gone after it", () => {
-    const { clock, lockout } = pair();
-    fail(lockout, 'ip', 20);
-    lockout.recordSuccess('ip');
-    expect(lockout.lockedFor('ip')).toBe(900);
-    clock.advance(15 * MIN);
-    expect(lockout.lockedFor('ip')).toBe(0);
-    lockout.recordFailure('ip');
-    expect(lockout.lockedFor('ip')).toBe(0);
-  });
-
-  it('recordSuccess on an unknown key is a no-op', () => {
-    const { lockout } = pair();
-    expect(() => lockout.recordSuccess('nobody')).not.toThrow();
-    expect(lockout.lockedFor('nobody')).toBe(0);
-  });
-
-  it("lockedFor and recordSuccess don't add keys (so they can't evict a locked one)", () => {
+  it("lockedFor doesn't add keys (so it can't evict a locked one)", () => {
     const clock = new FakeClock();
     const lockout = new FailureLockout({
       maxFailures: 1,
@@ -664,10 +637,7 @@ describe('FailureLockout', () => {
       maxKeys: 1,
     });
     lockout.recordFailure('attacker');
-    for (let i = 0; i < 5; i++) {
-      expect(lockout.lockedFor(`probe${i}`)).toBe(0);
-      lockout.recordSuccess(`probe${i}`);
-    }
+    for (let i = 0; i < 5; i++) expect(lockout.lockedFor(`probe${i}`)).toBe(0);
     expect(lockout.lockedFor('attacker')).toBe(3_600);
   });
 

@@ -61,7 +61,7 @@ an older installed version; the hub refuses anything below `MIN_PLUGIN_VERSION`.
 | `pnpm build` | `next build` (standalone) and the bundled worker. |
 | `pnpm db:generate` | Generate a migration after changing `packages/db/src/schema/`. |
 | `pnpm db:check` | Check the migration journal for consistency. |
-| `pnpm db:migrate` | Apply migrations to `DATABASE_URL`. |
+| `pnpm db:migrate` | Apply migrations to `DATABASE_URL` (runs `apps/worker/src/migrate.ts`, the entrypoint of the `migrate` container, from source). |
 | `pnpm gotchas` | Validate `docs/gotchas/` (must print `OK`). |
 
 ## Tests and the database
@@ -112,8 +112,7 @@ clamps event times to at most 15 minutes before receipt, so the seeded history s
 
 ### Running the production builds locally
 
-After `pnpm build`, against a migrated database of your own (`DATABASE_URL=… pnpm --filter @hub/worker
-migrate`):
+After `pnpm build`, against a migrated database of your own (`DATABASE_URL=… pnpm db:migrate`):
 
 ```bash
 # worker: reconciles the Timescale policies, creates the pg-boss queues and schedules, runs the jobs
