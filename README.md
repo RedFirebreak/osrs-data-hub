@@ -46,7 +46,6 @@ packages/fixtures   wire-exact HA Exporter v1.5 payloads for tests
 | [docs/API.md](docs/API.md) | The public API v1 for consumers: keys, conventions, every endpoint |
 | [docs/OPERATIONS.md](docs/OPERATIONS.md) | Self-hosting: configuration, reverse proxy, backups, retention |
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Local setup, tests, CI |
-| [docs/CHANGELOG.md](docs/CHANGELOG.md) | Changes per pull request |
 | [docs/gotchas/](docs/gotchas/README.md) | Known traps in the shared layer, indexed by symptom |
 
 ## Quick start (development)

@@ -8,7 +8,6 @@
 
 ## Docs
 
-- [ ] `docs/CHANGELOG.md` has an entry for this PR
 - [ ] `docs/ARCHITECTURE.md` updated if the design changed
 - [ ] `python3 tools/check_gotchas.py` prints OK
 

@@ -182,7 +182,8 @@ CI fails when the schema and the committed migrations disagree.
 - Never log tokens, request bodies, coordinates, or database error messages (DB-3); log codes and counts.
 - Cite gotchas by ID in comments when code works around one (`// See PLUGIN-2: …`), and record new ones
   with the `gotcha` skill.
-- Document decisions in `docs/ARCHITECTURE.md` (decision log) and changes in `docs/CHANGELOG.md`.
+- Document decisions in `docs/ARCHITECTURE.md` (decision log). There is no changelog file: what changed
+  is the git history (commit messages and pull requests).
 
 ## CI
 
