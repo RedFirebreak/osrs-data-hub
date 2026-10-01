@@ -47,7 +47,7 @@ export default async function DashboardPage() {
       <Suspense fallback={<DashboardSkeleton />}>
         <DashboardContent userId={user.id} viewer={viewer} />
       </Suspense>
-      <AutoRefresh everyMs={60_000} />
+      <AutoRefresh />
     </div>
   );
 }

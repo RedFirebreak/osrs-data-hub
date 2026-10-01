@@ -29,7 +29,6 @@ export interface XpChartPanelProps {
   skills: readonly string[];
   /** The account's first-seen time (ISO), where "All time" starts. */
   firstSeen: string;
-  defaultRange?: XpRange;
 }
 
 interface Loaded {
@@ -55,14 +54,9 @@ const SHORT_RANGE_LABELS: Readonly<Record<XpRange, string>> = {
   all: 'All',
 };
 
-export function XpChartPanel({
-  publicId,
-  skills,
-  firstSeen,
-  defaultRange = '30d',
-}: XpChartPanelProps) {
+export function XpChartPanel({ publicId, skills, firstSeen }: XpChartPanelProps) {
   const [skill, setSkill] = useState(() => defaultSkill(skills));
-  const [range, setRange] = useState<XpRange>(defaultRange);
+  const [range, setRange] = useState<XpRange>('30d');
   const [attempt, setAttempt] = useState(0);
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [failed, setFailed] = useState<Failed | null>(null);

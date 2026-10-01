@@ -35,7 +35,7 @@ export default async function GuildPage() {
       <Suspense fallback={<GuildSkeleton />}>
         <GuildContent userId={user.id} viewer={viewer} />
       </Suspense>
-      <AutoRefresh everyMs={60_000} />
+      <AutoRefresh />
     </div>
   );
 }

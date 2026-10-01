@@ -26,12 +26,6 @@ export const DATE_TIME_OPTIONS: Intl.DateTimeFormatOptions = {
   minute: '2-digit',
 };
 
-export const DAY_OPTIONS: Intl.DateTimeFormatOptions = {
-  weekday: 'short',
-  day: 'numeric',
-  month: 'short',
-};
-
 /** YYYY-MM-DD of `instant` in `timezone` (UTC when the zone is unknown to this runtime). */
 export function localDate(instant: Date, timezone: string): string {
   let fmt: Intl.DateTimeFormat;

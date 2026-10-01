@@ -41,4 +41,11 @@ describe('localDate', () => {
   it('is the calendar date in the zone', () => {
     expect(localDate(new Date('2026-09-29T22:00:00Z'), 'Asia/Tokyo')).toBe('2026-09-30');
   });
+
+  it('formats the local calendar date, UTC for unknown zones', () => {
+    const at = new Date('2026-09-29T23:30:00.000Z');
+    expect(localDate(at, 'UTC')).toBe('2026-09-29');
+    expect(localDate(at, 'Asia/Tokyo')).toBe('2026-09-30');
+    expect(localDate(at, 'Mars/Olympus')).toBe('2026-09-29');
+  });
 });

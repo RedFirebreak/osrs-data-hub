@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { localDate, playtimeByDay } from './playtime';
+import { playtimeByDay } from './playtime';
 
 const HOUR = 60 * 60 * 1000;
 
@@ -56,14 +56,5 @@ describe('playtimeByDay', () => {
       }),
     ).toEqual([{ day: '2026-09-29', ms: 0 }]);
     expect(playtimeByDay([], { now, days: 0, timezone: 'UTC' })).toEqual([]);
-  });
-});
-
-describe('localDate', () => {
-  it('formats the local calendar date, UTC for unknown zones', () => {
-    const at = new Date('2026-09-29T23:30:00.000Z');
-    expect(localDate(at, 'UTC')).toBe('2026-09-29');
-    expect(localDate(at, 'Asia/Tokyo')).toBe('2026-09-30');
-    expect(localDate(at, 'Mars/Olympus')).toBe('2026-09-29');
   });
 });

@@ -177,7 +177,7 @@ async function AccountContent({ publicId }: { publicId: string }) {
           <SharingSection viewer={viewer} publicId={publicId} account={page.account} now={now} />
         </Suspense>
       )}
-      <AutoRefresh everyMs={60_000} />
+      <AutoRefresh />
     </div>
   );
 }
