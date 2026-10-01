@@ -14,6 +14,7 @@ import { audit } from '../audit';
 import { isUuid } from '../devices/util';
 import { formatKey, newKeyPrefix, newKeySecret } from './key-format';
 import { API_RATE_LIMIT, SERVICE_KEY_RATE_LIMIT } from './limits';
+import { isPublicIdLike } from './params';
 
 /** Most active (neither revoked nor expired) keys one user may hold at once (D-69). */
 export const MAX_ACTIVE_KEYS = 10;
@@ -133,7 +134,7 @@ export const CreateApiKeySchema = z
     categories: KEY_FIELD_SCHEMAS.categories,
     accountScope: z.enum(['all_visible', 'list']),
     accountPublicIds: z
-      .array(z.string().regex(/^[0-9A-Za-z]{1,64}$/, 'not an account id'))
+      .array(z.string().refine(isPublicIdLike, 'not an account id'))
       .min(1, 'choose at least one account')
       .max(MAX_KEY_ACCOUNTS)
       .transform((ids) => [...new Set(ids)])

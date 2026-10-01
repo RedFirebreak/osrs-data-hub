@@ -15,7 +15,7 @@ import { eq, sql } from 'drizzle-orm';
 import { loadViewer } from '../accounts/access';
 import { getLogger } from '../logger';
 import { parseKey } from './key-format';
-import { keyRateLimit, type KeyRow } from './keys';
+import { apiKeyStatus, keyRateLimit, type KeyRow } from './keys';
 
 /** How often `last_used_at` is written per key at most. */
 export const LAST_USED_RESOLUTION_MS = 60_000;
@@ -86,10 +86,8 @@ export async function authenticateApiKey(
   const [row] = await db.select().from(apiKeys).where(eq(apiKeys.prefix, prefix));
   const matches = constantTimeEqual(sha256Hex(secret), row?.secretHash ?? NO_KEY_HASH);
   if (!row || !matches) return { ok: false, reason: 'unknown' };
-  if (row.revokedAt !== null) return { ok: false, reason: 'revoked' };
-  if (row.expiresAt !== null && row.expiresAt.getTime() <= now.getTime()) {
-    return { ok: false, reason: 'expired' };
-  }
+  const status = apiKeyStatus(row, now);
+  if (status !== 'active') return { ok: false, reason: status };
   const categories = new Set(row.categories.filter(isCategory));
   const rateLimitPerMinute = keyRateLimit(row);
   if (row.kind === 'service') {
