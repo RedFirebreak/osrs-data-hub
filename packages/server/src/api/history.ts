@@ -1,28 +1,21 @@
 /**
  * Histories of one account in the public API (handoff §13): sessions (`activity`), the equipment
  * change log (`equipment`), wealth per day (`inventory`) and the location trail (`location_history`).
- * Each reuses the account page's read model (accounts/history.ts) with the key's restriction, and
- * returns null when the key can't read that category on the account (the web answers 404, D-70).
+ * Each resolves the key's access to the account once (loadApiAccount, D-70), returns null when the
+ * key can't read that category on it (the web answers 404), and otherwise reads the rows with the
+ * account page's reader (accounts/history.ts read…), so the UI and the API return the same rows.
  */
-import type { Category, Principal } from '@hub/core';
+import type { Category } from '@hub/core';
 import type { DbOrTx, SessionEndReason } from '@hub/db';
 import {
-  getEquipmentHistory,
-  getLocationHistory,
-  getSessions,
-  getWealthHistory,
+  readEquipmentHistory,
+  readLocationHistory,
+  readSessions,
+  readWealthHistory,
   type HistoryRange,
+  type LocationPoint,
 } from '../accounts/history';
-import type { AccessRestriction } from '../accounts/load';
-import {
-  accountRef,
-  apiRestriction,
-  apiViewer,
-  bulkAccountLimit,
-  loadApiAccount,
-  requireApiAccounts,
-} from './access';
-import { ApiError } from './errors';
+import { accountRef, bulkAccountLimit, loadApiAccount, requireApiAccounts } from './access';
 import type { ApiPrincipal } from './keys';
 import { resolveRange } from './params';
 import { toApiItems, type ApiAccountRef, type ApiItem } from './types';
@@ -113,9 +106,7 @@ export interface ApiLocationsMulti {
   accounts: { account: ApiAccountRef; points: ApiLocationPoint[] }[];
 }
 
-type LocationPointRow = NonNullable<Awaited<ReturnType<typeof getLocationHistory>>>[number];
-
-function toLocationPoints(rows: readonly LocationPointRow[]): ApiLocationPoint[] {
+function toLocationPoints(rows: readonly LocationPoint[]): ApiLocationPoint[] {
   return rows.map((p) => ({
     at: p.ts,
     x: p.x,
@@ -126,15 +117,10 @@ function toLocationPoints(rows: readonly LocationPointRow[]): ApiLocationPoint[]
   }));
 }
 
-type HistoryReader<T> = (
-  db: DbOrTx,
-  viewer: Principal,
-  publicId: string,
-  range: HistoryRange,
-  restrict?: AccessRestriction,
-) => Promise<T[] | null>;
-
-/** Validates the range, gates the account by `category`, and runs the account page's read model. */
+/**
+ * Validates the range, resolves the key's access to `category` of the account (the request's one
+ * permission check), and reads the rows of the account it resolved.
+ */
 async function readHistory<T>(
   db: DbOrTx,
   principal: ApiPrincipal,
@@ -142,13 +128,12 @@ async function readHistory<T>(
   params: ApiHistoryParams,
   now: Date,
   category: Category,
-  read: HistoryReader<T>,
+  read: (db: DbOrTx, accountId: number, range: HistoryRange) => Promise<T[]>,
 ): Promise<{ head: ApiHistory; rows: T[] } | null> {
   const range = resolveRange(params, now, HISTORY_DEFAULT_DAYS);
   const entry = await loadApiAccount(db, principal, id, category);
   if (!entry) return null;
-  const rows = await read(db, apiViewer(principal), id, range, apiRestriction(principal));
-  if (rows === null) return null;
+  const rows = await read(db, entry.account.id, range);
   const head = {
     account: accountRef(entry),
     from: range.from.toISOString(),
@@ -165,7 +150,7 @@ export async function apiSessions(
   params: ApiHistoryParams = {},
   now: Date = new Date(),
 ): Promise<ApiSessions | null> {
-  const found = await readHistory(db, principal, id, params, now, 'activity', getSessions);
+  const found = await readHistory(db, principal, id, params, now, 'activity', readSessions);
   return (
     found && {
       ...found.head,
@@ -190,7 +175,15 @@ export async function apiEquipmentHistory(
   params: ApiHistoryParams = {},
   now: Date = new Date(),
 ): Promise<ApiEquipmentHistory | null> {
-  const found = await readHistory(db, principal, id, params, now, 'equipment', getEquipmentHistory);
+  const found = await readHistory(
+    db,
+    principal,
+    id,
+    params,
+    now,
+    'equipment',
+    readEquipmentHistory,
+  );
   return (
     found && {
       ...found.head,
@@ -207,7 +200,7 @@ export async function apiWealth(
   params: ApiHistoryParams = {},
   now: Date = new Date(),
 ): Promise<ApiWealth | null> {
-  const found = await readHistory(db, principal, id, params, now, 'inventory', getWealthHistory);
+  const found = await readHistory(db, principal, id, params, now, 'inventory', readWealthHistory);
   return (
     found && {
       ...found.head,
@@ -231,7 +224,7 @@ export async function apiLocations(
     params,
     now,
     'location_history',
-    getLocationHistory,
+    readLocationHistory,
   );
   return found && { ...found.head, points: toLocationPoints(found.rows) };
 }
@@ -239,8 +232,9 @@ export async function apiLocations(
 /**
  * The location trails of several accounts (GET /locations?accounts=a,b, D-92): at most
  * bulkAccountLimit(principal) accounts, each of which the key must be able to read
- * `location_history` of, else ApiError 'not_found' naming it (D-70). Each trail is exactly what
- * GET /accounts/{id}/locations returns for the same range (same thinning and cap), in request order.
+ * `location_history` of, else ApiError 'not_found' naming it (D-70). Access is resolved once for all
+ * of them. Each trail is exactly what GET /accounts/{id}/locations returns for the same range (same
+ * thinning and cap), in request order.
  */
 export async function apiLocationsMulti(
   db: DbOrTx,
@@ -259,16 +253,7 @@ export async function apiLocationsMulti(
   );
   const accounts: ApiLocationsMulti['accounts'] = [];
   for (const entry of entries) {
-    const rows = await getLocationHistory(
-      db,
-      apiViewer(principal),
-      entry.account.publicId,
-      range,
-      apiRestriction(principal),
-    );
-    if (rows === null) {
-      throw new ApiError('not_found', `account ${entry.account.publicId} not found`);
-    }
+    const rows = await readLocationHistory(db, entry.account.id, range);
     accounts.push({ account: accountRef(entry), points: toLocationPoints(rows) });
   }
   return { from: range.from.toISOString(), to: range.to.toISOString(), accounts };

@@ -21,7 +21,13 @@ import {
 import { updateUserSettings } from '../settings/user-settings';
 import { apiGetAccount, apiListAccounts, type ApiAccountDetail } from './accounts';
 import { ApiError } from './errors';
-import { apiEquipmentHistory, apiLocations, apiSessions, apiWealth } from './history';
+import {
+  apiEquipmentHistory,
+  apiLocations,
+  apiLocationsMulti,
+  apiSessions,
+  apiWealth,
+} from './history';
 import { apiLeaderboardGains } from './leaderboards';
 import { apiMe } from './me';
 import { SNAPSHOT_SINCE_OVERLAP_MS, apiSnapshot, etagMatches } from './snapshot';
@@ -589,6 +595,19 @@ describe('XP', () => {
       'invalid',
     );
   });
+
+  it('resolves access once per request: a further account costs only its own two reads', async () => {
+    const params = { skills: ['Attack'], from: new Date(t0 - HOUR), to: NOW };
+    const counted = countQueries(t.db);
+    await apiXpMulti(counted.db, memberKey.principal, { ...params, ids: [zezima] }, NOW);
+    const forOne = counted.reset();
+    await apiXpMulti(counted.db, memberKey.principal, { ...params, ids: [iron, zezima] }, NOW);
+    // The value carried in at the range start, and the buckets in the range (readXpSeries).
+    expect(counted.reset() - forOne).toBe(2);
+    // The skills, the accounts with their access (4 tables), the raw tier's start, and the two reads.
+    await apiXp(counted.db, memberKey.principal, zezima, params, NOW);
+    expect(counted.reset()).toBe(9);
+  });
 });
 
 describe('apiGains', () => {
@@ -684,6 +703,18 @@ describe('histories', () => {
       expect(await apiWealth(t.db, key.principal, zezima, {}, NOW)).toBeNull();
       expect(await apiLocations(t.db, key.principal, zezima, {}, NOW)).toBeNull();
     }
+  });
+
+  it('resolves access once per request, for one account and for several', async () => {
+    const counted = countQueries(t.db);
+    await apiSessions(counted.db, ownerKey.principal, zezima, {}, NOW);
+    // The account with its access (4 tables), then the sessions.
+    expect(counted.reset()).toBe(6);
+    await apiLocationsMulti(counted.db, ownerKey.principal, { ids: [zezima] }, NOW);
+    const forOne = counted.reset();
+    await apiLocationsMulti(counted.db, ownerKey.principal, { ids: [bare, zezima] }, NOW);
+    // One trail read per further account.
+    expect(counted.reset() - forOne).toBe(1);
   });
 
   it('refuses a range that ends before it starts', async () => {
