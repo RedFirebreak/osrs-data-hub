@@ -169,7 +169,7 @@ async function pairWithCode(
     case 'inactive':
       return reject('inactive', 403, PAIR_MESSAGES.inactive);
     case 'paired':
-      // Deliberately no lockout.recordSuccess(key): clearing the failures would let a guild member
+      // A success deliberately doesn't clear the lockout's failures: that would let a guild member
       // interleave their own valid codes between guesses and never reach the lockout. Failures age
       // out with the lockout window instead.
       return paired(deps, consumed);
