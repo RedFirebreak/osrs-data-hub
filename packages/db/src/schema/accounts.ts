@@ -1,5 +1,7 @@
+import { ACCOUNT_STATUSES, AUDIENCES, CATEGORIES, LINK_ROLES, type AccountStatus } from '@hub/core';
 import {
   boolean,
+  check,
   index,
   integer,
   jsonb,
@@ -11,26 +13,31 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 import { users } from './auth';
+import { isOneOf } from './checks';
 import { devices } from './devices';
 
 const tstz = (name: string) => timestamp(name, { withTimezone: true });
+
+export const SKILL_KINDS = ['plugin', 'derived'] as const;
 
 /**
  * Skill ids. Grows when the plugin sends a skill name we haven't seen ("don't hardcode the list").
  * `Overall` is a hub-derived pseudo-skill (kind 'derived'); "Combat" only appears in levelUp events and
  * is never stored here.
  */
-export const skills = pgTable('skills', {
-  id: smallint('id').primaryKey().generatedAlwaysAsIdentity(),
-  name: text('name').notNull().unique(),
-  kind: text('kind', { enum: ['plugin', 'derived'] })
-    .default('plugin')
-    .notNull(),
-  sortOrder: smallint('sort_order').default(1000).notNull(),
-});
+export const skills = pgTable(
+  'skills',
+  {
+    id: smallint('id').primaryKey().generatedAlwaysAsIdentity(),
+    name: text('name').notNull().unique(),
+    kind: text('kind', { enum: SKILL_KINDS }).default('plugin').notNull(),
+    sortOrder: smallint('sort_order').default(1000).notNull(),
+  },
+  (t) => [check('skills_kind_chk', isOneOf(t.kind, SKILL_KINDS))],
+);
 
-export const ACCOUNT_STATUSES = ['active', 'hidden'] as const;
-export type AccountStatus = (typeof ACCOUNT_STATUSES)[number];
+// Declared in @hub/core (the permission resolver reads it too); re-exported for this package's users.
+export { ACCOUNT_STATUSES, type AccountStatus };
 
 /** An OSRS character, keyed by the plugin's salted accountHash. Accounts don't belong to users. */
 export const osrsAccounts = pgTable(
@@ -54,6 +61,7 @@ export const osrsAccounts = pgTable(
   (t) => [
     index('osrs_accounts_name_normalized_idx').on(t.nameNormalized),
     index('osrs_accounts_owner_idx').on(t.ownerUserId),
+    check('osrs_accounts_status_chk', isOneOf(t.status, ACCOUNT_STATUSES)),
   ],
 );
 
@@ -70,8 +78,7 @@ export const accountNames = pgTable(
   (t) => [primaryKey({ name: 'account_names_pk', columns: [t.accountId, t.name] })],
 );
 
-export const LINK_ROLES = ['owner', 'contributor'] as const;
-export type LinkRole = (typeof LINK_ROLES)[number];
+export { LINK_ROLES };
 
 /** Users whose devices reported an account. `role` mirrors osrs_accounts.owner_user_id. */
 export const accountLinks = pgTable(
@@ -92,6 +99,7 @@ export const accountLinks = pgTable(
   (t) => [
     primaryKey({ name: 'account_links_pk', columns: [t.accountId, t.userId] }),
     index('account_links_user_idx').on(t.userId),
+    check('account_links_role_chk', isOneOf(t.role, LINK_ROLES)),
   ],
 );
 
@@ -121,11 +129,15 @@ export const accountSharing = pgTable(
     accountId: integer('account_id')
       .notNull()
       .references(() => osrsAccounts.id, { onDelete: 'cascade' }),
-    category: text('category').notNull(),
-    audience: text('audience', { enum: ['private', 'guild', 'selected'] }).notNull(),
+    category: text('category', { enum: CATEGORIES }).notNull(),
+    audience: text('audience', { enum: AUDIENCES }).notNull(),
     updatedAt: tstz('updated_at').defaultNow().notNull(),
   },
-  (t) => [primaryKey({ name: 'account_sharing_pk', columns: [t.accountId, t.category] })],
+  (t) => [
+    primaryKey({ name: 'account_sharing_pk', columns: [t.accountId, t.category] }),
+    check('account_sharing_audience_chk', isOneOf(t.audience, AUDIENCES)),
+    check('account_sharing_category_chk', isOneOf(t.category, CATEGORIES)),
+  ],
 );
 
 export const accountShareGrants = pgTable(
@@ -134,7 +146,7 @@ export const accountShareGrants = pgTable(
     accountId: integer('account_id')
       .notNull()
       .references(() => osrsAccounts.id, { onDelete: 'cascade' }),
-    category: text('category').notNull(),
+    category: text('category', { enum: CATEGORIES }).notNull(),
     granteeUserId: text('grantee_user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
@@ -146,6 +158,7 @@ export const accountShareGrants = pgTable(
       columns: [t.accountId, t.category, t.granteeUserId],
     }),
     index('account_share_grants_grantee_idx').on(t.granteeUserId),
+    check('account_share_grants_category_chk', isOneOf(t.category, CATEGORIES)),
   ],
 );
 

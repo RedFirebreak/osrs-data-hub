@@ -57,6 +57,13 @@
       "when": 1790833184751,
       "tag": "0007_sharing_keep_private",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1790859309846,
+      "tag": "0008_enum_checks_in_schema",
+      "breakpoints": true
     }
   ]
 }

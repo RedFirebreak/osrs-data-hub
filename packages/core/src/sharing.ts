@@ -12,6 +12,18 @@ export type Category = (typeof CATEGORIES)[number];
 export const AUDIENCES = ['private', 'guild', 'selected'] as const;
 export type Audience = (typeof AUDIENCES)[number];
 
+/** A hub user: `active`, or in `grace` while offboarding (sees nothing until restored). */
+export const USER_STATUSES = ['active', 'grace'] as const;
+export type UserStatus = (typeof USER_STATUSES)[number];
+
+/** An OSRS account: `active`, or `hidden` while its owner is in grace and nobody took it over. */
+export const ACCOUNT_STATUSES = ['active', 'hidden'] as const;
+export type AccountStatus = (typeof ACCOUNT_STATUSES)[number];
+
+/** How a user is linked to an account their device reported. */
+export const LINK_ROLES = ['owner', 'contributor'] as const;
+export type LinkRole = (typeof LINK_ROLES)[number];
+
 /**
  * Every category is shared with the guild by default (D-96, superseding the handoff §10 defaults of
  * D-22 and D-82). A missing account_sharing row means the default.
@@ -44,7 +56,7 @@ export const CATEGORY_LABELS: Readonly<Record<Category, { label: string; covers:
 
 export interface Viewer {
   userId: string;
-  status: 'active' | 'grace';
+  status: UserStatus;
   isAdmin: boolean;
 }
 
@@ -79,9 +91,9 @@ export function isAdminPrincipal(principal: Principal): boolean {
 
 /** Everything about an account that decides who may see what. */
 export interface AccountAccess {
-  status: 'active' | 'hidden';
+  status: AccountStatus;
   ownerUserId: string | null;
-  links: readonly { userId: string; role: 'owner' | 'contributor'; blocked: boolean }[];
+  links: readonly { userId: string; role: LinkRole; blocked: boolean }[];
   /** Explicit audiences; missing categories use DEFAULT_AUDIENCE. */
   sharing: Readonly<Partial<Record<Category, Audience>>>;
   grants: readonly { category: Category; userId: string }[];
