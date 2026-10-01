@@ -1,6 +1,6 @@
 /**
  * Pure helpers for the API keys page (handoff §13, D-69, D-76): display texts, the create form's
- * state, validation and request body, and the error text for a failed create or revoke. No React, no
+ * state, validation and request body, and how a failed create or revoke is told. No React, no
  * browser APIs; unit-tested in api-key-model.test.ts.
  *
  * Only `import type` from @hub/server: the page's client components import this module (NEXT-12).
@@ -8,7 +8,7 @@
  */
 import { CATEGORIES, relativeTime, type Category } from '@hub/core';
 import type { ApiKeyInfo, ApiKeyStatus } from '@hub/server';
-import { apiErrorMessage } from '@/components/onboarding/wizard-model';
+import type { FailureOptions } from '@/lib/api-client';
 
 /** How a key is shown: its prefix only; the secret is never stored in a readable form. */
 export function maskedKey(prefix: string): string {
@@ -133,25 +133,22 @@ export function createKeyFieldErrors(details: unknown): CreateKeyErrors {
   return errors;
 }
 
-/** What to tell the user when POST /api/app/api-keys failed with `status` and `body`. */
-export function createFailureMessage(status: number, body: unknown): string {
-  if (status === 401) return 'Your session has ended. Sign in again.';
-  if (status === 409) {
-    return apiErrorMessage(body, 'You have the most active keys allowed. Revoke one first.');
-  }
-  const fallback = "Couldn't create the key. Try again in a moment.";
-  if (status === 400 || status === 403 || status === 503) return apiErrorMessage(body, fallback);
-  return fallback;
-}
+/** How a failed POST /api/app/api-keys is told (failureMessage, lib/api-client.ts). */
+export const CREATE_KEY_FAILURE: FailureOptions = {
+  fallback: "Couldn't create the key. Try again in a moment.",
+  conflict: 'You have the most active keys allowed. Revoke one first.',
+};
 
-/** What to tell the user when DELETE /api/app/api-keys/[id] failed. */
-export function revokeFailureMessage(status: number, body: unknown): string {
-  if (status === 401) return 'Your session has ended. Sign in again.';
-  if (status === 404) return 'This key no longer exists. Reload the page.';
-  const fallback = "Couldn't revoke the key. Try again in a moment.";
-  if (status === 403 || status === 503) return apiErrorMessage(body, fallback);
-  return fallback;
-}
+/**
+ * How a failed DELETE /api/app/api-keys/[id] is told. A key that no longer exists was revoked
+ * elsewhere: the page is refreshed, so it leaves the active list.
+ */
+export const REVOKE_KEY_FAILURE: FailureOptions = {
+  fallback: "Couldn't revoke the key. Try again in a moment.",
+  notFound: 'This key no longer exists. Reload the page.',
+  hubMessageFor: [403, 503],
+  refreshOnNotFound: true,
+};
 
 /** The API path of one key. */
 export function apiKeyPath(id: string): string {

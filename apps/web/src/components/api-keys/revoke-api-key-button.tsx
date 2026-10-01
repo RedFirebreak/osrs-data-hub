@@ -22,7 +22,8 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { headingOfSection, mainHeading, useFocusReturn } from '@/lib/focus';
-import { apiKeyPath, revokeFailureMessage } from './api-key-model';
+import { useApiRequest } from '@/lib/use-api-request';
+import { REVOKE_KEY_FAILURE, apiKeyPath } from './api-key-model';
 
 export interface RevokeApiKeyButtonProps {
   keyId: string;
@@ -32,33 +33,19 @@ export interface RevokeApiKeyButtonProps {
 export function RevokeApiKeyButton({ keyId, name }: RevokeApiKeyButtonProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { pending, error, setError, send } = useApiRequest();
   const triggerRef = useRef<HTMLButtonElement>(null);
   const focusReturn = useFocusReturn();
 
   async function revoke(): Promise<void> {
-    setPending(true);
-    setError(null);
-    try {
-      const res = await fetch(apiKeyPath(keyId), { method: 'DELETE', credentials: 'same-origin' });
-      if (res.ok) {
-        focusReturn.set(headingOfSection(triggerRef.current), mainHeading);
-        setOpen(false);
-        toast.success(`${name} revoked`, {
-          description: 'Apps using this key get 401 from now on.',
-        });
-        router.refresh();
-        return;
-      }
-      const body: unknown = await res.json().catch(() => null);
-      setError(revokeFailureMessage(res.status, body));
-      if (res.status === 401 || res.status === 404) router.refresh();
-    } catch {
-      setError("Couldn't reach the hub. Check your connection and try again.");
-    } finally {
-      setPending(false);
-    }
+    const res = await send(apiKeyPath(keyId), { method: 'DELETE' }, REVOKE_KEY_FAILURE);
+    if (!res.ok) return;
+    focusReturn.set(headingOfSection(triggerRef.current), mainHeading);
+    setOpen(false);
+    toast.success(`${name} revoked`, {
+      description: 'Apps using this key get 401 from now on.',
+    });
+    router.refresh();
   }
 
   return (

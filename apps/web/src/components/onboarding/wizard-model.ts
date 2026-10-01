@@ -444,14 +444,6 @@ export function parsePolledStatus(body: unknown): PolledCodeStatus | null {
   };
 }
 
-/** The `error.message` of an /api/app error body, else `fallback`. */
-export function apiErrorMessage(body: unknown, fallback: string): string {
-  if (isRecord(body) && isRecord(body.error) && typeof body.error.message === 'string') {
-    return body.error.message;
-  }
-  return fallback;
-}
-
 /** The query parameter that carries the wizard's code across a reload: `/onboarding?code=<id>`. */
 export const RESUME_PARAM = 'code';
 

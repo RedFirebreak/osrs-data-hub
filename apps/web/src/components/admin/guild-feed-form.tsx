@@ -22,8 +22,8 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { GUILD_FEED_API_PATH } from './admin-model';
-import { useAdminRequest } from './use-admin-request';
+import { useApiRequest } from '@/lib/use-api-request';
+import { GUILD_FEED_API_PATH, adminFailure } from './admin-model';
 
 const LOOT_PRESETS = [0, 10_000, 100_000, 1_000_000];
 
@@ -39,7 +39,7 @@ export function GuildFeedForm({ initial, maxMinLootValue }: GuildFeedFormProps) 
   const [saved, setSaved] = useState<GuildFeedFilter>(initial);
   const [minLootText, setMinLootText] = useState(String(initial.minLootValue));
   const [showVirtualLevels, setShowVirtualLevels] = useState(initial.showVirtualLevels);
-  const { pending, error, setError, send } = useAdminRequest();
+  const { pending, error, setError, send } = useApiRequest();
 
   const minLoot = parseMinLootValue(minLootText, maxMinLootValue);
   const dirty = minLoot !== saved.minLootValue || showVirtualLevels !== saved.showVirtualLevels;
@@ -47,12 +47,12 @@ export function GuildFeedForm({ initial, maxMinLootValue }: GuildFeedFormProps) 
   async function save(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     if (minLoot === null || !dirty) return;
-    const body = await send(
+    const res = await send(
       GUILD_FEED_API_PATH,
       { method: 'PUT', json: { minLootValue: minLoot, showVirtualLevels } },
-      "Couldn't save the guild feed settings. Try again in a moment.",
+      adminFailure("Couldn't save the guild feed settings. Try again in a moment."),
     );
-    if (body === null) return;
+    if (!res.ok) return;
     const next = { minLootValue: minLoot, showVirtualLevels };
     setSaved(next);
     setMinLootText(String(minLoot));

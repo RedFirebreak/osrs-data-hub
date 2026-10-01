@@ -20,7 +20,8 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
-import { adminFailureMessage, prettyPayload, rawPayloadApiPath } from './admin-model';
+import { failureMessage, refreshesPage, sendJson, type FailureOptions } from '@/lib/api-client';
+import { adminFailure, prettyPayload, rawPayloadApiPath } from './admin-model';
 
 export interface RawPayloadDialogProps {
   id: string;
@@ -29,6 +30,11 @@ export interface RawPayloadDialogProps {
   /** What the dialog's title names, e.g. the device and time. */
   title: string;
 }
+
+const LOAD_FAILURE: FailureOptions = {
+  ...adminFailure("Couldn't load the payload. Try again."),
+  notFound: 'This payload is no longer archived: raw payloads are deleted after a few days.',
+};
 
 type State =
   | { kind: 'idle' }
@@ -45,34 +51,15 @@ export function RawPayloadDialog({ id, receivedAt, title }: RawPayloadDialogProp
   async function load(): Promise<void> {
     const mine = ++generation.current;
     setState({ kind: 'loading' });
-    try {
-      const res = await fetch(rawPayloadApiPath(id, receivedAt), { credentials: 'same-origin' });
-      const body: unknown = await res.json().catch(() => null);
-      if (mine !== generation.current) return;
-      const text = (body as { payload?: { body?: unknown } } | null)?.payload?.body;
-      if (res.ok && typeof text === 'string') {
-        setState({ kind: 'loaded', ...prettyPayload(text) });
-        return;
-      }
-      if (res.status === 404) {
-        setState({
-          kind: 'error',
-          message: 'This payload is no longer archived: raw payloads are deleted after a few days.',
-        });
-        return;
-      }
-      setState({
-        kind: 'error',
-        message: adminFailureMessage(res.status, body, "Couldn't load the payload. Try again."),
-      });
-      if (res.status === 401) router.refresh();
-    } catch {
-      if (mine !== generation.current) return;
-      setState({
-        kind: 'error',
-        message: "Couldn't reach the hub. Check your connection and try again.",
-      });
+    const res = await sendJson(rawPayloadApiPath(id, receivedAt));
+    if (mine !== generation.current) return;
+    const text = (res.body as { payload?: { body?: unknown } } | null)?.payload?.body;
+    if (res.ok && typeof text === 'string') {
+      setState({ kind: 'loaded', ...prettyPayload(text) });
+      return;
     }
+    setState({ kind: 'error', message: failureMessage(res.status, res.body, LOAD_FAILURE) });
+    if (refreshesPage(res.status, LOAD_FAILURE)) router.refresh();
   }
 
   return (

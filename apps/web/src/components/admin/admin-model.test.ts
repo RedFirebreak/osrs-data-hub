@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { failureMessage } from '@/lib/api-client';
 import {
-  adminFailureMessage,
+  adminFailure,
   auditActionLabel,
   auditLogApiPath,
   auditMetaEntries,
@@ -249,20 +250,19 @@ describe('decommissionConfirmMatches', () => {
   });
 });
 
-describe('adminFailureMessage', () => {
+describe('adminFailure', () => {
   const body = { error: { code: 'invalid', message: "you can't offboard yourself" } };
+  const message = (status: number, b: unknown) =>
+    failureMessage(status, b, adminFailure('fallback'));
 
   it('uses the hub message for 400/403/503 and fixed texts otherwise', () => {
-    expect(adminFailureMessage(400, body, 'fallback')).toBe("you can't offboard yourself");
-    expect(adminFailureMessage(503, null, 'fallback')).toBe('fallback');
-    expect(adminFailureMessage(403, null, 'fallback')).toBe('Only admins can do this.');
-    expect(adminFailureMessage(401, body, 'fallback')).toBe(
-      'Your session has ended. Sign in again.',
-    );
-    expect(adminFailureMessage(404, body, 'fallback')).toBe(
-      'It no longer exists. Reload the page.',
-    );
-    expect(adminFailureMessage(500, body, 'fallback')).toBe('fallback');
+    expect(message(400, body)).toBe("you can't offboard yourself");
+    expect(message(503, null)).toBe('fallback');
+    expect(message(403, null)).toBe('Only admins can do this.');
+    expect(message(403, body)).toBe("you can't offboard yourself");
+    expect(message(401, body)).toBe('Your session has ended. Sign in again.');
+    expect(message(404, body)).toBe('It no longer exists. Reload the page.');
+    expect(message(500, body)).toBe('fallback');
   });
 });
 

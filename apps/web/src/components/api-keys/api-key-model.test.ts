@@ -5,17 +5,18 @@ import {
   type ApiKeyInfo,
 } from '@hub/server';
 import { describe, expect, it } from 'vitest';
+import { failureMessage, refreshesPage } from '@/lib/api-client';
 import {
   EXPIRY_OPTIONS,
   apiKeyPath,
-  createFailureMessage,
+  CREATE_KEY_FAILURE,
   createKeyBody,
   createKeyFieldErrors,
   createdKeyFrom,
   emptyCreateForm,
   expiryText,
   maskedKey,
-  revokeFailureMessage,
+  REVOKE_KEY_FAILURE,
   scopeText,
   validateCreateForm,
   type CreateKeyForm,
@@ -138,10 +139,19 @@ describe('responses', () => {
 
   it('explains failures', () => {
     const body = { error: { code: 'limit', message: 'you already have 10 active API keys' } };
-    expect(createFailureMessage(409, body)).toBe('you already have 10 active API keys');
-    expect(createFailureMessage(401, null)).toMatch(/session/);
-    expect(createFailureMessage(500, body)).toMatch(/Couldn't create/);
-    expect(revokeFailureMessage(404, null)).toMatch(/no longer exists/);
-    expect(revokeFailureMessage(500, null)).toMatch(/Couldn't revoke/);
+    expect(failureMessage(409, body, CREATE_KEY_FAILURE)).toBe(
+      'you already have 10 active API keys',
+    );
+    expect(failureMessage(409, null, CREATE_KEY_FAILURE)).toMatch(/most active keys allowed/);
+    expect(failureMessage(401, null, CREATE_KEY_FAILURE)).toMatch(/session/);
+    expect(failureMessage(500, body, CREATE_KEY_FAILURE)).toMatch(/Couldn't create/);
+    expect(failureMessage(404, null, REVOKE_KEY_FAILURE)).toMatch(/no longer exists/);
+    expect(failureMessage(500, null, REVOKE_KEY_FAILURE)).toMatch(/Couldn't revoke/);
+    expect(failureMessage(400, body, REVOKE_KEY_FAILURE)).toMatch(/Couldn't revoke/);
+  });
+
+  it('refreshes the page when the key to revoke is already gone', () => {
+    expect(refreshesPage(404, REVOKE_KEY_FAILURE)).toBe(true);
+    expect(refreshesPage(404, CREATE_KEY_FAILURE)).toBe(false);
   });
 });

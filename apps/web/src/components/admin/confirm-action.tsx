@@ -23,7 +23,8 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { headingOfSection, mainHeading, useFocusReturn } from '@/lib/focus';
-import { useAdminRequest } from './use-admin-request';
+import { useApiRequest } from '@/lib/use-api-request';
+import { adminFailure } from './admin-model';
 
 export interface ConfirmActionProps {
   /** The trigger button's content (icon + visible text). */
@@ -53,16 +54,16 @@ export function ConfirmAction({
 }: ConfirmActionProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const { pending, error, setError, send } = useAdminRequest();
+  const { pending, error, setError, send } = useApiRequest();
   const triggerRef = useRef<HTMLButtonElement>(null);
   const focusReturn = useFocusReturn();
 
   async function confirm(): Promise<void> {
-    const body = await send(request.path, request, failure);
-    if (body === null) return;
+    const res = await send(request.path, request, adminFailure(failure));
+    if (!res.ok) return;
     focusReturn.set(headingOfSection(triggerRef.current), mainHeading);
     setOpen(false);
-    onDone?.(body);
+    onDone?.(res.body);
     router.refresh();
   }
 

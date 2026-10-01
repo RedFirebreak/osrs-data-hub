@@ -13,8 +13,9 @@ import { toast } from 'sonner';
 import { DEVICE_LABEL_MAX_LENGTH } from '@/components/onboarding/wizard-model';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { useApiRequest } from '@/lib/use-api-request';
 import { cn } from '@/lib/utils';
-import { UNNAMED_DEVICE, deviceApiPath, deviceFailureMessage, deviceName } from './device-model';
+import { UNNAMED_DEVICE, deviceApiPath, deviceFailure, deviceName } from './device-model';
 
 export interface DeviceLabelEditorProps {
   deviceId: string;
@@ -27,8 +28,7 @@ export function DeviceLabelEditor({ deviceId, label, className }: DeviceLabelEdi
   const id = useId();
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { pending: saving, error, setError, send } = useApiRequest();
   /**
    * The label this editor saved and the `label` prop it replaced: shown only while the prop is still
    * that old value, i.e. until the refreshed page brings the new one. After that the prop wins again,
@@ -72,35 +72,21 @@ export function DeviceLabelEditor({ deviceId, label, className }: DeviceLabelEdi
       stopEditing();
       return;
     }
-    setSaving(true);
-    setError(null);
-    try {
-      const res = await fetch(deviceApiPath(deviceId), {
-        method: 'PATCH',
-        credentials: 'same-origin',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ label: next }),
-      });
-      const body = (await res.json().catch(() => null)) as {
-        device?: { label?: string | null };
-      } | null;
-      if (res.ok) {
-        const stored = body?.device?.label ?? null;
-        setSaved({ label: stored, replaced: label });
-        stopEditing();
-        toast.success(`Renamed to ${deviceName(stored)}`);
-        router.refresh();
-        return;
-      }
-      setError(deviceFailureMessage(res.status, body, 'rename'));
-      refocus.current = 'input';
-      if (res.status === 401) router.refresh();
-    } catch {
-      setError("Couldn't reach the hub. Check your connection and try again.");
-      refocus.current = 'input';
-    } finally {
-      setSaving(false);
-    }
+    // Back to the input when saving fails; set before the request, so it is in place whenever the
+    // input is enabled again (a success replaces it with the Rename button, stopEditing).
+    refocus.current = 'input';
+    const res = await send(
+      deviceApiPath(deviceId),
+      { method: 'PATCH', json: { label: next } },
+      deviceFailure('rename'),
+    );
+    if (!res.ok) return;
+    const body = res.body as { device?: { label?: string | null } } | null;
+    const stored = body?.device?.label ?? null;
+    setSaved({ label: stored, replaced: label });
+    stopEditing();
+    toast.success(`Renamed to ${deviceName(stored)}`);
+    router.refresh();
   }
 
   if (!editing) {

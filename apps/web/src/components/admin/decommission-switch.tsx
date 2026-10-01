@@ -23,8 +23,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { moveFocus } from '@/lib/focus';
-import { DECOMMISSION_API_PATH, decommissionConfirmMatches } from './admin-model';
-import { useAdminRequest } from './use-admin-request';
+import { useApiRequest } from '@/lib/use-api-request';
+import { DECOMMISSION_API_PATH, adminFailure, decommissionConfirmMatches } from './admin-model';
 
 export interface DecommissionSwitchProps {
   decommissioned: boolean;
@@ -38,13 +38,13 @@ export function DecommissionSwitch({ decommissioned, hubName }: DecommissionSwit
   const [open, setOpen] = useState(false);
   const [typed, setTyped] = useState('');
   const switchRef = useRef<HTMLButtonElement>(null);
-  const { pending, error, setError, send } = useAdminRequest();
+  const { pending, error, setError, send } = useApiRequest();
   const turningOn = !decommissioned;
   const confirmed = !turningOn || decommissionConfirmMatches(typed, hubName);
 
   async function submit(): Promise<void> {
     if (!confirmed) return;
-    const body = await send(
+    const res = await send(
       DECOMMISSION_API_PATH,
       {
         method: 'PUT',
@@ -52,9 +52,9 @@ export function DecommissionSwitch({ decommissioned, hubName }: DecommissionSwit
           ? { decommissioned: true, confirm: typed.trim() }
           : { decommissioned: false },
       },
-      "Couldn't change the switch. Try again in a moment.",
+      adminFailure("Couldn't change the switch. Try again in a moment."),
     );
-    if (body === null) return;
+    if (!res.ok) return;
     setOpen(false);
     setTyped('');
     toast.success(turningOn ? 'The hub is decommissioned' : 'Decommissioning turned off', {

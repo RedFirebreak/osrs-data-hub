@@ -26,6 +26,13 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import {
+  apiErrorDetails,
+  apiErrorMessage,
+  failureMessage,
+  type FailureOptions,
+} from '@/lib/api-client';
+import { useApiRequest } from '@/lib/use-api-request';
 import { cn } from '@/lib/utils';
 import {
   buildPatch,
@@ -50,9 +57,11 @@ export interface SettingsFormProps {
 
 const LOOT_PRESETS = [0, 10_000, 100_000, 1_000_000, 10_000_000];
 
-interface ErrorBody {
-  error?: { message?: string; details?: unknown };
-}
+/** A refused save says why in the hub's own words, whatever the status. */
+const SAVE_FAILURE: FailureOptions = {
+  fallback: "Couldn't save your settings. Try again in a moment.",
+  hubMessageFor: 'any',
+};
 
 function FieldError({ id, message }: { id: string; message: string | undefined }) {
   if (!message) return null;
@@ -78,7 +87,7 @@ export function SettingsForm({
   const [saved, setSaved] = useState<UserSettings>(initial);
   const [state, setState] = useState<SettingsFormState>(() => formStateFrom(initial, typeValues));
   const [errors, setErrors] = useState<FieldErrors>({});
-  const [saving, setSaving] = useState(false);
+  const { pending: saving, send } = useApiRequest();
 
   const { patch, errors: clientErrors } = buildPatch(state, saved, typeValues, maxMinLootValue);
   const dirty = Object.keys(patch).length > 0 || Object.keys(clientErrors).length > 0;
@@ -112,48 +121,30 @@ export function SettingsForm({
       return;
     }
     if (Object.keys(patch).length === 0) return;
-    setSaving(true);
     setErrors({});
-    try {
-      const res = await fetch('/api/app/settings', {
-        method: 'PATCH',
-        credentials: 'same-origin',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(patch),
-      });
-      const body = (await res.json().catch(() => null)) as
-        ({ settings?: UserSettings } & ErrorBody) | null;
-      if (res.ok && body?.settings) {
-        setSaved(body.settings);
-        setState(formStateFrom(body.settings, typeValues));
-        toast.success('Settings saved');
-        // The stream applies the filter it opened with (LiveProvider → reopen with Last-Event-ID).
-        if (changesToastFilter(patch)) reconnect();
-        // "Today" on the dashboard is cut in the time zone.
-        if (patch.timezone !== undefined) router.refresh();
-        return;
-      }
-      if (res.status === 400) {
-        const fieldErrors = fieldErrorsFrom(body?.error?.details);
-        setErrors(fieldErrors);
-        toast.error(
-          Object.keys(fieldErrors).length > 0
-            ? 'Some settings are invalid. Check the highlighted fields.'
-            : (body?.error?.message ?? "Couldn't save your settings."),
-        );
-        return;
-      }
-      if (res.status === 401) {
-        toast.error('Your session has ended. Sign in again.');
-        router.refresh();
-        return;
-      }
-      toast.error(body?.error?.message ?? "Couldn't save your settings. Try again in a moment.");
-    } catch {
-      toast.error("Couldn't reach the hub. Check your connection and try again.");
-    } finally {
-      setSaving(false);
+    const res = await send('/api/app/settings', { method: 'PATCH', json: patch }, SAVE_FAILURE);
+    const settings = (res.body as { settings?: UserSettings } | null)?.settings;
+    if (res.ok && settings) {
+      setSaved(settings);
+      setState(formStateFrom(settings, typeValues));
+      toast.success('Settings saved');
+      // The stream applies the filter it opened with (LiveProvider → reopen with Last-Event-ID).
+      if (changesToastFilter(patch)) reconnect();
+      // "Today" on the dashboard is cut in the time zone.
+      if (patch.timezone !== undefined) router.refresh();
+      return;
     }
+    if (res.status === 400) {
+      const fieldErrors = fieldErrorsFrom(apiErrorDetails(res.body));
+      setErrors(fieldErrors);
+      toast.error(
+        Object.keys(fieldErrors).length > 0
+          ? 'Some settings are invalid. Check the highlighted fields.'
+          : apiErrorMessage(res.body, "Couldn't save your settings."),
+      );
+      return;
+    }
+    toast.error(failureMessage(res.status, res.body, SAVE_FAILURE));
   }
 
   const shownErrors: FieldErrors = { ...errors };

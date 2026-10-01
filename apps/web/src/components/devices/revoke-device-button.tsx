@@ -23,7 +23,8 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { headingOfSection, mainHeading, useFocusReturn } from '@/lib/focus';
-import { deviceApiPath, deviceFailureMessage } from './device-model';
+import { useApiRequest } from '@/lib/use-api-request';
+import { deviceApiPath, deviceFailure } from './device-model';
 
 export interface RevokeDeviceButtonProps {
   deviceId: string;
@@ -34,36 +35,19 @@ export interface RevokeDeviceButtonProps {
 export function RevokeDeviceButton({ deviceId, name }: RevokeDeviceButtonProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { pending, error, setError, send } = useApiRequest();
   const triggerRef = useRef<HTMLButtonElement>(null);
   const focusReturn = useFocusReturn();
 
   async function revoke(): Promise<void> {
-    setPending(true);
-    setError(null);
-    try {
-      const res = await fetch(deviceApiPath(deviceId), {
-        method: 'DELETE',
-        credentials: 'same-origin',
-      });
-      if (res.ok) {
-        focusReturn.set(headingOfSection(triggerRef.current), mainHeading);
-        setOpen(false);
-        toast.success(`${name} revoked`, {
-          description: 'The plugin disables this connection the next time it sends data.',
-        });
-        router.refresh();
-        return;
-      }
-      const body: unknown = await res.json().catch(() => null);
-      setError(deviceFailureMessage(res.status, body, 'revoke'));
-      if (res.status === 401) router.refresh();
-    } catch {
-      setError("Couldn't reach the hub. Check your connection and try again.");
-    } finally {
-      setPending(false);
-    }
+    const res = await send(deviceApiPath(deviceId), { method: 'DELETE' }, deviceFailure('revoke'));
+    if (!res.ok) return;
+    focusReturn.set(headingOfSection(triggerRef.current), mainHeading);
+    setOpen(false);
+    toast.success(`${name} revoked`, {
+      description: 'The plugin disables this connection the next time it sends data.',
+    });
+    router.refresh();
   }
 
   return (

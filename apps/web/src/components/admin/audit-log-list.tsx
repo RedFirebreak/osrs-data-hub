@@ -6,7 +6,6 @@
  */
 import type { AuditLogRow } from '@hub/server';
 import { LoaderCircleIcon, ScrollTextIcon } from 'lucide-react';
-import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { RelativeTime } from '@/components/events/relative-time';
 import { Button } from '@/components/ui/button';
@@ -18,12 +17,9 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import {
-  adminFailureMessage,
-  auditActionLabel,
-  auditLogApiPath,
-  auditMetaEntries,
-} from './admin-model';
+import { failureMessage } from '@/lib/api-client';
+import { useApiRequest } from '@/lib/use-api-request';
+import { adminFailure, auditActionLabel, auditLogApiPath, auditMetaEntries } from './admin-model';
 import { AdminEmptyState } from './admin-section';
 import { DateTime } from './date-time';
 
@@ -37,6 +33,8 @@ export interface AuditLogListProps {
   /** The server's render time, for relative times during hydration. */
   now: string;
 }
+
+const LOAD_FAILURE = adminFailure("Couldn't load older entries. Try again.");
 
 function isEntryList(value: unknown): value is AuditEntryJson[] {
   return (
@@ -59,33 +57,22 @@ function actorText(entry: AuditEntryJson): { text: string; system: boolean } {
 }
 
 export function AuditLogList({ initial, nextBefore, now }: AuditLogListProps) {
-  const router = useRouter();
   const [entries, setEntries] = useState(initial);
   const [before, setBefore] = useState(nextBefore);
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { pending, error, setError, send } = useApiRequest();
 
   async function loadMore(): Promise<void> {
     if (before === null) return;
-    setPending(true);
-    setError(null);
-    try {
-      const res = await fetch(auditLogApiPath(before), { credentials: 'same-origin' });
-      const body: unknown = await res.json().catch(() => null);
-      const page = body as { entries?: unknown; nextBefore?: unknown } | null;
-      if (res.ok && page && isEntryList(page.entries)) {
-        const known = new Set(entries.map((e) => e.id));
-        setEntries([...entries, ...page.entries.filter((e) => !known.has(e.id))]);
-        setBefore(typeof page.nextBefore === 'number' ? page.nextBefore : null);
-        return;
-      }
-      setError(adminFailureMessage(res.status, body, "Couldn't load older entries. Try again."));
-      if (res.status === 401) router.refresh();
-    } catch {
-      setError("Couldn't reach the hub. Check your connection and try again.");
-    } finally {
-      setPending(false);
+    const res = await send(auditLogApiPath(before), {}, LOAD_FAILURE);
+    const page = res.body as { entries?: unknown; nextBefore?: unknown } | null;
+    if (res.ok && page && isEntryList(page.entries)) {
+      const known = new Set(entries.map((e) => e.id));
+      setEntries([...entries, ...page.entries.filter((e) => !known.has(e.id))]);
+      setBefore(typeof page.nextBefore === 'number' ? page.nextBefore : null);
+      return;
     }
+    // Also for a 2xx whose body isn't a page of entries.
+    setError(failureMessage(res.status, res.body, LOAD_FAILURE));
   }
 
   if (entries.length === 0) {

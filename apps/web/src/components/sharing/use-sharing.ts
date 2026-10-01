@@ -12,12 +12,12 @@ import type { ActiveMember, SharingSettings } from '@hub/server';
 import { useEffect, useEffectEvent, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import type { SharingChange } from '@/app/api/app/accounts/sharing-change';
+import { NO_RESPONSE, apiErrorMessage, sendJson } from '@/lib/api-client';
 import { focusIsLost, moveFocus, type FocusTarget } from '@/lib/focus';
 import { errorMessage, successMessage } from './sharing-model';
 
 interface PatchResponse {
   sharing?: SharingSettings | null;
-  error?: { message?: string };
 }
 
 export interface UseSharingOptions {
@@ -71,17 +71,17 @@ export function useSharing(
   }, [pending]);
 
   async function loadMembers(): Promise<boolean> {
-    try {
-      const res = await fetch('/api/app/members', { credentials: 'same-origin' });
-      const body = (await res.json().catch(() => null)) as { members?: ActiveMember[] } | null;
-      if (res.ok && body?.members) {
-        setMembers(body.members);
-        return true;
-      }
-      toast.error("The member list couldn't be loaded. Try again in a moment.");
-    } catch {
-      toast.error("The member list couldn't be loaded. Check your connection.");
+    const res = await sendJson('/api/app/members');
+    const body = res.body as { members?: ActiveMember[] } | null;
+    if (res.ok && body?.members) {
+      setMembers(body.members);
+      return true;
     }
+    toast.error(
+      res.status === NO_RESPONSE
+        ? "The member list couldn't be loaded. Check your connection."
+        : "The member list couldn't be loaded. Try again in a moment.",
+    );
     return false;
   }
 
@@ -92,27 +92,24 @@ export function useSharing(
   ): Promise<void> {
     refocusId.current = refocus ?? null;
     setPending(true);
-    try {
-      const res = await fetch(`/api/app/accounts/${encodeURIComponent(publicId)}/sharing`, {
-        method: 'PATCH',
-        credentials: 'same-origin',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(change),
-      });
-      const body = (await res.json().catch(() => null)) as PatchResponse | null;
-      if (!res.ok) {
-        toast.error(errorMessage(body?.error?.message, "That change couldn't be saved."));
-        return;
-      }
-      if (body?.sharing) setSettings(body.sharing);
-      toast.success(successMessage(change, names));
-      if (change.action === 'transfer' || change.action === 'claim' || !body?.sharing) {
-        onRightsChanged?.();
-      }
-    } catch {
+    const res = await sendJson(`/api/app/accounts/${encodeURIComponent(publicId)}/sharing`, {
+      method: 'PATCH',
+      json: change,
+    });
+    setPending(false);
+    if (res.status === NO_RESPONSE) {
       toast.error("That change couldn't be saved. Check your connection and try again.");
-    } finally {
-      setPending(false);
+      return;
+    }
+    if (!res.ok) {
+      toast.error(errorMessage(apiErrorMessage(res.body, ''), "That change couldn't be saved."));
+      return;
+    }
+    const body = res.body as PatchResponse | null;
+    if (body?.sharing) setSettings(body.sharing);
+    toast.success(successMessage(change, names));
+    if (change.action === 'transfer' || change.action === 'claim' || !body?.sharing) {
+      onRightsChanged?.();
     }
   }
 

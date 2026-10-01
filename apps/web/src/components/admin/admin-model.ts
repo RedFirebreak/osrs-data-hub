@@ -8,6 +8,7 @@
  */
 import type { OffboardReason, UserStatus } from '@hub/db';
 import type { DeviceStatus, IngestMeta } from '@hub/server';
+import type { FailureOptions } from '@/lib/api-client';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -426,23 +427,14 @@ export function decommissionConfirmMatches(typed: string | undefined, hubName: s
   return typed !== undefined && expected !== '' && typed.trim() === expected;
 }
 
-/** The `error.message` of an API error body, else `fallback`. */
-function errorBodyMessage(body: unknown, fallback: string): string {
-  if (typeof body === 'object' && body !== null && 'error' in body) {
-    const error = (body as { error: unknown }).error;
-    if (typeof error === 'object' && error !== null && 'message' in error) {
-      const message = (error as { message: unknown }).message;
-      if (typeof message === 'string' && message.trim() !== '') return message;
-    }
-  }
-  return fallback;
-}
-
-/** What to tell the admin when a request failed with `status` and `body`. */
-export function adminFailureMessage(status: number, body: unknown, fallback: string): string {
-  if (status === 401) return 'Your session has ended. Sign in again.';
-  if (status === 403) return errorBodyMessage(body, 'Only admins can do this.');
-  if (status === 404) return 'It no longer exists. Reload the page.';
-  if (status === 400 || status === 503) return errorBodyMessage(body, fallback);
-  return fallback;
+/**
+ * How a failed admin request is told (failureMessage, lib/api-client.ts): `fallback` when the hub
+ * gives no better text, and the admin pages' wording for 403 and 404.
+ */
+export function adminFailure(fallback: string): FailureOptions {
+  return {
+    fallback,
+    forbidden: 'Only admins can do this.',
+    notFound: 'It no longer exists. Reload the page.',
+  };
 }

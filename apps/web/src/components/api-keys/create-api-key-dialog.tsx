@@ -32,11 +32,13 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { apiErrorDetails, failureMessage } from '@/lib/api-client';
 import { mainHeading, useFocusReturn } from '@/lib/focus';
+import { useApiRequest } from '@/lib/use-api-request';
 import { cn } from '@/lib/utils';
 import {
+  CREATE_KEY_FAILURE,
   EXPIRY_OPTIONS,
-  createFailureMessage,
   createKeyBody,
   createKeyFieldErrors,
   createdKeyFrom,
@@ -91,8 +93,7 @@ export function CreateApiKeyDialog({
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<CreateKeyForm>(emptyCreateForm);
   const [errors, setErrors] = useState<CreateKeyErrors>({});
-  const [formError, setFormError] = useState<string | null>(null);
-  const [pending, setPending] = useState(false);
+  const { pending, error: formError, setError: setFormError, send } = useApiRequest();
   const [created, setCreated] = useState<{ key: string; name: string } | null>(null);
   const [filter, setFilter] = useState('');
   const focusReturn = useFocusReturn();
@@ -152,36 +153,27 @@ export function CreateApiKeyDialog({
     setErrors(invalid);
     setFormError(null);
     if (Object.keys(invalid).length > 0) return;
-    setPending(true);
-    try {
-      const res = await fetch('/api/app/api-keys', {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(createKeyBody(form)),
-      });
-      const body: unknown = await res.json().catch(() => null);
-      const key = res.status === 201 ? createdKeyFrom(body) : null;
-      if (key) {
-        setCreated({ key, name: form.name.trim() });
-        toast.success('API key created');
-        return;
-      }
-      const details =
-        res.status === 400 && typeof body === 'object' && body !== null
-          ? (body as { error?: { details?: unknown } }).error?.details
-          : undefined;
-      const fieldErrors = createKeyFieldErrors(details);
-      setErrors(fieldErrors);
-      if (Object.keys(fieldErrors).length === 0) {
-        setFormError(createFailureMessage(res.status, body));
-      }
-      if (res.status === 401) router.refresh();
-    } catch {
-      setFormError("Couldn't reach the hub. Check your connection and try again.");
-    } finally {
-      setPending(false);
+    const res = await send(
+      '/api/app/api-keys',
+      { method: 'POST', json: createKeyBody(form) },
+      CREATE_KEY_FAILURE,
+    );
+    const key = res.status === 201 ? createdKeyFrom(res.body) : null;
+    if (key) {
+      setCreated({ key, name: form.name.trim() });
+      toast.success('API key created');
+      return;
     }
+    const fieldErrors = createKeyFieldErrors(
+      res.status === 400 ? apiErrorDetails(res.body) : undefined,
+    );
+    setErrors(fieldErrors);
+    // Field errors are shown next to their fields; anything else in the form's own error line.
+    setFormError(
+      Object.keys(fieldErrors).length > 0
+        ? null
+        : failureMessage(res.status, res.body, CREATE_KEY_FAILURE),
+    );
   }
 
   return (

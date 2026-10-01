@@ -15,7 +15,7 @@ import { KeyRoundIcon, LoaderCircleIcon, PlusIcon, TriangleAlertIcon } from 'luc
 import { useRouter } from 'next/navigation';
 import { useId, useState } from 'react';
 import { toast } from 'sonner';
-import { adminFailureMessage } from '@/components/admin/admin-model';
+import { adminFailure } from '@/components/admin/admin-model';
 import { EXPIRY_OPTIONS, createdKeyFrom } from '@/components/api-keys/api-key-model';
 import { CopyButton } from '@/components/onboarding/copy-button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -32,7 +32,9 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { apiErrorDetails, failureMessage } from '@/lib/api-client';
 import { mainHeading, useFocusReturn } from '@/lib/focus';
+import { useApiRequest } from '@/lib/use-api-request';
 import {
   emptyServiceKeyForm,
   serviceKeyBody,
@@ -57,6 +59,8 @@ export interface CreateServiceKeyDialogProps {
   listHeadingId?: string;
 }
 
+const CREATE_FAILURE = adminFailure("Couldn't create the key. Try again in a moment.");
+
 function FieldError({ id, message }: { id: string; message: string | undefined }) {
   if (!message) return null;
   return (
@@ -79,8 +83,7 @@ export function CreateServiceKeyDialog({
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<ServiceKeyForm>(emptyServiceKeyForm);
   const [errors, setErrors] = useState<ServiceKeyErrors>({});
-  const [formError, setFormError] = useState<string | null>(null);
-  const [pending, setPending] = useState(false);
+  const { pending, error: formError, setError: setFormError, send } = useApiRequest();
   const [created, setCreated] = useState<{ key: string; name: string } | null>(null);
   const focusReturn = useFocusReturn();
 
@@ -123,38 +126,27 @@ export function CreateServiceKeyDialog({
     setErrors(invalid);
     setFormError(null);
     if (Object.keys(invalid).length > 0) return;
-    setPending(true);
-    try {
-      const res = await fetch('/api/app/admin/service-keys', {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(serviceKeyBody(form)),
-      });
-      const body: unknown = await res.json().catch(() => null);
-      const key = res.status === 201 ? createdKeyFrom(body) : null;
-      if (key) {
-        setCreated({ key, name: form.name.trim() });
-        toast.success('Integration key created');
-        return;
-      }
-      const details =
-        res.status === 400 && typeof body === 'object' && body !== null
-          ? (body as { error?: { details?: unknown } }).error?.details
-          : undefined;
-      const fieldErrors = serviceKeyFieldErrors(details);
-      setErrors(fieldErrors);
-      if (Object.keys(fieldErrors).length === 0) {
-        setFormError(
-          adminFailureMessage(res.status, body, "Couldn't create the key. Try again in a moment."),
-        );
-      }
-      if (res.status === 401) router.refresh();
-    } catch {
-      setFormError("Couldn't reach the hub. Check your connection and try again.");
-    } finally {
-      setPending(false);
+    const res = await send(
+      '/api/app/admin/service-keys',
+      { method: 'POST', json: serviceKeyBody(form) },
+      CREATE_FAILURE,
+    );
+    const key = res.status === 201 ? createdKeyFrom(res.body) : null;
+    if (key) {
+      setCreated({ key, name: form.name.trim() });
+      toast.success('Integration key created');
+      return;
     }
+    const fieldErrors = serviceKeyFieldErrors(
+      res.status === 400 ? apiErrorDetails(res.body) : undefined,
+    );
+    setErrors(fieldErrors);
+    // Field errors are shown next to their fields; anything else in the form's own error line.
+    setFormError(
+      Object.keys(fieldErrors).length > 0
+        ? null
+        : failureMessage(res.status, res.body, CREATE_FAILURE),
+    );
   }
 
   return (
