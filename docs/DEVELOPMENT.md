@@ -191,9 +191,22 @@ CI fails when the schema and the committed migrations disagree.
 | Job | Checks |
 |---|---|
 | Lint & typecheck | gotcha registry, Prettier, `tsc`, ESLint, migrations in sync with the schema |
-| Tests | Vitest against a `timescale/timescaledb:2.30.1-pg18` service container |
+| Tests | Vitest against the pinned `timescale/timescaledb` service container |
 | Build | `next build` and the worker bundle |
 | Docker images | both image targets build |
 | E2E (wizard) | `next build`, then the Playwright wizard test (`pnpm test:e2e`) against a TimescaleDB service container; uploads the Playwright report and traces when it fails |
 
 `main` is protected: make these jobs required checks in the branch protection rule.
+
+### Dependency updates
+
+Renovate (`renovate.json`) opens a PR for a release once it is 7 days old and merges it itself when the
+jobs above are green; a major update stays open for a person to merge (D-97). A red Renovate PR is
+never merged and needs a look. Two repository settings carry this:
+
+- the five jobs are **required status checks** on `main`. Without them GitHub's auto-merge has nothing
+  to wait for and can merge before the jobs finish;
+- **Allow auto-merge** is on (Settings → General). Without it Renovate merges on its own next run
+  instead, hours later.
+
+Merging is not releasing: an update reaches a deployment with the next release (OPERATIONS §10).
