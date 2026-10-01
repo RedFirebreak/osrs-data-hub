@@ -78,6 +78,10 @@ const iconsUrl = z
     return trimmed;
   });
 
+const logLevel = z
+  .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
+  .default('info');
+
 const EnvSchema = z.object({
   APP_URL: z
     .string()
@@ -133,7 +137,7 @@ const EnvSchema = z.object({
   TRUST_PROXY_HOPS: int(1, 0),
   METRICS_TOKEN: optionalString,
   WORKER_METRICS_PORT: int(9464, 0),
-  LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
+  LOG_LEVEL: logLevel,
   OSRS_ICONS_URL: iconsUrl,
 });
 
@@ -207,6 +211,17 @@ export function parseConfig(env: Record<string, string | undefined> = process.en
     );
   }
   return toConfig(e);
+}
+
+/**
+ * LOG_LEVEL as the logger reads it. The logger exists before the config is validated (it is what
+ * reports a ConfigError), so it can't take `logLevel` from getConfig(); it applies the same rule to
+ * the raw value. An invalid value gives the default here, so the logger still starts and
+ * parseConfig's error, which names the variable, is the one the operator sees.
+ */
+export function logLevelFromEnv(raw: string | undefined): HubConfig['logLevel'] {
+  const r = logLevel.safeParse(raw);
+  return r.success ? r.data : logLevel.parse(undefined);
 }
 
 const g = globalThis as unknown as { __hubConfig?: HubConfig };
