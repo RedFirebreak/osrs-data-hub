@@ -22,9 +22,10 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { decommissionConfirmMatches } from '@/lib/admin-rules';
 import { moveFocus } from '@/lib/focus';
 import { useApiRequest } from '@/lib/use-api-request';
-import { DECOMMISSION_API_PATH, adminFailure, decommissionConfirmMatches } from './admin-model';
+import { DECOMMISSION_API_PATH, adminFailure } from './admin-model';
 
 export interface DecommissionSwitchProps {
   decommissioned: boolean;

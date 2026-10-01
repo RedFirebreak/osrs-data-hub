@@ -8,6 +8,7 @@
  */
 import type { OffboardReason, UserStatus } from '@hub/db';
 import type { DeviceStatus, IngestMeta } from '@hub/server';
+import { AUDIT_PAGE_SIZE } from '@/lib/admin-rules';
 import type { FailureOptions } from '@/lib/api-client';
 import { isUuidLike } from '@/lib/guards';
 
@@ -329,9 +330,6 @@ export function prettyPayload(body: string): { text: string; json: boolean } {
 
 // --- Audit log ---------------------------------------------------------------------------------
 
-/** Entries per "load more" of the audit log. */
-export const AUDIT_PAGE_SIZE = 50;
-
 export { auditActionLabel } from './audit-labels';
 
 const META_VALUE_MAX = 80;
@@ -386,16 +384,6 @@ export function auditLogApiPath(before: number, limit = AUDIT_PAGE_SIZE): string
 export const DECOMMISSION_API_PATH = '/api/app/admin/decommission';
 
 export const GUILD_FEED_API_PATH = '/api/app/admin/guild-feed';
-
-/**
- * Whether the text typed into the decommission confirmation is the hub name. Both sides are
- * trimmed: HUB_NAME is cut to 64 characters after trimming, and that cut can end on a space nobody
- * types (the page shows the name without it).
- */
-export function decommissionConfirmMatches(typed: string | undefined, hubName: string): boolean {
-  const expected = hubName.trim();
-  return typed !== undefined && expected !== '' && typed.trim() === expected;
-}
 
 /**
  * How a failed admin request is told (failureMessage, lib/api-client.ts): `fallback` when the hub

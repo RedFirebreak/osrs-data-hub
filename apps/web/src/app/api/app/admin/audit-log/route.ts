@@ -9,7 +9,7 @@
 import { getDb } from '@hub/db';
 import { listAuditLog } from '@hub/server';
 import { z } from 'zod';
-import { AUDIT_PAGE_SIZE } from '@/components/admin/admin-model';
+import { AUDIT_PAGE_SIZE } from '@/lib/admin-rules';
 import { handleApi, json } from '@/lib/http';
 import { parseQuery } from '@/lib/query';
 import { requireApiAdmin } from '../guard';
