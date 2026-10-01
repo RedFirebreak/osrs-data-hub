@@ -367,7 +367,7 @@ const categoriesField = z
   .meta({ description: 'What this key may read on this account right now.' });
 
 // GET /me
-export const MeData = z.object({
+const MeData = z.object({
   key: z.object({
     id: z.uuid(),
     kind: z.enum(API_KEY_KINDS).meta({
@@ -400,7 +400,7 @@ export const AccountSummary = z.object({
   world: int.nullable().meta({ description: 'Last known world; null without `activity`.' }),
   last_seen: timestamp.nullable().meta({ description: 'null without `activity`.' }),
 });
-export const AccountsData = z.array(AccountSummary);
+const AccountsData = z.array(AccountSummary);
 
 // GET /accounts/{id}
 export const AccountDetail = z.object({
@@ -459,7 +459,7 @@ export const SnapshotAccount = z.object({
     .optional()
     .meta({ description: '`inventory`: null when never sent, omitted without the category.' }),
 });
-export const SnapshotData = z.array(SnapshotAccount);
+const SnapshotData = z.array(SnapshotAccount);
 
 // XP
 const resolution = z.enum(['5m', '1h', '1d']);
@@ -478,14 +478,14 @@ export const XpSeries = z.object({
     }),
   ),
 });
-export const XpMultiData = z.object({
+const XpMultiData = z.object({
   resolution,
   from: timestamp,
   to: timestamp,
   accounts: z.array(XpSeries).meta({ description: 'In request order.' }),
 });
 
-export const GainsData = z.object({
+const GainsData = z.object({
   account: AccountRef,
   period: z.enum(GAINS_PERIODS).nullable().meta({ description: 'null for an explicit from/to.' }),
   from: timestamp,
@@ -524,12 +524,12 @@ export const Event = z.object({
     description: 'One line, e.g. "Zezima received Dragon warhammer (38.2M) from Lizardman shaman".',
   }),
 });
-export const EventsData = z.array(Event);
+const EventsData = z.array(Event);
 
 // Histories
 const historyHead = { account: AccountRef, from: timestamp, to: timestamp };
 
-export const SessionsData = z.object({
+const SessionsData = z.object({
   ...historyHead,
   sessions: z
     .array(
@@ -546,7 +546,7 @@ export const SessionsData = z.object({
     .meta({ description: 'Sessions overlapping the range, newest first.' }),
 });
 
-export const EquipmentHistoryData = z.object({
+const EquipmentHistoryData = z.object({
   ...historyHead,
   changes: z
     .array(
@@ -558,7 +558,7 @@ export const EquipmentHistoryData = z.object({
     .meta({ description: 'Newest first.' }),
 });
 
-export const WealthData = z.object({
+const WealthData = z.object({
   ...historyHead,
   days: z
     .array(
@@ -584,14 +584,14 @@ const locationPoints = z
   .array(LocationPoint)
   .meta({ description: 'At most one point per minute, oldest first.' });
 
-export const LocationsData = z.object({
+const LocationsData = z.object({
   ...historyHead,
   points: locationPoints,
 });
 
 // GET /locations
 export const AccountLocations = z.object({ account: AccountRef, points: locationPoints });
-export const LocationsMultiData = z.object({
+const LocationsMultiData = z.object({
   from: timestamp,
   to: timestamp,
   accounts: z.array(AccountLocations).meta({
@@ -599,7 +599,7 @@ export const LocationsMultiData = z.object({
   }),
 });
 
-export const LeaderboardsData = z.object({
+const LeaderboardsData = z.object({
   period: z.enum(LEADERBOARD_PERIODS),
   from: timestamp,
   to: timestamp,
@@ -613,7 +613,7 @@ export const LeaderboardsData = z.object({
   ),
 });
 
-export const LootLeaderboardData = z.object({
+const LootLeaderboardData = z.object({
   period: z.enum(LEADERBOARD_PERIODS),
   from: timestamp,
   to: timestamp,
@@ -634,14 +634,14 @@ export const LootLeaderboardData = z.object({
 const Meta = z.object({
   generated_at: timestamp.meta({ description: 'When the hub built this response.' }),
 });
-export const ListMeta = Meta.extend({ count: int.min(0) });
-export const EventsMeta = ListMeta.extend({
+const ListMeta = Meta.extend({ count: int.min(0) });
+const EventsMeta = ListMeta.extend({
   next_cursor: z.string().meta({
     description:
       'Pass as `cursor` next time. Always present; unchanged when nothing new has settled.',
   }),
 });
-export const SnapshotMeta = ListMeta.extend({
+const SnapshotMeta = ListMeta.extend({
   last_modified: timestamp.nullable().meta({
     description:
       'The newest change among the accounts whose `activity` the key reads, for the next `since`; null when it reads none.',

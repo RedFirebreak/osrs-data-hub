@@ -59,10 +59,10 @@ export function setApiLimitsForTests(limits?: ApiLimits): void {
 }
 
 /** The same body for every refused key, so a caller can't tell which part was wrong (D-70). */
-export const UNAUTHORIZED_MESSAGE =
+const UNAUTHORIZED_MESSAGE =
   'A valid API key is required: send it as "Authorization: Bearer ohub_<prefix>_<secret>".';
 
-export interface ApiKeyContext {
+interface ApiKeyContext {
   db: Db;
   principal: ApiPrincipal;
 }

@@ -6,7 +6,7 @@
 import { readdirSync } from 'node:fs';
 import path from 'node:path';
 
-export interface V1RouteFile {
+interface V1RouteFile {
   /** Directory names from app/api/v1 down: ['accounts', '[id]', 'xp']. */
   segments: string[];
   /** Absolute path of the route.ts. */

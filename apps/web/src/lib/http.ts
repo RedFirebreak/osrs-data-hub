@@ -35,10 +35,10 @@ import { ZodError } from 'zod';
 const JSON_CONTENT_TYPE = 'application/json; charset=utf-8';
 
 /** Retry-After (whole seconds, PLUGIN-5) for transient database failures on app routes. */
-export const API_RETRY_AFTER_SECONDS = 5;
+const API_RETRY_AFTER_SECONDS = 5;
 
 /** Default cap for JSON bodies of app routes (readJson). */
-export const API_MAX_BODY_BYTES = 64 * 1024;
+const API_MAX_BODY_BYTES = 64 * 1024;
 
 /**
  * A JSON response: `content-type: application/json; charset=utf-8` and `cache-control: no-store`
@@ -229,8 +229,8 @@ export async function handleApi(fn: () => Response | Promise<Response>): Promise
   }
 }
 
-/** The JSON Response handleApi returns for `err` (exported for handlers that catch themselves). */
-export function errorResponse(err: unknown): Response {
+/** The JSON Response handleApi returns for `err`. */
+function errorResponse(err: unknown): Response {
   if (err instanceof ApiError) {
     return errorJson(err.status, err.code, err.message, err.headers, err.details);
   }

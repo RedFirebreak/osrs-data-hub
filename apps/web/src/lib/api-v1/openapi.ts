@@ -31,7 +31,7 @@ import { z } from 'zod';
 import * as S from './schemas';
 
 /** One GET operation of the document. */
-export interface OperationSpec {
+interface OperationSpec {
   /** OpenAPI path, relative to the server URL (…/api/v1). */
   path: string;
   operationId: string;
@@ -228,7 +228,7 @@ export const OPERATIONS: readonly OperationSpec[] = [
 ];
 
 /** The public operation serving this document (no key, no rate limit). */
-export const OPENAPI_PATH = '/openapi.json';
+const OPENAPI_PATH = '/openapi.json';
 
 /** Shapes several responses nest: each becomes a `$ref` under components.schemas. */
 const SHARED_COMPONENTS: readonly [string, z.ZodType][] = [
