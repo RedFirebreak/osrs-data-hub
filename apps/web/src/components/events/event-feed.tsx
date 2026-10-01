@@ -11,7 +11,7 @@
  *
  *   <EventFeed events={card.recentEvents} now={now} compact linkAccounts={false} />
  */
-import { formatGp } from '@hub/core';
+import { formatGp, isLootEvent } from '@hub/core';
 import type { FeedEvent } from '@hub/server';
 import Link from 'next/link';
 import { accountHref } from '@/components/accounts/account-link';
@@ -21,13 +21,13 @@ import { cn } from '@/lib/utils';
 import { EventIconBadge } from './event-icon';
 import { RelativeTime } from './relative-time';
 
-/** Event types whose valueGp is a loot value (a death's is the value lost, already in the line). */
-const LOOT_TYPES: ReadonlySet<string> = new Set(['loot', 'pk_loot']);
-
-/** The loot value to badge, or null (no value, zero, or not a loot event). */
+/**
+ * The loot value to badge, or null (no value, zero, or not a loot event: a death's valueGp is the
+ * value lost, already in its line).
+ */
 export function lootValue(event: Pick<FeedEvent, 'type' | 'valueGp'>): number | null {
   const v = event.valueGp;
-  return LOOT_TYPES.has(event.type) && v !== null && Number.isFinite(v) && v > 0 ? v : null;
+  return isLootEvent(event.type) && v !== null && Number.isFinite(v) && v > 0 ? v : null;
 }
 
 /**

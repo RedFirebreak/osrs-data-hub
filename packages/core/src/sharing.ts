@@ -1,3 +1,5 @@
+import { isRecord } from './guards';
+
 export const CATEGORIES = [
   'stats',
   'events',
@@ -216,10 +218,6 @@ export function redactEventData(eventData: unknown, categories: ReadonlySet<Cate
     out.data = data;
   }
   return out;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 export function isCategory(value: unknown): value is Category {

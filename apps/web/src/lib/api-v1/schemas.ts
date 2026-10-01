@@ -12,7 +12,7 @@
  * @hub/server's exported limits, so the docs state the numbers the server enforces; the read models
  * re-validate everything anyway.
  */
-import { CATEGORIES } from '@hub/core';
+import { CATEGORIES, KNOWN_EVENT_TYPES } from '@hub/core';
 import { API_KEY_KINDS, SESSION_END_REASONS } from '@hub/db';
 import {
   EVENTS_DEFAULT_LIMIT,
@@ -168,6 +168,9 @@ export const GainsQuery = z.object({
   to: to.meta({ description: 'With `from`; default now.' }),
 });
 
+/** What an event's `type` can be, for the descriptions: the known types, as stored, and the rest. */
+const EVENT_TYPE_NAMES = `${KNOWN_EVENT_TYPES.join(', ')}, or an unknown plugin type as sent`;
+
 /** GET /events. */
 export const EventsQuery = z.object({
   cursor: z
@@ -178,11 +181,12 @@ export const EventsQuery = z.object({
       description:
         'Omitted: the newest `limit` events and a cursor after them. `now`: no events, only the current cursor (start following from here). Otherwise a `meta.next_cursor` from an earlier response: the events after it, oldest first. Cursors are opaque.',
     }),
-  types: csv(z.string()).optional().meta({
-    description:
-      'Comma-separated event types: loot, pk_loot, death, level_up, collection_log, superior_spawn, achievement_diary, combat_task, or an unknown plugin type as sent. Default: every type.',
-    example: 'loot,level_up',
-  }),
+  types: csv(z.string())
+    .optional()
+    .meta({
+      description: `Comma-separated event types: ${EVENT_TYPE_NAMES}. Default: every type.`,
+      example: 'loot,level_up',
+    }),
   accounts: csv(accountIdItem, MAX_LIST_PARAM)
     .optional()
     .meta({
@@ -509,8 +513,7 @@ export const GainsData = z.object({
 export const Event = z.object({
   id: z.uuid().meta({ description: 'Public event id (uuid v7).' }),
   type: z.string().meta({
-    description:
-      'loot, pk_loot, death, level_up, collection_log, superior_spawn, achievement_diary, combat_task, or an unknown plugin type as sent.',
+    description: `${EVENT_TYPE_NAMES}.`,
   }),
   account: AccountRef,
   occurred_at: timestamp.meta({

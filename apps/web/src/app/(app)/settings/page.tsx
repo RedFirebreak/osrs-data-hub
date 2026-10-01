@@ -3,7 +3,7 @@
  * /api/app/settings), what decides which data reaches the hub at all (the plugin, D-4), downloading
  * your data (GET /api/app/export, D-79) and deleting it (POST /api/app/me/delete, D-78).
  */
-import { KNOWN_EVENT_TYPES, describeEvent, getConfig } from '@hub/core';
+import { getConfig } from '@hub/core';
 import { getDb } from '@hub/db';
 import {
   MAX_TOAST_MIN_LOOT_VALUE,
@@ -15,6 +15,7 @@ import { ArrowRightIcon } from 'lucide-react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { formatInZone } from '@/components/account/dates';
+import { eventTypeOptions } from '@/components/events/event-types';
 import { DeleteDataCard } from '@/components/settings/delete-data-card';
 import { ExportDataCard } from '@/components/settings/export-data-card';
 import { PageHeader } from '@/components/shell/page-header';
@@ -24,22 +25,6 @@ import { SettingsForm } from './settings-form';
 
 export function generateMetadata(): Metadata {
   return { title: `Settings · ${getConfig().hubName}` };
-}
-
-/** The toast type choices, labelled with describeEvent's titles ("Loot", "Level up", …). */
-function eventTypeOptions(): { value: string; label: string }[] {
-  return KNOWN_EVENT_TYPES.map((type) => ({
-    value: type,
-    label: describeEvent('', {
-      type,
-      valueGp: null,
-      skill: null,
-      level: null,
-      tier: null,
-      points: null,
-      data: null,
-    }).title,
-  }));
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;

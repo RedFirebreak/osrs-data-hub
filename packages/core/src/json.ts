@@ -1,3 +1,5 @@
+import { isPlainObject } from './guards';
+
 /**
  * Deep copy that makes every string and object key storable in Postgres: U+0000 is removed (text and
  * jsonb reject it, and Gson emits "\u0000" for control characters; DB-1), then every lone UTF-16
@@ -25,10 +27,4 @@ function strip(value: unknown): unknown {
     return Object.fromEntries(Object.entries(value).map(([k, v]) => [clean(k), strip(v)]));
   }
   return value;
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  if (typeof value !== 'object' || value === null) return false;
-  const proto: unknown = Object.getPrototypeOf(value);
-  return proto === Object.prototype || proto === null;
 }

@@ -8,6 +8,7 @@
  *   skillIconUrl(base, 'Attack')        // → `${base}/skills/attack.png`
  *   slotIconUrl(base, 'AMULET')         // → `${base}/slots/amulet.png`
  */
+import { highestValueItem } from '@hub/core';
 
 /**
  * `/data/stacks.json`: per item id, the quantity breakpoints and the variant id whose picture shows
@@ -100,16 +101,9 @@ export interface EventIconSource {
   data?: unknown;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 /** How many of `itemId` the event names: loot's highestValueItem stack, else 1. */
 export function eventItemQuantity(event: EventIconSource): number {
-  const envelope = isRecord(event.data) ? event.data : {};
-  const d = isRecord(envelope.data) ? envelope.data : {};
-  const top = isRecord(d.highestValueItem) ? d.highestValueItem : {};
-  const { id, quantity } = top;
+  const { id, quantity } = highestValueItem(event.data);
   return id === event.itemId &&
     typeof quantity === 'number' &&
     Number.isInteger(quantity) &&

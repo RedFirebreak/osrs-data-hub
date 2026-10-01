@@ -13,9 +13,8 @@ import type { FeedEvent } from '@hub/server';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { accountHref } from '@/components/accounts/account-link';
-import { EventIcon } from '@/components/events/event-icon';
+import { GameOrEventIcon } from '@/components/events/event-icon';
 import { IconConfigProvider } from '@/components/icons/icon-config-provider';
-import { EventGameIcon } from '@/components/icons/osrs-icon';
 import { NO_ICONS, type IconConfig } from '@/lib/osrs-icons';
 import { toastShowsAge } from './live-state';
 
@@ -42,10 +41,7 @@ export function showEventToast(
       id: `event-${event.id}`,
       icon: (
         <IconConfigProvider value={icons}>
-          <EventGameIcon
-            event={event}
-            fallback={<EventIcon icon={event.icon} className="size-4" />}
-          />
+          <GameOrEventIcon icon={event.icon} game={event} />
         </IconConfigProvider>
       ),
       description: age ? <time dateTime={event.occurredAt}>{age}</time> : undefined,
