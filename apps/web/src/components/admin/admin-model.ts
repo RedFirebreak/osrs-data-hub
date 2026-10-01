@@ -9,6 +9,7 @@
 import type { OffboardReason, UserStatus } from '@hub/db';
 import type { DeviceStatus, IngestMeta } from '@hub/server';
 import type { FailureOptions } from '@/lib/api-client';
+import { isUuidLike } from '@/lib/guards';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -42,7 +43,7 @@ export function utcDateText(ms: number, withTime: boolean): string | null {
 // --- Users -------------------------------------------------------------------------------------
 
 /** Why a user is in grace, as the Users table says it. */
-export const OFFBOARD_REASON_LABELS: Readonly<Record<OffboardReason, string>> = {
+const OFFBOARD_REASON_LABELS: Readonly<Record<OffboardReason, string>> = {
   left_guild: 'Left the Discord server',
   lost_role: 'Lost the required role',
   admin: 'Offboarded by an admin',
@@ -274,13 +275,6 @@ export interface RawPayloadQuery {
   before?: { receivedAt: Date; id: string };
 }
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/** Whether `value` looks like a uuid. */
-export function isUuidLike(value: string): boolean {
-  return UUID_RE.test(value);
-}
-
 function first(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
 }
@@ -393,12 +387,12 @@ export function adminUserActionPath(userId: string, action: 'offboard' | 'restor
   return `/api/app/admin/users/${encodeURIComponent(userId)}/${action}`;
 }
 
-/** DELETE path that revokes any device. */
 /** The admin API path of one service key (D-88). */
 export function adminServiceKeyPath(keyId: string): string {
   return `/api/app/admin/service-keys/${encodeURIComponent(keyId)}`;
 }
 
+/** DELETE path that revokes any device. */
 export function adminDevicePath(deviceId: string): string {
   return `/api/app/admin/devices/${encodeURIComponent(deviceId)}`;
 }

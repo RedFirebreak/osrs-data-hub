@@ -25,6 +25,7 @@ function pairStep(overrides: Partial<PairStepProps> = {}): string {
       lifetimeMs: 300_000,
     },
     codeRequest: 'idle',
+    resuming: false,
     codeError: null,
     msLeft: 252_000,
     expired: false,

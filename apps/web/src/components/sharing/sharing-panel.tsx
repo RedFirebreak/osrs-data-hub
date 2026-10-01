@@ -17,7 +17,6 @@
  * Sharing card's, as the panel remounts), and after Cancel back to the control that opened the
  * dialog, which Radix can't do here: the dialog has no Trigger.
  */
-import type { Audience, Category } from '@hub/core';
 import type { SharingContributor, SharingSettings } from '@hub/server';
 import {
   BanIcon,
@@ -59,10 +58,6 @@ import { useSharing } from './use-sharing';
 export interface SharingPanelProps {
   publicId: string;
   initial: SharingSettings;
-  /** CATEGORY_LABELS from @hub/core (passed as data, NEXT-12). */
-  categoryLabels: Readonly<Record<Category, { label: string; covers: string }>>;
-  /** DEFAULT_AUDIENCE from @hub/core. */
-  defaults: Readonly<Record<Category, Audience>>;
   /** The account has an owner (claiming is offered only when it hasn't). */
   hasOwner: boolean;
   /** The viewer's relation to the account. */
@@ -77,15 +72,7 @@ type Confirm =
   | { kind: 'block'; user: SharingContributor }
   | { kind: 'claim' };
 
-export function SharingPanel({
-  publicId,
-  initial,
-  categoryLabels,
-  defaults,
-  hasOwner,
-  relation,
-  now,
-}: SharingPanelProps) {
+export function SharingPanel({ publicId, initial, hasOwner, relation, now }: SharingPanelProps) {
   const router = useRouter();
   const id = useId();
   const [confirm, setConfirm] = useState<Confirm | null>(null);
@@ -169,12 +156,7 @@ export function SharingPanel({
           The account&apos;s players always see everything. The plugin decides what reaches the hub
           at all.
         </p>
-        <CategoryAudiences
-          idPrefix={id}
-          sharing={sharing}
-          categoryLabels={categoryLabels}
-          defaults={defaults}
-        />
+        <CategoryAudiences idPrefix={id} sharing={sharing} />
       </section>
 
       <section aria-labelledby={`${id}-players`} className="flex flex-col gap-2">

@@ -5,7 +5,6 @@
  * errors (400 details) are shown next to their fields. The live stream applies the toast filter it
  * had when it opened, so after a filter change the stream is reopened (LiveProvider reconnect).
  */
-import { formatGp } from '@hub/core';
 import type { UserSettings } from '@hub/server';
 import { LoaderCircleIcon } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -23,8 +22,9 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Input } from '@/components/ui/input';
+import { FieldError } from '@/components/ui/field-error';
 import { Label } from '@/components/ui/label';
+import { NativeSelect } from '@/components/ui/native-select';
 import { Switch } from '@/components/ui/switch';
 import {
   apiErrorDetails,
@@ -35,13 +35,13 @@ import {
 } from '@/lib/api-client';
 import { useApiRequest } from '@/lib/use-api-request';
 import { cn } from '@/lib/utils';
+import { MinLootField } from './min-loot-field';
 import {
   SETTINGS_FIELDS,
   buildPatch,
   changesToastFilter,
   formStateFrom,
   groupTimeZones,
-  parseMinLootValue,
   type FieldErrors,
   type SettingsFormState,
 } from './settings-model';
@@ -64,15 +64,6 @@ const SAVE_FAILURE: FailureOptions = {
   hubMessageFor: 'any',
 };
 
-function FieldError({ id, message }: { id: string; message: string | undefined }) {
-  if (!message) return null;
-  return (
-    <p id={id} className="text-sm text-destructive">
-      {message}
-    </p>
-  );
-}
-
 export function SettingsForm({
   initial,
   eventTypes,
@@ -92,7 +83,6 @@ export function SettingsForm({
 
   const { patch, errors: clientErrors } = buildPatch(state, saved, typeValues, maxMinLootValue);
   const dirty = Object.keys(patch).length > 0 || Object.keys(clientErrors).length > 0;
-  const minLoot = parseMinLootValue(state.minLootValue, maxMinLootValue);
   const browserZone = hydrated ? Intl.DateTimeFormat().resolvedOptions().timeZone : null;
   const offerBrowserZone =
     browserZone !== null && browserZone !== state.timezone && timeZones.includes(browserZone);
@@ -148,7 +138,6 @@ export function SettingsForm({
     toast.error(failureMessage(res.status, res.body, SAVE_FAILURE));
   }
 
-  const shownErrors: FieldErrors = { ...errors };
   const typesNone = !state.allTypes && state.types.length === 0;
 
   return (
@@ -202,7 +191,7 @@ export function SettingsForm({
                 <div
                   role="group"
                   aria-label="Event types to toast"
-                  aria-describedby={shownErrors.toastTypes ? `${id}-types-error` : undefined}
+                  aria-describedby={errors.toastTypes ? `${id}-types-error` : undefined}
                   className="grid gap-2 pl-6 sm:grid-cols-2"
                 >
                   {eventTypes.map((type) => {
@@ -213,7 +202,7 @@ export function SettingsForm({
                           id={boxId}
                           checked={state.types.includes(type.value)}
                           onCheckedChange={(checked) => toggleType(type.value, checked === true)}
-                          aria-invalid={shownErrors.toastTypes ? true : undefined}
+                          aria-invalid={errors.toastTypes ? true : undefined}
                         />
                         <Label htmlFor={boxId} className="font-normal">
                           {type.label}
@@ -228,45 +217,22 @@ export function SettingsForm({
                   No types selected: you won&apos;t get any event toasts.
                 </p>
               )}
-              <FieldError id={`${id}-types-error`} message={shownErrors.toastTypes} />
+              <FieldError id={`${id}-types-error`} message={errors.toastTypes} />
             </div>
 
-            <div className="flex flex-col gap-2">
-              <Label htmlFor={`${id}-min-loot`}>Minimum loot value</Label>
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                <Input
-                  id={`${id}-min-loot`}
-                  inputMode="numeric"
-                  autoComplete="off"
-                  className="sm:max-w-44"
-                  value={state.minLootValue}
-                  onChange={(e) => update({ minLootValue: e.target.value })}
-                  aria-invalid={shownErrors.toastMinLootValue ? true : undefined}
-                  aria-describedby={`${id}-min-loot-help${shownErrors.toastMinLootValue ? ` ${id}-min-loot-error` : ''}`}
-                />
-                <div className="flex flex-wrap gap-1.5" role="group" aria-label="Quick values">
-                  {LOOT_PRESETS.map((value) => (
-                    <Button
-                      key={value}
-                      type="button"
-                      size="xs"
-                      variant={minLoot === value ? 'secondary' : 'outline'}
-                      onClick={() => update({ minLootValue: String(value) })}
-                    >
-                      {value === 0 ? 'Any' : formatGp(value)}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-              <p id={`${id}-min-loot-help`} className="text-sm text-muted-foreground">
-                {minLoot === null
-                  ? 'Whole gp, or shorthand like 100k or 1.5m (decimals with a point).'
-                  : minLoot === 0
-                    ? 'Every loot drop and loot chest can toast.'
-                    : `Loot drops and loot chests below ${formatGp(minLoot)} gp don't toast. Other events are not affected.`}
-              </p>
-              <FieldError id={`${id}-min-loot-error`} message={shownErrors.toastMinLootValue} />
-            </div>
+            <MinLootField
+              id={`${id}-min-loot`}
+              value={state.minLootValue}
+              onChange={(minLootValue) => update({ minLootValue })}
+              max={maxMinLootValue}
+              presets={LOOT_PRESETS}
+              help={{
+                any: 'Every loot drop and loot chest can toast.',
+                below: (amount) =>
+                  `Loot drops and loot chests below ${amount} gp don't toast. Other events are not affected.`,
+              }}
+              error={errors.toastMinLootValue}
+            />
 
             <div className="flex items-start justify-between gap-4">
               <div className="flex flex-col gap-1">
@@ -298,13 +264,13 @@ export function SettingsForm({
         <CardContent className="flex flex-col gap-2">
           <Label htmlFor={`${id}-tz`}>Time zone</Label>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <select
+            <NativeSelect
               id={`${id}-tz`}
               value={state.timezone}
               onChange={(e) => update({ timezone: e.target.value })}
-              aria-invalid={shownErrors.timezone ? true : undefined}
-              aria-describedby={shownErrors.timezone ? `${id}-tz-error` : undefined}
-              className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-destructive sm:max-w-80 dark:bg-input/30 [&_optgroup]:bg-popover [&_option]:bg-popover"
+              aria-invalid={errors.timezone ? true : undefined}
+              aria-describedby={errors.timezone ? `${id}-tz-error` : undefined}
+              className="sm:max-w-80 [&_optgroup]:bg-popover"
             >
               {!timeZones.includes(state.timezone) && (
                 <option value={state.timezone}>{state.timezone}</option>
@@ -318,7 +284,7 @@ export function SettingsForm({
                   ))}
                 </optgroup>
               ))}
-            </select>
+            </NativeSelect>
             {offerBrowserZone && browserZone && (
               <Button
                 type="button"
@@ -330,7 +296,7 @@ export function SettingsForm({
               </Button>
             )}
           </div>
-          <FieldError id={`${id}-tz-error`} message={shownErrors.timezone} />
+          <FieldError id={`${id}-tz-error`} message={errors.timezone} />
         </CardContent>
         <CardFooter className="flex flex-wrap items-center justify-end gap-3">
           <span className="mr-auto text-sm text-muted-foreground" aria-live="polite">

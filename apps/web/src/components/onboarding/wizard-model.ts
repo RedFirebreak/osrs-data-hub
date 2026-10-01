@@ -21,6 +21,7 @@
  * Only `import type` from @hub/server: this module is bundled for the browser (NEXT-12).
  */
 import type { DeviceFirstData, DeviceMessage, PairingMessage } from '@hub/server';
+import { isRecord, isUuidLike } from '@/lib/guards';
 
 export type WizardStep = 1 | 2 | 3 | 4;
 
@@ -362,10 +363,6 @@ export function describeRole(data: Pick<DeviceFirstData, 'role' | 'ownerName'>):
     : 'Linked as contributor';
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 const CODE_RE = /^[0-9]{5}$/;
 
 /**
@@ -447,12 +444,10 @@ export function parsePolledStatus(body: unknown): PolledCodeStatus | null {
 /** The query parameter that carries the wizard's code across a reload: `/onboarding?code=<id>`. */
 export const RESUME_PARAM = 'code';
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 /** The code id from the page's search params when it can be one (a uuid), else null. */
 export function parseResumeParam(value: string | string[] | undefined): string | null {
   const first = Array.isArray(value) ? value[0] : value;
-  return typeof first === 'string' && UUID_RE.test(first) ? first.toLowerCase() : null;
+  return typeof first === 'string' && isUuidLike(first) ? first.toLowerCase() : null;
 }
 
 /**

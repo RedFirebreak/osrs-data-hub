@@ -1,7 +1,8 @@
 /**
  * Pure helpers behind the sharing panel: labels for audiences, who can still be granted a category,
- * the PATCH body for each change and the message shown after it. Client-safe: type-only imports
- * (the category labels and defaults come from the server as props, NEXT-12), unit-tested.
+ * the PATCH body for each change and the message shown after it. Client-safe: only `import type`
+ * from @hub/server (NEXT-12); the category labels and defaults are @hub/core's, which
+ * CategoryAudiences imports itself. Unit-tested.
  */
 import type { Audience, Category } from '@hub/core';
 import type { ActiveMember, SharingContributor, SharingSettings } from '@hub/server';
