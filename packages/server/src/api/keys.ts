@@ -11,7 +11,7 @@ import { z } from 'zod';
 import { loadViewer } from '../accounts/access';
 import { loadVisibleAccounts } from '../accounts/load';
 import { audit } from '../audit';
-import { isUuid } from '../devices/util';
+import { isUuid } from '../uuid';
 import { formatKey, newKeyPrefix, newKeySecret } from './key-format';
 import { API_RATE_LIMIT, SERVICE_KEY_RATE_LIMIT } from './limits';
 import { isPublicIdLike } from './params';

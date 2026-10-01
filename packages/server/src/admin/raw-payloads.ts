@@ -6,9 +6,9 @@
 import { rawPayloads, type Db } from '@hub/db';
 import { and, desc, eq, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
 import { audit } from '../audit';
-import { isUuid } from '../devices/util';
 import type { IngestMeta } from '../ingest/types';
 import { clampLimit } from '../paging';
+import { isUuid } from '../uuid';
 import { AdminError } from './errors';
 
 export const RAW_PAYLOAD_PAGE_MAX = 200;
