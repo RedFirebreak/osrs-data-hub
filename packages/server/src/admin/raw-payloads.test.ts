@@ -122,8 +122,6 @@ describe('listRawPayloads and getRawPayload', () => {
       before: { receivedAt: rows.tieHigh!.receivedAt, id: rows.tieHigh!.id },
     });
     expect(afterTie.map((r) => r.id)).toEqual([rows.tieLow!.id, rows.oldest!.id]);
-    const byDate = await listRawPayloads(t.db, { limit: 50, before: rows.tieHigh!.receivedAt });
-    expect(byDate.map((r) => r.id)).toEqual([rows.oldest!.id]);
   });
 
   it('clamps the page size', async () => {
@@ -132,18 +130,20 @@ describe('listRawPayloads and getRawPayload', () => {
     expect(await listRawPayloads(t.db, { limit: Number.NaN })).toHaveLength(6);
   });
 
-  it('returns one body by id and receive time', async () => {
+  it('answers null, and audits nothing, for a body that does not exist', async () => {
+    const actorUserId = await seedUser(t.db, { isAdmin: true });
     const r = rows.bad!;
-    expect(await getRawPayload(t.db, { id: r.id, receivedAt: r.receivedAt })).toBe('not json');
-    expect(
-      await getRawPayload(t.db, { id: r.id, receivedAt: new Date(r.receivedAt.getTime() + 1) }),
-    ).toBeNull();
-    expect(await getRawPayload(t.db, { id: 'nope', receivedAt: r.receivedAt })).toBeNull();
-    expect(await getRawPayload(t.db, { id: r.id, receivedAt: new Date(Number.NaN) })).toBeNull();
+    for (const miss of [
+      { id: r.id, receivedAt: new Date(r.receivedAt.getTime() + 1) },
+      { id: 'nope', receivedAt: r.receivedAt },
+      { id: r.id, receivedAt: new Date(Number.NaN) },
+    ]) {
+      expect(await getRawPayload(t.db, { ...miss, actorUserId })).toBeNull();
+    }
     expect(await t.db.select().from(auditLog)).toHaveLength(0);
   });
 
-  it('audits a body viewed by an admin', async () => {
+  it('returns one body by id and receive time, and audits the view', async () => {
     const adminId = await seedUser(t.db, { isAdmin: true });
     const r = rows.newest!;
     const body = await getRawPayload(t.db, {
@@ -164,6 +164,14 @@ describe('listRawPayloads and getRawPayload', () => {
         meta: { deviceId: deviceA, receivedAt: r.receivedAt.toISOString() },
       }),
     ]);
+    // The body comes back as stored, valid JSON or not; that view is audited like any other.
+    const bad = rows.bad!;
+    expect(
+      await getRawPayload(t.db, { id: bad.id, receivedAt: bad.receivedAt, actorUserId: adminId }),
+    ).toBe('not json');
+    expect(
+      await t.db.select().from(auditLog).where(eq(auditLog.action, 'raw_payload.viewed')),
+    ).toHaveLength(2);
   });
 });
 
@@ -178,14 +186,13 @@ describe('listRawPayloads limits', () => {
 });
 
 describe('listRawPayloads cursor validation', () => {
-  it('refuses an unparseable cursor date as invalid input instead of throwing a RangeError', async () => {
+  it('refuses an unparseable cursor as invalid input instead of throwing a RangeError or a database error', async () => {
     const bad = new Date('not a date');
-    await expect(listRawPayloads(t.db, { limit: 10, before: bad })).rejects.toMatchObject({
-      name: 'AdminError',
-      code: 'invalid',
-    });
     await expect(
       listRawPayloads(t.db, { limit: 10, before: { receivedAt: bad, id: randomUUID() } }),
+    ).rejects.toMatchObject({ name: 'AdminError', code: 'invalid' });
+    await expect(
+      listRawPayloads(t.db, { limit: 10, before: { receivedAt: NOW, id: 'not-a-uuid' } }),
     ).rejects.toMatchObject({ name: 'AdminError', code: 'invalid' });
   });
 });

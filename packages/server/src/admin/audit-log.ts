@@ -3,6 +3,7 @@
  */
 import { auditLog, users, type Db } from '@hub/db';
 import { desc, eq, lt } from 'drizzle-orm';
+import { clampLimit } from '../paging';
 
 export const AUDIT_LOG_PAGE_MAX = 500;
 
@@ -29,9 +30,7 @@ export async function listAuditLog(
   db: Db,
   opts: { limit: number; before?: number },
 ): Promise<AuditLogRow[]> {
-  const limit = Number.isFinite(opts.limit)
-    ? Math.min(AUDIT_LOG_PAGE_MAX, Math.max(1, Math.floor(opts.limit)))
-    : AUDIT_LOG_PAGE_MAX;
+  const limit = clampLimit(opts.limit, AUDIT_LOG_PAGE_MAX, AUDIT_LOG_PAGE_MAX);
   const before =
     opts.before !== undefined && Number.isSafeInteger(opts.before) ? opts.before : undefined;
   return db

@@ -13,6 +13,8 @@ import {
 import { events, type DbOrTx } from '@hub/db';
 import { and, desc, inArray, lt, sql, type SQL } from 'drizzle-orm';
 import type { FeedEvent } from '../feed';
+import { EVENT_ROW_COLUMNS } from '../live/load';
+import { clampLimit } from '../paging';
 import {
   loadVisibleAccount,
   loadVisibleAccounts,
@@ -77,23 +79,7 @@ export async function feedForAccounts(
   const beforeSeq =
     opts.beforeSeq !== undefined && Number.isSafeInteger(opts.beforeSeq) ? opts.beforeSeq : null;
   const rows = await db
-    .select({
-      id: events.id,
-      seq: events.seq,
-      accountId: events.accountId,
-      type: events.type,
-      occurredAt: events.occurredAt,
-      receivedAt: events.receivedAt,
-      valueGp: events.valueGp,
-      itemId: events.itemId,
-      npcId: events.npcId,
-      skill: events.skill,
-      level: events.level,
-      tier: events.tier,
-      points: events.points,
-      specialWorld: events.specialWorld,
-      data: events.data,
-    })
+    .select(EVENT_ROW_COLUMNS)
     .from(events)
     .where(
       and(
@@ -104,7 +90,7 @@ export async function feedForAccounts(
       ),
     )
     .orderBy(desc(events.seq))
-    .limit(clampLimit(opts.limit));
+    .limit(clampLimit(opts.limit, FEED_MAX_LIMIT, FEED_DEFAULT_LIMIT));
   return rows.flatMap((row) => {
     const entry = byId.get(row.accountId);
     return entry ? toFeedEvents([row], entry) : [];
@@ -125,9 +111,4 @@ function guildFeedCondition(filter: GuildFeedFilter): SQL | undefined {
     );
   }
   return and(...conditions);
-}
-
-function clampLimit(limit: number | undefined): number {
-  if (limit === undefined || !Number.isFinite(limit)) return FEED_DEFAULT_LIMIT;
-  return Math.min(FEED_MAX_LIMIT, Math.max(1, Math.floor(limit)));
 }
