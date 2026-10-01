@@ -11,6 +11,7 @@ import {
   deviceAccounts,
   devices,
   equipmentChanges,
+  events,
   locationSamples,
   playSessions,
   session,
@@ -21,7 +22,7 @@ import {
   xpSamples,
 } from '@hub/db';
 import { createTestDatabase, type TestDatabase } from '@hub/db/testing';
-import { and, eq, lt } from 'drizzle-orm';
+import { and, eq, inArray, lt } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { loadVisibleAccounts, restrictAccess, type AccountWithAccess } from '../accounts/load';
 import {
@@ -615,5 +616,26 @@ describe('accountDocument', () => {
     const death = acc.events.find((e) => e.type === 'death')!;
     expect(JSON.stringify(death.data)).not.toContain('location');
     expect(death.data).toMatchObject({ type: 'death', data: { valueLost: 34906 } });
+  });
+
+  it('writes a stored event whose data is not an object as an empty object, like /events', async () => {
+    const stored = [
+      await seedEvent(t.db, mine.id, { type: 'loot', data: 'not an object' }),
+      await seedEvent(t.db, mine.id, { type: 'loot', data: [1, 2] }),
+    ];
+    try {
+      const { text } = await collect(accountDocument(await ctx(), await owned(['events'])));
+      const acc = JSON.parse(text) as { events: { id: string; data: unknown }[] };
+      for (const { id } of stored) {
+        expect(acc.events.find((e) => e.id === id)?.data).toEqual({});
+      }
+    } finally {
+      await t.db.delete(events).where(
+        inArray(
+          events.id,
+          stored.map((e) => e.id),
+        ),
+      );
+    }
   });
 });

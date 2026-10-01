@@ -42,6 +42,7 @@ import {
   wireSection,
   wireSkills,
   wireVitals,
+  wireWealthDay,
 } from './wire';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -240,7 +241,7 @@ async function* historyFields(
     yield ['equipment_changes', streamed(() => jsonArray(equipmentPages(ctx, id), wireChange))];
   }
   if (can('inventory')) {
-    yield ['wealth_days', streamed(() => jsonArray(wealthPages(ctx, id), wireWealth))];
+    yield ['wealth_days', streamed(() => jsonArray(wealthPages(ctx, id), wireWealthDay))];
   }
   if (can('location_history')) {
     yield ['location_trail', streamed(() => jsonArray(locationPages(ctx, id), wirePoint))];
@@ -487,10 +488,6 @@ function wealthPages(ctx: AccountExportContext, accountId: number) {
         .limit(limit),
     ctx.batchSize,
   );
-}
-
-function wireWealth(r: WealthRow) {
-  return { day: r.day, last_value: r.lastValue, max_value: r.maxValue };
 }
 
 type PointRow = {

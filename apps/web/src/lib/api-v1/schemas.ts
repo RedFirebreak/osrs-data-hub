@@ -710,3 +710,5 @@ export type WireLeaderboards = z.infer<typeof LeaderboardsData>;
 export type WireLootLeaderboard = z.infer<typeof LootLeaderboardData>;
 export type WireItem = z.infer<typeof Item>;
 export type WireSkills = z.infer<typeof Skills>;
+export type WireItems = z.infer<typeof Items>;
+export type WireSnapshotLocation = z.infer<typeof SnapshotLocation>;
