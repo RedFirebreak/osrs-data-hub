@@ -396,9 +396,13 @@ function wirePlay(r: SessionRow) {
   };
 }
 
-type ChangeRow = { id: number; changedAt: Date; equipment: unknown };
+type ChangeRow = { id: number; changedAt: Date; equipment: unknown; cursor: string };
 
-/** `equipment_changes`: the whole worn set after each change, oldest first. */
+/**
+ * `equipment_changes`: the whole worn set after each change, oldest first (changes of one instant
+ * by id). Paged on (changed_at, id), which equipment_changes_account_idx serves; by id alone no
+ * index has an account's rows in order, and every page sorted all that were left.
+ */
 function equipmentPages(ctx: AccountExportContext, accountId: number) {
   return keysetPages<ChangeRow>(
     (last, limit) =>
@@ -407,15 +411,20 @@ function equipmentPages(ctx: AccountExportContext, accountId: number) {
           id: equipmentChanges.id,
           changedAt: equipmentChanges.changedAt,
           equipment: equipmentChanges.equipment,
+          cursor: sql<string>`${equipmentChanges.changedAt}::text`,
         })
         .from(equipmentChanges)
         .where(
           and(
             eq(equipmentChanges.accountId, accountId),
-            last === null ? undefined : gt(equipmentChanges.id, last.id),
+            after(
+              sql`${equipmentChanges.changedAt}, ${equipmentChanges.id}`,
+              last && sql`${last.cursor}::timestamptz, ${last.id}::bigint`,
+            ),
           ),
         )
-        .orderBy(asc(equipmentChanges.id))
+        // See DB-15, mirrored: equipment_changes_account_idx read backward is ASC NULLS FIRST.
+        .orderBy(sql`${equipmentChanges.changedAt} ASC NULLS FIRST`, asc(equipmentChanges.id))
         .limit(limit),
     ctx.batchSize,
   );
