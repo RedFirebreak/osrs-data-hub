@@ -9,6 +9,7 @@ export { toFeedEvent, type EventRowLike, type FeedEvent } from './feed';
 export type { PluginResponse } from './plugin/protocol';
 export * from './ingest';
 export * from './pairing';
+export * from './rate-key';
 export * from './devices';
 export * from './settings';
 export * from './accounts';

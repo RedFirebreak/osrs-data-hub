@@ -30,7 +30,8 @@ import {
   storedVersionText,
   type PluginResponse,
 } from '../plugin/protocol';
-import { pairRateKey, type PairLimits } from './limits';
+import { pairRateKey } from '../rate-key';
+import type { PairLimits } from './limits';
 
 /** "HA Exporter 1.5 or newer is required. …" for a MIN_PLUGIN_VERSION ("1.5.1" keeps its patch). */
 export function outdatedPluginMessage(minPluginVersion: string): string {
