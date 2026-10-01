@@ -46,7 +46,10 @@ export function deviceApiPath(deviceId: string): string {
   return `/api/app/devices/${encodeURIComponent(deviceId)}`;
 }
 
-/** How a failed device request is told (failureMessage, lib/api-client.ts). */
+/**
+ * How a failed device request is told (failureMessage, lib/api-client.ts). A device to revoke that
+ * no longer exists was revoked elsewhere: the page is refreshed, so it leaves the connected list.
+ */
 export function deviceFailure(action: 'rename' | 'revoke'): FailureOptions {
   return {
     fallback:
@@ -54,5 +57,6 @@ export function deviceFailure(action: 'rename' | 'revoke'): FailureOptions {
         ? "Couldn't rename the device. Try again in a moment."
         : "Couldn't revoke the device. Try again in a moment.",
     notFound: 'This device no longer exists. Reload the page.',
+    refreshOnNotFound: action === 'revoke',
   };
 }

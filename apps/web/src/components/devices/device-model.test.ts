@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { failureMessage } from '@/lib/api-client';
+import { failureMessage, refreshesPage } from '@/lib/api-client';
 import {
   UNNAMED_DEVICE,
   deviceApiPath,
@@ -35,5 +35,13 @@ describe('device-model', () => {
     expect(failureMessage(400, invalid, deviceFailure('rename'))).toBe('The request is invalid.');
     expect(failureMessage(503, {}, deviceFailure('revoke'))).toMatch(/Couldn't revoke/);
     expect(failureMessage(500, invalid, deviceFailure('rename'))).toMatch(/Couldn't rename/);
+  });
+
+  it('refreshes the page when the device to revoke is already gone, or the session is', () => {
+    expect(refreshesPage(404, deviceFailure('revoke'))).toBe(true);
+    expect(refreshesPage(401, deviceFailure('revoke'))).toBe(true);
+    expect(refreshesPage(401, deviceFailure('rename'))).toBe(true);
+    expect(refreshesPage(404, deviceFailure('rename'))).toBe(false);
+    expect(refreshesPage(503, deviceFailure('revoke'))).toBe(false);
   });
 });

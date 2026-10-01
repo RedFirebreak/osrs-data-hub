@@ -4,7 +4,8 @@
  * /api/app/devices/[id]. The token stops working at once; the plugin disables the connection when
  * its next send is answered 401 (handoff §3.2). The dialog stays open (and says why) when the
  * request fails. After a revoke the card moves to "Revoked devices", taking this button with it: the
- * focus goes to the heading of the section it was in, not to <body>.
+ * focus goes to the heading of the section it was in, not to <body>. A device that was already
+ * revoked elsewhere (404) leaves the connected list as well (deviceFailure).
  */
 import { BanIcon } from 'lucide-react';
 import { toast } from 'sonner';

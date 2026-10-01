@@ -2,7 +2,9 @@
 /**
  * The state behind an account's sharing controls (the account page's panel and the wizard's last
  * step): the settings as the server last returned them, and one PATCH
- * /api/app/accounts/[publicId]/sharing per change (D-36), with a toast for its outcome.
+ * /api/app/accounts/[publicId]/sharing per change (D-36), with a toast for its outcome. A change
+ * refused because the session ended (401) also refreshes the page, which sends the user to /login
+ * (useApiRequest).
  *
  * Focus (lib/focus.ts): the controls are disabled while a change runs, and some go away with it, so
  * the browser drops the focus to <body>. `apply` takes the id of a control that stays; once the
@@ -12,9 +14,10 @@ import type { ActiveMember, SharingSettings } from '@hub/server';
 import { useEffect, useEffectEvent, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import type { SharingChange } from '@/app/api/app/accounts/sharing-change';
-import { NO_RESPONSE, apiErrorMessage, sendJson } from '@/lib/api-client';
+import { NO_RESPONSE, sendJson } from '@/lib/api-client';
 import { focusIsLost, moveFocus, type FocusTarget } from '@/lib/focus';
-import { errorMessage, successMessage } from './sharing-model';
+import { useApiRequest } from '@/lib/use-api-request';
+import { changeFailureMessage, successMessage } from './sharing-model';
 
 interface PatchResponse {
   sharing?: SharingSettings | null;
@@ -52,7 +55,7 @@ export function useSharing(
   options: UseSharingOptions = {},
 ): Sharing {
   const [settings, setSettings] = useState(initial);
-  const [pending, setPending] = useState(false);
+  const { pending, send } = useApiRequest();
   const [members, setMembers] = useState<ActiveMember[] | null>(null);
   /** Id of the control that gets the focus back once the running change settled (effect below). */
   const refocusId = useRef<string | null>(null);
@@ -91,18 +94,13 @@ export function useSharing(
     refocus?: string,
   ): Promise<void> {
     refocusId.current = refocus ?? null;
-    setPending(true);
-    const res = await sendJson(`/api/app/accounts/${encodeURIComponent(publicId)}/sharing`, {
-      method: 'PATCH',
-      json: change,
-    });
-    setPending(false);
-    if (res.status === NO_RESPONSE) {
-      toast.error("That change couldn't be saved. Check your connection and try again.");
-      return;
-    }
+    const res = await send(
+      `/api/app/accounts/${encodeURIComponent(publicId)}/sharing`,
+      { method: 'PATCH', json: change },
+      "That change couldn't be saved.",
+    );
     if (!res.ok) {
-      toast.error(errorMessage(apiErrorMessage(res.body, ''), "That change couldn't be saved."));
+      toast.error(changeFailureMessage(res.status, res.body));
       return;
     }
     const body = res.body as PatchResponse | null;
