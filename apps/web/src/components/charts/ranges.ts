@@ -29,10 +29,6 @@ const RANGE_MS: Readonly<Record<Exclude<XpRange, 'all'>, number>> = {
 /** 'all' without a known first-seen time: ten years back (the hub keeps daily XP forever). */
 const ALL_FALLBACK_MS = 10 * 365 * DAY_MS;
 
-export function isXpRange(value: unknown): value is XpRange {
-  return typeof value === 'string' && (XP_RANGES as readonly string[]).includes(value);
-}
-
 /**
  * The window for a preset ending at `now`: `to` = now, `from` = now − the preset's length; 'all'
  * starts at the account's first-seen time (or ten years back when unknown or invalid). `from` is

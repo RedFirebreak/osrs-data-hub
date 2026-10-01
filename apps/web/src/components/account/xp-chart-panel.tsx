@@ -4,12 +4,14 @@
  * (24 hours … all time) above a step line of the skill's XP, fetched from
  * GET /api/app/accounts/[publicId]/xp with resolution auto (5 min up to 7 days, hourly up to 90, daily
  * beyond; handoff §9). While a new range loads, the previous chart stays, dimmed. The chart itself is
- * the lazy EChart (echarts never loads on the server).
+ * the lazy EChart (echarts never loads on the server). The dates it writes (the tooltip, "since …")
+ * are in the viewer's time zone from Settings, handed in by the page; the time axis's own tick labels
+ * are placed by ECharts in the browser's zone.
  */
 import { formatGain } from '@hub/core';
 import type { XpSeries } from '@hub/server';
 import { AlertCircleIcon, RotateCwIcon } from 'lucide-react';
-import { useCallback, useEffect, useId, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ChartSkeleton, LazyEChart } from '@/components/charts/lazy-echart';
 import { xpChartOption, type ChartTheme } from '@/components/charts/options';
 import {
@@ -20,14 +22,9 @@ import {
   type XpRange,
 } from '@/components/charts/ranges';
 import { Button } from '@/components/ui/button';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { cn } from '@/lib/utils';
+import { formatInZone } from './dates';
+import { SkillSelect, defaultSkill } from './skill-select';
 
 export interface XpChartPanelProps {
   publicId: string;
@@ -35,7 +32,8 @@ export interface XpChartPanelProps {
   skills: readonly string[];
   /** The account's first-seen time (ISO), where "All time" starts. */
   firstSeen: string;
-  defaultRange?: XpRange;
+  /** The viewer's time zone (Settings), for the dates in the tooltip and the "since …" text. */
+  timezone: string;
 }
 
 interface Loaded {
@@ -61,15 +59,9 @@ const SHORT_RANGE_LABELS: Readonly<Record<XpRange, string>> = {
   all: 'All',
 };
 
-export function XpChartPanel({
-  publicId,
-  skills,
-  firstSeen,
-  defaultRange = '30d',
-}: XpChartPanelProps) {
-  const id = useId();
-  const [skill, setSkill] = useState(skills.includes('Overall') ? 'Overall' : (skills[0] ?? ''));
-  const [range, setRange] = useState<XpRange>(defaultRange);
+export function XpChartPanel({ publicId, skills, firstSeen, timezone }: XpChartPanelProps) {
+  const [skill, setSkill] = useState(() => defaultSkill(skills));
+  const [range, setRange] = useState<XpRange>('30d');
   const [attempt, setAttempt] = useState(0);
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [failed, setFailed] = useState<Failed | null>(null);
@@ -99,11 +91,17 @@ export function XpChartPanel({
     (theme: ChartTheme) =>
       xpChartOption(
         loaded
-          ? { skill: loaded.skill, points: loaded.points, from: loaded.from, to: loaded.to }
-          : { skill, points: [], from: new Date(), to: new Date() },
+          ? {
+              skill: loaded.skill,
+              points: loaded.points,
+              from: loaded.from,
+              to: loaded.to,
+              timezone,
+            }
+          : { skill, points: [], from: new Date(), to: new Date(), timezone },
         theme,
       ),
-    [loaded, skill],
+    [loaded, skill, timezone],
   );
 
   const error = failed?.key === key ? failed.error : null;
@@ -113,23 +111,12 @@ export function XpChartPanel({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <label htmlFor={`${id}-skill`} className="sr-only">
-            Skill
-          </label>
-          <Select value={skill} onValueChange={setSkill}>
-            <SelectTrigger id={`${id}-skill`} size="sm" className="min-w-36">
-              <SelectValue placeholder="Skill" />
-            </SelectTrigger>
-            <SelectContent position="popper" className="max-h-72">
-              {skills.map((s) => (
-                <SelectItem key={s} value={s}>
-                  {s}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        <SkillSelect
+          skills={skills}
+          value={skill}
+          onChange={setSkill}
+          className="flex items-center gap-2"
+        />
         <div
           role="group"
           aria-label="Time range"
@@ -161,7 +148,7 @@ export function XpChartPanel({
               {formatGain(gained)} XP
             </span>{' '}
             in {loaded.skill}{' '}
-            {trackedSince(firstSeen, loaded.from) ??
+            {trackedSince(firstSeen, loaded.from, timezone) ??
               `over ${XP_RANGE_LABELS[loaded.range].toLowerCase()}`}
           </>
         ) : busy ? (
@@ -204,16 +191,16 @@ export function XpChartPanel({
   );
 }
 
-const SINCE_DAY = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' });
-
 /**
- * "since Sep 29, when the hub first saw it" when the account is younger than the range: "0 XP over
- * 30 days" would claim a month of history the hub doesn't have. Null otherwise.
+ * "since 29 Sep, when the hub first saw this account" when the account is younger than the range:
+ * "0 XP over 30 days" would claim a month of history the hub doesn't have. Null otherwise. The day is
+ * the one in `timezone` (the viewer's, from Settings), as everywhere else on the account page.
  */
-function trackedSince(firstSeen: string, from: Date): string | null {
+export function trackedSince(firstSeen: string, from: Date, timezone: string): string | null {
   const first = Date.parse(firstSeen);
   if (!Number.isFinite(first) || first <= from.getTime()) return null;
-  return `since ${SINCE_DAY.format(new Date(first))}, when the hub first saw this account`;
+  const day = formatInZone(new Date(first), timezone, { day: 'numeric', month: 'short' });
+  return `since ${day}, when the hub first saw this account`;
 }
 
 /** XP gained over the loaded points (last − first); null with fewer than one point. */

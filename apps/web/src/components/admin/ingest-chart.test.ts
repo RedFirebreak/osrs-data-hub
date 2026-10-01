@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { FALLBACK_THEME } from '@/components/charts/options';
+import { FALLBACK_THEME, type ChartTheme } from '@/components/charts/options';
+import { httpStatusLabel } from './admin-model';
 import {
   PAYLOAD_SERIES,
   minuteTooltip,
@@ -83,6 +84,110 @@ describe('payloadsPerMinuteOption', () => {
     expect(html).toMatch(/background:#0a8.*401 [^<]*, not archived/);
     expect(html).not.toContain('<b>');
     expect(html).toContain('&lt;b&gt;');
+  });
+
+  it('builds this whole option (pins what the shared chart helpers produce)', () => {
+    const theme: ChartTheme = {
+      dark: false,
+      mutedText: '#111111',
+      text: '#222222',
+      grid: '#333333',
+      tooltipBackground: '#444444',
+      tooltipBorder: '#555555',
+      fontFamily: 'Test Sans',
+      series: ['#aa0000', '#00bb00', '#0000cc'],
+    };
+    const two = [points[1]!, points[4]!];
+    const option = payloadsPerMinuteOption(two, theme);
+    const time = (iso: string) =>
+      new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' }).format(
+        new Date(iso),
+      );
+    const bar = (name: string, color: string, data: BarItem[]) => ({
+      type: 'bar',
+      name,
+      stack: 'payloads',
+      barMaxWidth: 24,
+      data,
+      color,
+      itemStyle: { color, borderColor: '#444444', borderWidth: 1 },
+      emphasis: { itemStyle: { opacity: 0.85 } },
+    });
+    const item = (value: number | '-', borderRadius: number[]): BarItem => ({
+      value,
+      itemStyle: { borderRadius },
+    });
+    expect(option).toStrictEqual({
+      animation: false,
+      textStyle: { fontFamily: 'Test Sans' },
+      grid: {
+        left: 4,
+        right: 12,
+        top: 36,
+        bottom: 4,
+        outerBoundsMode: 'same',
+        outerBoundsContain: 'axisLabel',
+      },
+      legend: {
+        top: 0,
+        left: 0,
+        icon: 'roundRect',
+        itemWidth: 10,
+        itemHeight: 10,
+        textStyle: { color: '#111111', fontFamily: 'Test Sans', fontSize: 12 },
+        data: ['Accepted (200)', 'Other statuses', 'Rejected, not archived'],
+      },
+      tooltip: {
+        confine: true,
+        trigger: 'axis',
+        axisPointer: { type: 'shadow', shadowStyle: { opacity: 0.08 } },
+        backgroundColor: '#444444',
+        borderColor: '#555555',
+        borderWidth: 1,
+        padding: [6, 10],
+        textStyle: { color: '#222222', fontFamily: 'Test Sans', fontSize: 12 },
+        extraCssText: 'border-radius: 8px; box-shadow: 0 4px 12px rgb(0 0 0 / 0.12);',
+        formatter: expect.any(Function),
+      },
+      xAxis: {
+        type: 'category',
+        data: [time(two[0]!.minute), time(two[1]!.minute)],
+        axisLine: { lineStyle: { color: '#333333' } },
+        axisTick: { show: false },
+        axisLabel: { color: '#111111', fontFamily: 'Test Sans', fontSize: 11, hideOverlap: true },
+      },
+      yAxis: {
+        type: 'value',
+        minInterval: 1,
+        axisLabel: { color: '#111111', fontFamily: 'Test Sans', fontSize: 11 },
+        splitLine: { lineStyle: { color: '#333333', width: 1 } },
+      },
+      series: [
+        bar('Accepted (200)', '#aa0000', [item(1, SQUARE), item(3, SQUARE)]),
+        bar('Other statuses', '#00bb00', [item(3, ROUND), item('-', SQUARE)]),
+        bar('Rejected, not archived', '#0000cc', [item('-', ROUND), item(2, ROUND)]),
+      ],
+    });
+
+    const row = (color: string, count: string, label: string) =>
+      `<div style="display:flex;align-items:center;gap:6px">` +
+      `<span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${color}"></span>` +
+      `<strong>${count}</strong><span style="opacity:.7">${label}</span></div>`;
+    const formatter = (option.tooltip as { formatter: (p: unknown) => string }).formatter;
+    expect(formatter([{ dataIndex: 1 }])).toBe(
+      `<div style="opacity:.7;margin-bottom:2px">${time(two[1]!.minute)} · 5 payloads</div>` +
+        row('#aa0000', '3', `200 ${httpStatusLabel('200')}`) +
+        row('#0000cc', '2', `401 ${httpStatusLabel('401')}, not archived`),
+    );
+    expect(formatter({ dataIndex: 0 })).toBe(
+      `<div style="opacity:.7;margin-bottom:2px">${time(two[0]!.minute)} · 4 payloads</div>` +
+        row('#aa0000', '1', `200 ${httpStatusLabel('200')}`) +
+        row('#00bb00', '2', `503 ${httpStatusLabel('503')}`) +
+        row('#00bb00', '1', `pending ${httpStatusLabel('pending')}`),
+    );
+    expect(formatter([{ dataIndex: 7 }])).toBe('');
+    expect(formatter([])).toBe('');
+    expect(formatter([5])).toBe('');
   });
 
   it('summarizes the window for screen readers', () => {

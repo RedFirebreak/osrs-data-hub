@@ -13,8 +13,7 @@ import { useTheme } from 'next-themes';
 import Link from 'next/link';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { initialsOf } from '@/components/account/user-avatar';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { UserAvatar } from '@/components/account/user-avatar';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -58,11 +57,8 @@ export function UserMenu({ name, image, isAdmin }: UserMenuProps) {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" className="h-9 gap-2 px-1.5">
-          <Avatar size="sm">
-            {image && <AvatarImage src={image} alt="" />}
-            {/* The same initials as everywhere else the user appears (member lists, account pages). */}
-            <AvatarFallback>{initialsOf(name)}</AvatarFallback>
-          </Avatar>
+          {/* The same avatar as everywhere else the user appears (member lists, account pages). */}
+          <UserAvatar name={name} image={image} />
           <span className="hidden max-w-36 truncate sm:inline">{name}</span>
           <ChevronDownIcon aria-hidden className="text-muted-foreground" />
           <span className="sr-only">Open the account menu</span>

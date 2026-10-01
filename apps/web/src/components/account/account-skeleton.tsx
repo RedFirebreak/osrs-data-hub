@@ -3,19 +3,8 @@
  * it in a <Suspense> after its visibility check, not as the segment's loading.tsx, so an unknown or
  * invisible account still answers 404 (NEXT-14).
  */
+import { CardSkeleton } from '@/components/shell/card-skeleton';
 import { Skeleton } from '@/components/ui/skeleton';
-
-function CardSkeleton({ rows, chart = false }: { rows: number; chart?: boolean }) {
-  return (
-    <div className="flex flex-col gap-4 rounded-xl p-4 ring-1 ring-foreground/10">
-      <Skeleton className="h-5 w-32" />
-      {chart && <Skeleton className="h-64 w-full rounded-lg" />}
-      {Array.from({ length: rows }, (_, i) => (
-        <Skeleton key={i} className="h-5 w-full" />
-      ))}
-    </div>
-  );
-}
 
 export function AccountSkeleton() {
   return (
@@ -28,7 +17,7 @@ export function AccountSkeleton() {
       <div className="grid items-start gap-6 lg:grid-cols-3">
         <div className="flex flex-col gap-6 lg:col-span-2">
           <CardSkeleton rows={10} />
-          <CardSkeleton rows={0} chart />
+          <CardSkeleton chart />
           <CardSkeleton rows={4} />
         </div>
         <div className="flex flex-col gap-6">

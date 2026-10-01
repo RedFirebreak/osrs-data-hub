@@ -14,7 +14,9 @@ import { Suspense } from 'react';
 import { AccountCard } from '@/components/accounts/account-card';
 import { OnlineNow } from '@/components/live/online-now';
 import { AutoRefresh } from '@/components/shell/auto-refresh';
+import { CardSkeleton } from '@/components/shell/card-skeleton';
 import { PageHeader } from '@/components/shell/page-header';
+import { StatusIcon } from '@/components/shell/status-page';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -45,7 +47,7 @@ export default async function DashboardPage() {
       <Suspense fallback={<DashboardSkeleton />}>
         <DashboardContent userId={user.id} viewer={viewer} />
       </Suspense>
-      <AutoRefresh everyMs={60_000} />
+      <AutoRefresh />
     </div>
   );
 }
@@ -80,12 +82,7 @@ async function DashboardContent({ userId, viewer }: { userId: string; viewer: Vi
 function EmptyDashboard() {
   return (
     <Card className="items-center px-4 py-10 text-center">
-      <span
-        aria-hidden
-        className="flex size-12 items-center justify-center rounded-full bg-muted text-muted-foreground"
-      >
-        <PlugZapIcon className="size-6" />
-      </span>
+      <StatusIcon icon={PlugZapIcon} />
       <CardHeader className="w-full justify-items-center">
         <CardTitle className="text-lg">
           <h2>Connect RuneLite to see your accounts</h2>
@@ -118,8 +115,7 @@ function DashboardSkeleton() {
       <Skeleton className="h-6 w-40" />
       <div className="grid gap-4 lg:grid-cols-2">
         {[0, 1].map((i) => (
-          <div key={i} className="flex flex-col gap-4 rounded-xl p-4 ring-1 ring-foreground/10">
-            <Skeleton className="h-6 w-1/2" />
+          <CardSkeleton key={i} headingClassName="h-6 w-1/2">
             <Skeleton className="h-4 w-1/3" />
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               {[0, 1, 2, 3].map((j) => (
@@ -129,7 +125,7 @@ function DashboardSkeleton() {
             {[0, 1, 2].map((j) => (
               <Skeleton key={j} className="h-8" />
             ))}
-          </div>
+          </CardSkeleton>
         ))}
       </div>
     </div>

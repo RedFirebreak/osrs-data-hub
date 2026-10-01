@@ -399,9 +399,11 @@ test('screenshots of every page', { tag: '@screenshots' }, async ({ browser, req
     for (const [url, name] of [
       ['/admin', 'admin-users'],
       ['/admin/devices', 'admin-devices'],
+      ['/admin/integrations', 'admin-integrations'],
       ['/admin/ingest', 'admin-ingest'],
       ['/admin/payloads', 'admin-payloads'],
       ['/admin/audit', 'admin-audit'],
+      ['/admin/settings', 'admin-settings'],
       ['/admin/config', 'admin-config'],
       ['/admin/decommission', 'admin-decommission'],
     ] as const) {

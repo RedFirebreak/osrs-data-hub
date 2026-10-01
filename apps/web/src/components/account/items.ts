@@ -189,12 +189,28 @@ export function mergeStacks(items: readonly ItemData[]): MergedStack[] {
   );
 }
 
-/** 1500 → "1.5K", 10_000_000 → "10M" (the in-game stack notation); below 100K the exact count. */
+/** 150_000 → "150K", 12_345_678 → "12M" (the in-game stack notation); below 100K the exact count. */
 export function stackLabel(quantity: number): string {
   if (!Number.isFinite(quantity)) return '0';
   if (quantity >= 10_000_000) return `${Math.floor(quantity / 1_000_000)}M`;
   if (quantity >= 100_000) return `${Math.floor(quantity / 1_000)}K`;
   return String(Math.floor(quantity));
+}
+
+/**
+ * The in-game coin-stack colour of an amount, as text classes readable in both themes: yellow below
+ * 100K, white from 100K, green from 10M (stackLabel's steps). Used for stack sizes on item tiles and,
+ * with `onBadge`, for GP values on a filled badge. The dark theme's green differs between the two
+ * (emerald-400 on a tile, emerald-300 on a badge); each keeps the shade it had.
+ */
+export function stackTone(amount: number, onBadge = false): string {
+  if (amount >= 10_000_000) {
+    return onBadge
+      ? 'text-emerald-700 dark:text-emerald-300'
+      : 'text-emerald-700 dark:text-emerald-400';
+  }
+  if (amount >= 100_000) return 'text-foreground';
+  return 'text-amber-700 dark:text-amber-300';
 }
 
 export interface MeterFill {

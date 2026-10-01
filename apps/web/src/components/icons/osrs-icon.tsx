@@ -34,8 +34,6 @@ export interface OsrsImageProps {
   height: number;
   /** Empty (decorative) by default: the text beside or behind the icon names it. */
   alt?: string;
-  /** Crisp pixels for a sprite drawn larger than its file (the skill and slot sprites). */
-  pixelated?: boolean;
   className?: string;
   /** Shown when there is no icon or it failed to load. */
   fallback?: React.ReactNode;
@@ -47,7 +45,6 @@ export function OsrsImage({
   width,
   height,
   alt = '',
-  pixelated = false,
   className,
   fallback = null,
 }: OsrsImageProps) {
@@ -79,7 +76,7 @@ export function OsrsImage({
       decoding="async"
       draggable={false}
       onError={() => setFailed(src)}
-      className={cn('select-none', pixelated && '[image-rendering:pixelated]', className)}
+      className={cn('select-none', className)}
     />
   );
 }

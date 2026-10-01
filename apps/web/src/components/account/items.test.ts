@@ -13,6 +13,7 @@ import {
   slotLabel,
   spellbookLabel,
   stackLabel,
+  stackTone,
 } from './items';
 
 const shark: ItemData = { id: 385, name: 'Shark', gePrice: 900, quantity: 1 };
@@ -150,6 +151,15 @@ describe('small labels', () => {
     expect(stackLabel(99_999)).toBe('99999');
     expect(stackLabel(100_000)).toBe('100K');
     expect(stackLabel(12_345_678)).toBe('12M');
+  });
+
+  it('colours stacks the in-game way, with its own dark green on a badge', () => {
+    expect(stackTone(99_999)).toBe('text-amber-700 dark:text-amber-300');
+    expect(stackTone(100_000)).toBe('text-foreground');
+    expect(stackTone(10_000_000)).toBe('text-emerald-700 dark:text-emerald-400');
+    expect(stackTone(99_999, true)).toBe(stackTone(99_999));
+    expect(stackTone(100_000, true)).toBe(stackTone(100_000));
+    expect(stackTone(10_000_000, true)).toBe('text-emerald-700 dark:text-emerald-300');
   });
 
   it('capitalises spellbooks and session end reasons', () => {

@@ -7,6 +7,7 @@ import { formatDuration } from '@hub/core';
 import type { PlaySession } from '@hub/server';
 import { PlaytimeChart } from '@/components/charts/playtime-chart';
 import type { PlaytimeDay } from '@/components/charts/options';
+import { Stat } from '@/components/shell/stat';
 import { Badge } from '@/components/ui/badge';
 import { DATE_TIME_OPTIONS, formatInZone } from './dates';
 import { sessionEndLabel } from './items';
@@ -20,15 +21,6 @@ export interface ActivityContentProps {
   /** Playtime per local day, oldest first (playtimeByDay). */
   playtime: readonly PlaytimeDay[];
   timezone: string;
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="min-w-0">
-      <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className="text-base font-semibold tabular-nums">{value}</dd>
-    </div>
-  );
 }
 
 export function ActivityContent({ sessions, playtime, timezone }: ActivityContentProps) {
