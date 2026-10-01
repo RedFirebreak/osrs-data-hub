@@ -1,42 +1,20 @@
 /**
- * API keys for the public, pull-only REST API (handoff §13, D-69, D-70, D-76): create, list, revoke,
- * and authenticate a request's bearer key into an ApiPrincipal. Service keys (D-88) share the table,
- * the format and the authentication; their management is in service-keys.ts.
- *
- * A key is `ohub_<prefix>_<secret>`: a 10-character base62 prefix, unique and stored in clear so a
- * lookup is an index hit and the owner can recognise the key, and a 43-character base62 secret
- * (≈ 256 bits) of which only sha256 is stored. The key is shown once, at creation.
+ * API keys for the public, pull-only REST API (handoff §13, D-69, D-70, D-76): a member's own keys
+ * (create, list, revoke) and what they share with service keys (D-88, managed in service-keys.ts):
+ * the row, its status and rate limit, and the fields both kinds are created with. The key format is
+ * in key-format.ts, authenticating a request in key-auth.ts.
  */
-import { randomBytes } from 'node:crypto';
-import {
-  CATEGORIES,
-  GUILD_AUDIENCE,
-  constantTimeEqual,
-  isCategory,
-  sha256Hex,
-  type Category,
-  type Principal,
-} from '@hub/core';
-import {
-  apiKeys,
-  osrsAccounts,
-  pgErrorCode,
-  users,
-  type ApiKeyKind,
-  type Db,
-  type DbOrTx,
-} from '@hub/db';
+import { CATEGORIES, sha256Hex, type Category } from '@hub/core';
+import { apiKeys, osrsAccounts, users, type ApiKeyKind, type Db, type DbOrTx } from '@hub/db';
 import { and, count, desc, eq, gt, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
 import { z } from 'zod';
 import { loadViewer } from '../accounts/access';
 import { loadVisibleAccounts } from '../accounts/load';
 import { audit } from '../audit';
 import { isUuid } from '../devices/util';
-import { getLogger } from '../logger';
+import { formatKey, newKeyPrefix, newKeySecret } from './key-format';
 import { API_RATE_LIMIT, SERVICE_KEY_RATE_LIMIT } from './limits';
 
-/** Every key starts with this; the part after it is `<prefix>_<secret>`. */
-export const API_KEY_PREFIX = 'ohub_';
 /** Most active (neither revoked nor expired) keys one user may hold at once (D-69). */
 export const MAX_ACTIVE_KEYS = 10;
 /** Longest key name, in characters (code points), after trimming. */
@@ -45,18 +23,7 @@ export const API_KEY_NAME_MAX = 64;
 export const API_KEY_MAX_EXPIRY_DAYS = 365;
 /** Most accounts a key with an explicit account list may name. */
 export const MAX_KEY_ACCOUNTS = 500;
-/** How often `last_used_at` is written per key at most. */
-export const LAST_USED_RESOLUTION_MS = 60_000;
 
-const PREFIX_LENGTH = 10;
-const SECRET_LENGTH = 43;
-const BASE62 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
-const KEY_RE = /^ohub_([0-9A-Za-z]{10})_([0-9A-Za-z]{43})$/;
-const BEARER_RE = /^bearer +(\S+)$/i;
-/** Longer Authorization headers are refused before any parsing. */
-const MAX_AUTHORIZATION_LENGTH = 512;
-/** Compared against when no key has the prefix, so both failures do the same work (see below). */
-const NO_KEY_HASH = '0'.repeat(64);
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export type ApiKeyScope = 'all_visible' | 'list';
@@ -214,19 +181,6 @@ export function apiKeyStatus(
   return 'active';
 }
 
-/** `length` base62 characters from crypto randomness, unbiased (bytes ≥ 248 = 4 × 62 are dropped). */
-function randomBase62(length: number): string {
-  let out = '';
-  while (out.length < length) {
-    for (const byte of randomBytes(length + 8)) {
-      if (byte >= 248) continue;
-      out += BASE62.charAt(byte % 62);
-      if (out.length === length) break;
-    }
-  }
-  return out;
-}
-
 /** `schema.parse(input)`, but a failure is ApiKeyError 'invalid' with the field issues. */
 export function parseKeyInput<S extends z.ZodType>(schema: S, input: unknown): z.output<S> {
   const parsed = schema.safeParse(input);
@@ -321,16 +275,6 @@ export async function createApiKey(
   });
 }
 
-/** The secret part of a new key. */
-export function newKeySecret(): string {
-  return randomBase62(SECRET_LENGTH);
-}
-
-/** `ohub_<prefix>_<secret>`. */
-export function formatKey(prefix: string, secret: string): string {
-  return `${API_KEY_PREFIX}${prefix}_${secret}`;
-}
-
 /** `expiresInDays` from now, or null for "never". */
 export function expiryFrom(expiresInDays: number | null | undefined, now: Date): Date | null {
   return expiresInDays === undefined || expiresInDays === null
@@ -388,7 +332,7 @@ export async function insertWithFreshPrefix(
   for (let attempt = 0; attempt < 5; attempt++) {
     const [row] = await tx
       .insert(apiKeys)
-      .values({ ...values, prefix: randomBase62(PREFIX_LENGTH) })
+      .values({ ...values, prefix: newKeyPrefix() })
       .onConflictDoNothing({ target: apiKeys.prefix })
       .returning();
     if (row) return row;
@@ -526,140 +470,4 @@ export async function revokeApiKey(
       .where(and(eq(apiKeys.id, opts.keyId), scope));
     return existing.length > 0;
   });
-}
-
-/**
- * Who a request acts as: the key and whom the resolver evaluates for it. For a user key, `viewer` is
- * the creator as the resolver sees them, with isAdmin always false (no admin override through the
- * API, D-70) and `userId` the creator; for a service key (D-88), `viewer` is the guild audience
- * (GUILD_AUDIENCE, D-89) and `userId` is null. `categories` are the key's; `accountIds` its explicit
- * account list (internal ids), or null for 'all_visible' (always null for service keys). What the
- * key may read is evaluated on every request from these (api/access.ts).
- */
-export interface ApiPrincipal {
-  keyId: string;
-  kind: ApiKeyKind;
-  userId: string | null;
-  viewer: Principal;
-  categories: ReadonlySet<Category>;
-  accountIds: ReadonlySet<number> | null;
-  /** Requests per sliding minute this key may make (D-72, D-88). */
-  rateLimitPerMinute: number;
-}
-
-/**
- * Why a request's key was refused (all answered 401; the web doesn't tell them apart):
- * missing (no Authorization header), malformed (not `Bearer ohub_<prefix>_<secret>`), unknown (no key
- * with that prefix, or a wrong secret: indistinguishable on purpose), revoked, expired, inactive_user
- * (a user key whose creator is in grace or gone; never a service key, which has no user).
- */
-export type ApiAuthFailure =
-  'missing' | 'malformed' | 'unknown' | 'revoked' | 'expired' | 'inactive_user';
-
-export type ApiAuthResult =
-  { ok: true; principal: ApiPrincipal } | { ok: false; reason: ApiAuthFailure };
-
-/**
- * Authenticates an `Authorization` header value: `Bearer ohub_<prefix>_<secret>` exactly (the scheme
- * name is case-insensitive, RFC 7235; the key is not). The key is looked up by prefix and
- * sha256(secret) is compared in constant time; an unknown prefix is compared against a placeholder
- * hash, so an unknown prefix and a wrong secret do the same work and give the same reason. Only a
- * key whose secret matched can come back as revoked or expired. Then the creator is loaded
- * (loadViewer) and must be active.
- *
- * On success, `last_used_at` is written when it is older than LAST_USED_RESOLUTION_MS (one small
- * UPDATE, skipped when the loaded row is recent and never waiting for a row lock); a failure there is
- * logged by code and never fails the request.
- */
-export async function authenticateApiKey(
-  db: DbOrTx,
-  authorization: string | null | undefined,
-  now: Date = new Date(),
-): Promise<ApiAuthResult> {
-  if (typeof authorization !== 'string' || authorization.trim() === '') {
-    return { ok: false, reason: 'missing' };
-  }
-  if (authorization.length > MAX_AUTHORIZATION_LENGTH) return { ok: false, reason: 'malformed' };
-  const token = BEARER_RE.exec(authorization.trim())?.[1];
-  const parts = token === undefined ? null : KEY_RE.exec(token);
-  const prefix = parts?.[1];
-  const secret = parts?.[2];
-  if (prefix === undefined || secret === undefined) return { ok: false, reason: 'malformed' };
-
-  const [row] = await db.select().from(apiKeys).where(eq(apiKeys.prefix, prefix));
-  const matches = constantTimeEqual(sha256Hex(secret), row?.secretHash ?? NO_KEY_HASH);
-  if (!row || !matches) return { ok: false, reason: 'unknown' };
-  if (row.revokedAt !== null) return { ok: false, reason: 'revoked' };
-  if (row.expiresAt !== null && row.expiresAt.getTime() <= now.getTime()) {
-    return { ok: false, reason: 'expired' };
-  }
-  const categories = new Set(row.categories.filter(isCategory));
-  const rateLimitPerMinute = keyRateLimit(row);
-  if (row.kind === 'service') {
-    // Belongs to no user (D-88): nothing to load, and no offboarding can have touched it.
-    await touchLastUsed(db, row, now);
-    return {
-      ok: true,
-      principal: {
-        keyId: row.id,
-        kind: 'service',
-        userId: null,
-        viewer: GUILD_AUDIENCE,
-        categories,
-        accountIds: null,
-        rateLimitPerMinute,
-      },
-    };
-  }
-  // A user key always has its user (the table's check constraint); fail closed otherwise.
-  const viewer = row.userId === null ? null : await loadViewer(db, row.userId);
-  if (!viewer || viewer.status !== 'active') return { ok: false, reason: 'inactive_user' };
-
-  await touchLastUsed(db, row, now);
-  return {
-    ok: true,
-    principal: {
-      keyId: row.id,
-      kind: 'user',
-      userId: viewer.userId,
-      viewer: { ...viewer, isAdmin: false },
-      categories,
-      accountIds: row.accountScope === 'list' ? new Set(row.accountIds ?? []) : null,
-      rateLimitPerMinute,
-    },
-  };
-}
-
-/**
- * Writes last_used_at = now when the stored value is older than a minute. The row loaded for the
- * check says whether that can be the case, so most requests issue no write at all. The UPDATE
- * re-checks the age itself (two requests racing write once) and skips a row another transaction has
- * locked (an offboarding revoking the key, say) rather than wait for it.
- */
-async function touchLastUsed(
-  db: DbOrTx,
-  row: Pick<KeyRow, 'id' | 'lastUsedAt'>,
-  now: Date,
-): Promise<void> {
-  if (
-    row.lastUsedAt !== null &&
-    now.getTime() - row.lastUsedAt.getTime() < LAST_USED_RESOLUTION_MS
-  ) {
-    return;
-  }
-  const at = now.toISOString();
-  try {
-    await db.execute(sql`
-      UPDATE api_keys SET last_used_at = ${at}::timestamptz
-      WHERE id = (
-        SELECT id FROM api_keys
-        WHERE id = ${row.id}
-          AND (last_used_at IS NULL
-               OR last_used_at < ${at}::timestamptz - make_interval(secs => ${LAST_USED_RESOLUTION_MS / 1000}))
-        FOR UPDATE SKIP LOCKED
-      )`);
-  } catch (err) {
-    // Never the message: it lists the bound parameters (DB-3).
-    getLogger().warn({ keyId: row.id, pgCode: pgErrorCode(err) }, 'api: last_used_at not updated');
-  }
 }

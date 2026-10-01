@@ -16,7 +16,7 @@ import {
   type AccountWithAccess,
 } from '../accounts/load';
 import { ApiError } from './errors';
-import type { ApiPrincipal } from './keys';
+import type { ApiPrincipal } from './key-auth';
 import { MAX_LIST_PARAM, isPublicIdLike, listParam } from './params';
 import type { ApiAccountIdentity, ApiAccountRef, ApiOwner } from './types';
 

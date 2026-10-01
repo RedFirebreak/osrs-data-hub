@@ -4,8 +4,9 @@
  * included) never revokes them and they count towards nobody's per-user limit. A service key reads
  * exactly what the guild audience sees (GUILD_AUDIENCE, D-89): the accounts and categories whose
  * sharing audience is `guild`; `private` and `selected` stay hidden, and there is no admin override
- * (D-70). Same format, storage, categories and expiry as user keys (D-69, keys.ts); its rate limit is
- * its own (`rateLimitPerMinute`, default SERVICE_KEY_RATE_LIMIT).
+ * (D-70). Same format (key-format.ts), storage, categories and expiry as user keys (D-69, keys.ts),
+ * and the same authentication (key-auth.ts); its rate limit is its own (`rateLimitPerMinute`,
+ * default SERVICE_KEY_RATE_LIMIT).
  */
 import { sha256Hex, type Viewer } from '@hub/core';
 import { apiKeys, users, type Db, type DbOrTx } from '@hub/db';
@@ -14,13 +15,12 @@ import { z } from 'zod';
 import { AdminError } from '../admin/errors';
 import { audit } from '../audit';
 import { isUuid } from '../devices/util';
+import { formatKey, newKeySecret } from './key-format';
 import {
   KEY_FIELD_SCHEMAS,
   expiryFrom,
-  formatKey,
   insertWithFreshPrefix,
   keyInfoOf,
-  newKeySecret,
   parseKeyInput,
   type ApiKeyInfo,
 } from './keys';

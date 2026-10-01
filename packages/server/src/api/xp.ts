@@ -27,7 +27,7 @@ import {
   requireApiAccounts,
 } from './access';
 import { ApiError } from './errors';
-import type { ApiPrincipal } from './keys';
+import type { ApiPrincipal } from './key-auth';
 import { assertDate, enumParam, listParam, resolveRange } from './params';
 import { canonicalSkills } from './skills';
 import type { ApiAccountRef } from './types';

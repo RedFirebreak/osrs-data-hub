@@ -6,7 +6,7 @@ import { CATEGORIES, normalizeName, type Category } from '@hub/core';
 import type { DbOrTx } from '@hub/db';
 import { loadPresence, toPresence } from '../accounts/load';
 import { accountIdentity, loadApiAccount, loadApiAccounts, loadApiOwners } from './access';
-import type { ApiPrincipal } from './keys';
+import type { ApiPrincipal } from './key-auth';
 import { listParam } from './params';
 import { loadAccountSections, type ApiStateSections } from './state';
 import type { ApiAccountIdentity } from './types';

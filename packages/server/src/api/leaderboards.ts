@@ -16,7 +16,7 @@ import {
 import { EVENT_ROW_COLUMNS } from '../live/load';
 import { apiRestriction, apiViewer } from './access';
 import { eventReadableAccounts, toApiEvents, type ApiEvent } from './events';
-import type { ApiPrincipal } from './keys';
+import type { ApiPrincipal } from './key-auth';
 import { enumParam, intParam } from './params';
 import { canonicalSkills } from './skills';
 import type { ApiAccountRef } from './types';

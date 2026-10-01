@@ -3,6 +3,8 @@ export * from './accounts';
 export * from './errors';
 export * from './events';
 export * from './history';
+export * from './key-auth';
+export * from './key-format';
 export * from './keys';
 export * from './leaderboards';
 export * from './limits';

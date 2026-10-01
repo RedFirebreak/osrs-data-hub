@@ -16,7 +16,7 @@ import {
   type LocationPoint,
 } from '../accounts/history';
 import { accountRef, bulkAccountLimit, loadApiAccount, requireApiAccounts } from './access';
-import type { ApiPrincipal } from './keys';
+import type { ApiPrincipal } from './key-auth';
 import { resolveRange } from './params';
 import { toApiItems, type ApiAccountRef, type ApiItem } from './types';
 

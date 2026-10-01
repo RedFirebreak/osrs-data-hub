@@ -5,17 +5,9 @@ import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { seedAccount, seedSharing, seedUser, type SeededUser } from '../accounts/test-support';
 import { offboardUser, restoreUser } from '../offboarding/offboard';
-import {
-  API_KEY_PREFIX,
-  LAST_USED_RESOLUTION_MS,
-  MAX_ACTIVE_KEYS,
-  ApiKeyError,
-  authenticateApiKey,
-  createApiKey,
-  listApiKeys,
-  revokeApiKey,
-  type ApiAuthFailure,
-} from './keys';
+import { LAST_USED_RESOLUTION_MS, authenticateApiKey, type ApiAuthFailure } from './key-auth';
+import { API_KEY_PREFIX } from './key-format';
+import { MAX_ACTIVE_KEYS, ApiKeyError, createApiKey, listApiKeys, revokeApiKey } from './keys';
 import { makeKey } from './test-support';
 
 let t: TestDatabase;

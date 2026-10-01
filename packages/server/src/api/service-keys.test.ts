@@ -25,15 +25,8 @@ import { MAX_BULK_ACCOUNTS, MAX_BULK_ACCOUNTS_SERVICE, loadApiAccounts } from '.
 import { apiGetAccount, apiListAccounts } from './accounts';
 import { ApiError } from './errors';
 import { apiLocations, apiLocationsMulti } from './history';
-import {
-  ApiKeyError,
-  MAX_ACTIVE_KEYS,
-  authenticateApiKey,
-  createApiKey,
-  listApiKeys,
-  revokeApiKey,
-  type ApiPrincipal,
-} from './keys';
+import { authenticateApiKey, type ApiPrincipal } from './key-auth';
+import { ApiKeyError, MAX_ACTIVE_KEYS, createApiKey, listApiKeys, revokeApiKey } from './keys';
 import { MAX_KEY_RATE_LIMIT, SERVICE_KEY_RATE_LIMIT } from './limits';
 import { apiMe } from './me';
 import {

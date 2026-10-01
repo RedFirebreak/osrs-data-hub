@@ -3,7 +3,8 @@ import { CATEGORIES, type Category } from '@hub/core';
 import { apiKeys, users, type ApiKeyKind, type DbOrTx } from '@hub/db';
 import { eq } from 'drizzle-orm';
 import { loadApiAccounts } from './access';
-import { keyRateLimit, type ApiKeyScope, type ApiPrincipal } from './keys';
+import type { ApiPrincipal } from './key-auth';
+import { keyRateLimit, type ApiKeyScope } from './keys';
 
 export interface ApiMe {
   key: {

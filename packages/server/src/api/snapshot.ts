@@ -15,7 +15,7 @@ import type { DbOrTx } from '@hub/db';
 import { locationOf, vitalsOf } from '../accounts/account-page';
 import { toPresence, type AccountWithAccess } from '../accounts/load';
 import { accountIdentity, loadApiAccounts, loadApiOwners } from './access';
-import type { ApiPrincipal } from './keys';
+import type { ApiPrincipal } from './key-auth';
 import { assertDate } from './params';
 import {
   itemsOf,

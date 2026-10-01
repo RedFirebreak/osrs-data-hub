@@ -17,7 +17,7 @@ import { EVENT_ROW_COLUMNS } from '../live/load';
 import { LIVE_POLL_SETTLE_MS, seqFloor, settledCeiling } from '../live/replay';
 import { loadApiAccounts, requireApiAccounts } from './access';
 import { ApiError } from './errors';
-import type { ApiPrincipal } from './keys';
+import type { ApiPrincipal } from './key-auth';
 import { intParam, listParam } from './params';
 import type { ApiAccountRef } from './types';
 
