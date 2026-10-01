@@ -31,6 +31,7 @@ import {
   XP_DEFAULT_DAYS,
   XP_RESOLUTIONS,
   decodeEventsCursor,
+  decodeEventsRangeCursor,
 } from '@hub/server';
 import { z } from 'zod';
 import { accountId as accountIdItem, isoInstant as instant } from '@/lib/query';
@@ -161,15 +162,21 @@ export const GainsQuery = z.object({
 /** What an event's `type` can be, for the descriptions: the known types, as stored, and the rest. */
 const EVENT_TYPE_NAMES = `${KNOWN_EVENT_TYPES.join(', ')}, or an unknown plugin type as sent`;
 
-/** GET /events. */
+/**
+ * GET /events: the cursor feed, or with `from`/`to` the events of a time range (D-98). Either kind
+ * of cursor parses; the read models refuse the other mode's (400).
+ */
 export const EventsQuery = z.object({
   cursor: z
     .string()
-    .refine((c) => c === 'now' || decodeEventsCursor(c) !== null, 'not a cursor from this feed')
+    .refine(
+      (c) => c === 'now' || decodeEventsCursor(c) !== null || decodeEventsRangeCursor(c) !== null,
+      'not a cursor from this feed',
+    )
     .optional()
     .meta({
       description:
-        'Omitted: the newest `limit` events and a cursor after them. `now`: no events, only the current cursor (start following from here). Otherwise a `meta.next_cursor` from an earlier response: the events after it, oldest first. Cursors are opaque.',
+        'Without `from`/`to`: omitted, the newest `limit` events and a cursor after them; `now`, no events, only the current cursor (start following from here); otherwise a `meta.next_cursor` from an earlier response, for the events after it, oldest first. With `from`/`to`: omitted for the first (newest) page, then the previous page’s `meta.next_cursor`. Cursors are opaque, and one mode’s cursor is a 400 in the other.',
     }),
   types: csv(z.string())
     .optional()
@@ -190,6 +197,10 @@ export const EventsQuery = z.object({
     .meta({
       description: `Events per page, 1 to ${EVENTS_MAX_LIMIT}. Default ${EVENTS_DEFAULT_LIMIT}.`,
     }),
+  from: from.meta({
+    description: `With \`from\` and/or \`to\`, the request reads a time range instead of following the feed: the events with \`occurred_at\` from \`from\` to \`to\` (both included), newest first. Default: \`to\` − ${HISTORY_DEFAULT_DAYS} days.`,
+  }),
+  to: to.meta({ description: 'End of the range (ISO-8601 date-time). Default: now.' }),
 });
 
 /** GET /accounts/{id}/sessions, /equipment-history, /wealth, /locations. */
@@ -639,9 +650,9 @@ const Meta = z.object({
 });
 const ListMeta = Meta.extend({ count: int.min(0) });
 const EventsMeta = ListMeta.extend({
-  next_cursor: z.string().meta({
+  next_cursor: z.string().nullable().meta({
     description:
-      'Pass as `cursor` next time. Always present; unchanged when nothing new has settled.',
+      'Pass as `cursor` next time. Without `from`/`to`: always a string; unchanged when nothing new has settled. With them: the cursor of the next (older) page, or null when this page is the range’s last.',
   }),
 });
 const SnapshotMeta = ListMeta.extend({
