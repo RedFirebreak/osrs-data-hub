@@ -1,9 +1,9 @@
 'use client';
 /**
  * Playtime per day (the account page's activity section): a bar per day in hours, drawn by the lazy
- * EChart. The days come from the server (components/account/playtime.ts cuts sessions at the viewer's
- * local midnights). The same numbers are in a table below the chart (oldest day first, like the
- * bars) for screen readers and anyone who prefers a table.
+ * EChart. The days come from the server (components/account-page/playtime.ts cuts sessions at the
+ * viewer's local midnights). The same numbers are in a table below the chart (oldest day first,
+ * like the bars) for screen readers and anyone who prefers a table.
  */
 import { formatDuration } from '@hub/core';
 import { useCallback } from 'react';

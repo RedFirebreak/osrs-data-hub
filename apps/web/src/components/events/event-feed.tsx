@@ -14,7 +14,7 @@
 import { formatGp, isLootEvent } from '@hub/core';
 import type { FeedEvent } from '@hub/server';
 import Link from 'next/link';
-import { stackTone } from '@/components/account/items';
+import { stackTone } from '@/components/account-page/items';
 import { accountHref } from '@/components/accounts/account-link';
 import { SpecialWorldBadge } from '@/components/accounts/special-world-badge';
 import { RelativeTime } from '@/components/time/relative-time';

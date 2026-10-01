@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { ItemTile } from '@/components/account/item-tile';
-import { SkillsTable } from '@/components/account/skills-table';
+import { ItemTile } from '@/components/account-page/item-tile';
+import { SkillsTable } from '@/components/account-page/skills-table';
 import { EventFeed } from '@/components/events/event-feed';
 import { feedEvent } from '@/components/live/test-fixtures';
 import { TooltipProvider } from '@/components/ui/tooltip';
