@@ -38,8 +38,6 @@ export const CreateServiceKeySchema = z.strictObject({
   rateLimitPerMinute: z.number().int().min(1).max(MAX_KEY_RATE_LIMIT).nullable().optional(),
 });
 
-export type CreateServiceKeyInput = z.input<typeof CreateServiceKeySchema>;
-
 /** A service key as the admin page shows it: an ApiKeyInfo plus who created it. */
 export interface ServiceKeyInfo extends ApiKeyInfo {
   /** The admin who created it; null once that user was deleted. */

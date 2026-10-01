@@ -18,14 +18,7 @@ import {
   type XpSeriesRequest,
 } from '../accounts/xp';
 import { getUserSettings } from '../settings/user-settings';
-import {
-  MAX_BULK_ACCOUNTS,
-  MAX_BULK_ACCOUNTS_SERVICE,
-  accountRef,
-  bulkAccountLimit,
-  loadApiAccount,
-  requireApiAccounts,
-} from './access';
+import { accountRef, bulkAccountLimit, loadApiAccount, requireApiAccounts } from './access';
 import { ApiError } from './errors';
 import type { ApiPrincipal } from './key-auth';
 import { assertDate, enumParam, listParam, resolveRange } from './params';
@@ -36,10 +29,6 @@ export const XP_RESOLUTIONS = ['auto', '5m', '1h', '1d'] as const;
 export type ApiXpResolution = (typeof XP_RESOLUTIONS)[number];
 /** The range of an XP request without `from`: the last 7 days (the raw 5-minute tier). */
 export const XP_DEFAULT_DAYS = 7;
-/** Most accounts one GET /xp may name with a user key (D-92). */
-export const MAX_XP_ACCOUNTS = MAX_BULK_ACCOUNTS;
-/** ... and with a service key (D-92). */
-export const MAX_XP_ACCOUNTS_SERVICE = MAX_BULK_ACCOUNTS_SERVICE;
 /** Most skills one XP request may name. */
 export const MAX_XP_SKILLS = MAX_SERIES_SKILLS;
 

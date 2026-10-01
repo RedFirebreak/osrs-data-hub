@@ -158,11 +158,6 @@ export const CreateApiKeySchema = z
     }
   });
 
-/** The request body the API keys page sends. */
-export type CreateApiKeyInput = z.input<typeof CreateApiKeySchema>;
-/** The body after validation. */
-export type CreateApiKey = z.output<typeof CreateApiKeySchema>;
-
 export type KeyRow = typeof apiKeys.$inferSelect;
 
 /** The key's requests per minute: its own, else the default of its kind (D-72, D-88). */
