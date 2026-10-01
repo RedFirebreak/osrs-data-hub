@@ -17,11 +17,11 @@ import Link from 'next/link';
 import { eventTypeOptions } from '@/components/events/event-types';
 import { DeleteDataCard } from '@/components/settings/delete-data-card';
 import { ExportDataCard } from '@/components/settings/export-data-card';
+import { SettingsForm } from '@/components/settings/settings-form';
 import { PageHeader } from '@/components/shell/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatInZone } from '@/lib/dates';
 import { requireUser } from '@/lib/session';
-import { SettingsForm } from './settings-form';
 
 export function generateMetadata(): Metadata {
   return { title: `Settings · ${getConfig().hubName}` };

@@ -9,8 +9,8 @@ import { LoaderCircleIcon } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useId, useState } from 'react';
 import { toast } from 'sonner';
-import { MinLootField } from '@/app/(app)/settings/min-loot-field';
-import { parseMinLootValue } from '@/app/(app)/settings/settings-model';
+import { MinLootField } from '@/components/settings/min-loot-field';
+import { parseMinLootValue } from '@/components/settings/settings-model';
 import { Button } from '@/components/ui/button';
 import {
   Card,
