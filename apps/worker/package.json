@@ -7,7 +7,7 @@
     "dev": "tsx watch --import=../../tools/dev-env.mjs src/main.ts",
     "build": "tsup",
     "start": "node dist/main.js",
-    "migrate": "tsx src/migrate.ts",
+    "migrate": "tsx --import=../../tools/dev-env.mjs src/migrate.ts",
     "typecheck": "tsc -p tsconfig.json",
     "lint": "eslint ."
   },
