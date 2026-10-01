@@ -11,6 +11,10 @@
 - [ ] `docs/ARCHITECTURE.md` updated if the design changed
 - [ ] `python3 tools/check_gotchas.py` prints OK
 
+## Release
+
+- [ ] Labelled `breaking` if a deployment has to change something to upgrade (holds the scheduled release until it is cut by hand, OPERATIONS §10)
+
 ## Testing
 
 <!-- How it was verified: tests added, manual checks. -->
