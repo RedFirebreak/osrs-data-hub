@@ -79,7 +79,7 @@ cursor to 2 and never sees 1. PG17's `transaction_timeout` is no fix: when it fi
 session. Fix: never hand out a cursor past rows that may still commit: serve only the seqs **below the
 first row that is younger than a margin** (measured from a `clock_timestamp()` insert column), not "every
 row older than the margin": filtering young rows one by one still returns a settled higher seq while a
-lower one is held back, and the cursor skips it (packages/server/src/live/replay.ts `settledCeiling`).
+lower one is held back, and the cursor skips it (packages/server/src/settled-cursor.ts `settledCeiling`).
 Keep event-inserting transactions short (the events insert last, lock waits before it). Filtering on
 `pg_snapshot_xmin(pg_current_snapshot())` is an untested alternative. The warning sits on `events.seq`
 in packages/db/src/schema/activity.ts.

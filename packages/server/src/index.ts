@@ -15,6 +15,7 @@ export * from './settings';
 export * from './accounts';
 export * from './sharing';
 export * from './live';
+export * from './settled-cursor';
 export * from './admin';
 export * from './health';
 export * from './api';
