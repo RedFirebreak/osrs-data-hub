@@ -47,7 +47,7 @@ export async function loadLiveAccount(db: DbOrTx, accountId: number): Promise<Li
 }
 
 /** An account with the presence columns of its latest_state (null columns when it has no row yet). */
-export interface PresenceRow extends LiveAccount {
+export interface LivePresenceRow extends LiveAccount {
   /** latest_state.last_seen, else the account's own last_seen. */
   lastSeen: Date;
   gameState: string | null;
@@ -56,7 +56,10 @@ export interface PresenceRow extends LiveAccount {
   specialWorld: boolean;
 }
 
-export async function loadPresence(db: DbOrTx, accountId: number): Promise<PresenceRow | null> {
+export async function loadLivePresence(
+  db: DbOrTx,
+  accountId: number,
+): Promise<LivePresenceRow | null> {
   const [row] = await db
     .select({
       id: osrsAccounts.id,
