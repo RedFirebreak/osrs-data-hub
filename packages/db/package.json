@@ -16,7 +16,7 @@
   "dependencies": {
     "@hub/core": "workspace:*",
     "drizzle-orm": "0.45.3",
-    "pg": "8.23.0"
+    "pg": "8.23.1"
   },
   "devDependencies": {
     "@types/pg": "^8.23.1",
