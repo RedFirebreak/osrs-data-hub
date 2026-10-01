@@ -1,8 +1,10 @@
 'use client';
 /**
- * Wizard step 4 (handoff §6.3): done. Links to the dashboard, explains the sharing defaults in one
- * line (handoff §10, D-22) with a link to the account's sharing settings, and that the plugin's own
- * settings decide what reaches the hub in the first place (D-4).
+ * Wizard step 4 (handoff §6.3): done. Links to the dashboard and shows who sees the account (D-96):
+ * its owner gets the account page's sharing controls right here (DoneSharing), since everything is
+ * shared with the guild by default; a contributor is told the owner decides; without an account yet,
+ * the default in one line. And that the plugin's own settings decide what reaches the hub in the
+ * first place (D-4).
  */
 import type { DeviceFirstData } from '@hub/server';
 import { LayoutDashboardIcon, MonitorSmartphoneIcon, PlusIcon } from 'lucide-react';
@@ -10,6 +12,7 @@ import type { Route } from 'next';
 import Link from 'next/link';
 import { accountHref } from '@/components/accounts/account-link';
 import { Button } from '@/components/ui/button';
+import { DoneSharing } from './done-sharing';
 import { StepHeading } from './step-heading';
 
 export interface DoneStepProps {
@@ -49,22 +52,15 @@ export function DoneStep({ firstData, onRestart, headingRef }: DoneStepProps) {
               Who can see {account.name}
             </Link>
           </p>
+        ) : account ? (
+          <DoneSharing account={account} />
         ) : (
           <p className="text-pretty">
-            By default, stats, events, activity and live location are visible to the guild; location
-            history, equipment and inventory stay private.{' '}
-            {account ? (
-              <Link
-                href={`${accountHref(account.publicId)}#sharing` as Route}
-                className="font-medium underline underline-offset-4"
-              >
-                Sharing settings for {account.name}
-              </Link>
-            ) : (
-              <Link href={SHARING_EXPLAINED} className="font-medium underline underline-offset-4">
-                Who can see what
-              </Link>
-            )}
+            A new account shares everything with the guild by default; its owner can change that per
+            category on the account&apos;s page.{' '}
+            <Link href={SHARING_EXPLAINED} className="font-medium underline underline-offset-4">
+              Who can see what
+            </Link>
           </p>
         )}
         <p className="text-pretty text-muted-foreground">

@@ -118,7 +118,7 @@ describe('getSharingSettings', () => {
       grants: [],
     });
     expect(settings?.categories.find((c) => c.category === 'inventory')).toMatchObject({
-      audience: 'private',
+      audience: 'guild',
       isDefault: true,
     });
     expect(settings?.categories.find((c) => c.category === 'equipment')).toEqual({
@@ -223,7 +223,7 @@ describe('setAudience', () => {
       'not_found',
     );
     const secret = await sharedAccount();
-    for (const c of ['stats', 'events', 'activity', 'location_live'] as const) {
+    for (const c of CATEGORIES) {
       await seedSharing(t.db, secret.id, c, 'private');
     }
     await expectRefused(
@@ -271,7 +271,7 @@ describe('addGrant / removeGrant', () => {
     expect(actions).toEqual([
       [
         'sharing.audience_changed',
-        { category: 'inventory', from: 'private', to: 'selected', asAdmin: false },
+        { category: 'inventory', from: 'guild', to: 'selected', asAdmin: false },
       ],
       ['sharing.grant_added', { category: 'inventory', granteeUserId: member.id, asAdmin: false }],
       [

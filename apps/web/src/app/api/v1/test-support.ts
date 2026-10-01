@@ -223,8 +223,7 @@ export async function setAudience(
 
 /**
  * Two accounts owned (first reporter) by `ownerId` through one device, with the default sharing
- * (stats, events, activity, live location → guild (D-82); location history, equipment, inventory →
- * private), and a plain guild member `memberId`.
+ * (every category → guild, D-96), and a plain guild member `memberId`.
  */
 export async function seedWorld(ctx: WebTestContext): Promise<World> {
   const ownerId = await ctx.seedUser({ name: 'Owner' });

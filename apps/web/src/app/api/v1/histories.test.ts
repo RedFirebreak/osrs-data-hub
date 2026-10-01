@@ -24,6 +24,7 @@ import {
   idParams,
   makeKey,
   seedWorld,
+  setAudience,
   v1Request,
   type TestKey,
   type World,
@@ -110,6 +111,10 @@ describe('history endpoints', () => {
   });
 
   it('gates each history by its own category: a plain member reads only sessions', async () => {
+    // activity stays guild (the default, D-96); the other histories' categories are private.
+    for (const category of ['equipment', 'inventory', 'location_history'] as const) {
+      await setAudience(ctx, world.main.hash, category, 'private');
+    }
     expect((await call(getSessions, memberKey, world.main.id)).status).toBe(200);
     for (const handler of [getEquipment, getWealth, getLocations]) {
       const res = await handler(

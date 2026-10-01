@@ -2,9 +2,12 @@
  * The wizard's step views rendered to markup with given props (the state machine behind them is
  * tested in wizard-model.test.ts): what the player sees and what screen readers get.
  */
+import { CATEGORIES, CATEGORY_LABELS, type Audience, type Category } from '@hub/core';
+import type { SharingSettings } from '@hub/server';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { DoneSharingControls } from './done-sharing';
 import { DoneStep } from './done-step';
 import { FirstDataStep } from './first-data-step';
 import { PairStep, type PairStepProps } from './pair-step';
@@ -199,7 +202,7 @@ describe('FirstDataStep', () => {
 });
 
 describe('DoneStep', () => {
-  it("explains the sharing defaults and links to the account's sharing settings", () => {
+  it("shows the owner the account's sharing controls, loading them first", () => {
     const html = renderToStaticMarkup(
       <DoneStep
         firstData={{
@@ -211,10 +214,12 @@ describe('DoneStep', () => {
       />,
     );
     expect(html).toContain('href="/"');
-    expect(html).toContain('href="/accounts/AbCdEf123456#sharing"');
+    expect(text(html)).toContain('Who can see Zezima');
     expect(text(html)).toContain(
-      'By default, stats, events, activity and live location are visible to the guild; location history, equipment and inventory stay private.',
+      'A new account shares everything with the guild. Change any of it here; it saves right away.',
     );
+    expect(html).toMatch(/role="status"[^>]*>.*Loading the sharing settings/);
+    expect(text(html)).not.toContain('stay private');
     expect(text(html)).toContain('plugin settings decide what is sent');
   });
 
@@ -232,14 +237,53 @@ describe('DoneStep', () => {
     expect(text(html)).toContain('Bob owns Shared Main and decides who in the guild sees it.');
     expect(html).toContain('href="/accounts/AbCdEf123456#sharing"');
     expect(text(html)).toContain('Who can see Shared Main');
-    expect(text(html)).not.toContain('Sharing settings for');
-    expect(text(html)).not.toContain('By default');
+    expect(text(html)).not.toContain('Loading the sharing settings');
+    expect(text(html)).not.toContain('A new account shares');
     expect(text(html)).toContain('plugin settings decide what is sent');
   });
 
-  it('links to the sharing explanation when no account arrived yet', () => {
+  it('names the default and links to the sharing explanation when no account arrived yet', () => {
     const html = renderToStaticMarkup(<DoneStep firstData={null} onRestart={noop} />);
     expect(html).toContain('href="/privacy#sharing"');
     expect(text(html)).toContain('RuneLite is connected');
+    expect(text(html)).toContain(
+      'A new account shares everything with the guild by default; its owner can change that per category on the account&#x27;s page.',
+    );
+    expect(text(html)).not.toContain('stay private');
+  });
+});
+
+describe('DoneSharingControls', () => {
+  function settings(over: Partial<Record<Category, Audience>> = {}): SharingSettings {
+    return {
+      canManage: true,
+      categories: CATEGORIES.map((category) => ({
+        category,
+        audience: over[category] ?? 'guild',
+        isDefault: !(category in over),
+        grants: [],
+      })),
+      contributors: [],
+    };
+  }
+
+  it('lists every category with its audience, as on the account page', () => {
+    const html = renderToStaticMarkup(
+      <DoneSharingControls
+        account={{ publicId: 'AbCdEf123456', name: 'Zezima' }}
+        initial={settings({ inventory: 'private' })}
+      />,
+    );
+    for (const c of CATEGORIES) {
+      expect(text(html)).toContain(CATEGORY_LABELS[c].label);
+      expect(text(html)).toContain(CATEGORY_LABELS[c].covers);
+    }
+    // One select per category, enabled for the owner.
+    expect(html.match(/role="combobox"/g)).toHaveLength(CATEGORIES.length);
+    expect(html).not.toMatch(/role="combobox"[^>]* disabled=""/);
+    expect(text(html).match(/Guild/g)).toHaveLength(CATEGORIES.length - 1);
+    expect(text(html).match(/Private/g)).toHaveLength(1);
+    expect(html).toContain('href="/accounts/AbCdEf123456#sharing"');
+    expect(text(html)).toContain('More sharing options for Zezima');
   });
 });

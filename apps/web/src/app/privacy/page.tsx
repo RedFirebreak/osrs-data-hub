@@ -186,8 +186,10 @@ export default async function PrivacyPage() {
             Account data is shared by category. The account&apos;s owner (by default the first
             player whose plugin reported it) chooses per category who sees it:{' '}
             <strong>Private</strong> (the owner and the players who also play the account),{' '}
-            <strong>Guild</strong> (every active member) or <strong>Selected people</strong>. The
-            defaults are:
+            <strong>Guild</strong> (every active member) or <strong>Selected people</strong>. A new
+            account starts with the defaults below; its owner sees them, and can change them, on the
+            last step of pairing and on the account&apos;s page. An account the hub knew before a
+            default changed keeps what it had until its owner changes it.
           </p>
           <div className="overflow-x-auto rounded-lg ring-1 ring-foreground/10">
             <Table>

@@ -312,8 +312,9 @@ describe('access and redaction', () => {
   });
 
   it('strips death and superior locations without a location category', async () => {
-    // The member's only location category would be live location, guild by default (D-82).
-    await seedSharing(t.db, guild.id, 'location_live', 'private');
+    // The member would have both location categories, guild by default (D-96).
+    for (const c of ['location_live', 'location_history'] as const)
+      await seedSharing(t.db, guild.id, c, 'private');
     const start = await baseline(ownerKey);
     const death = await event(guild, { type: 'death', data: deathData() });
     const superior = await event(guild, { type: 'superior_spawn', data: superiorData() });
@@ -380,13 +381,14 @@ describe('events ingested from the fixtures', () => {
     const body = wire('event-death-dangerous', { hash: newHash(), freshEventIds: true });
     expect((await h.send(device, body)).status).toBe(200);
     await t.db.update(events).set({ insertedAt: SETTLED() });
-    // No location category for the reader: live location isn't shared (it is by default, D-82).
+    // No location category for the reader: neither is shared (both are by default, D-96).
     const [account] = await t.db
       .select({ id: osrsAccounts.id })
       .from(osrsAccounts)
       .where(eq(osrsAccounts.accountHash, body.player?.accountHash as string));
     if (!account) throw new Error('account missing');
-    await seedSharing(t.db, account.id, 'location_live', 'private');
+    for (const c of ['location_live', 'location_history'] as const)
+      await seedSharing(t.db, account.id, c, 'private');
 
     const mine = await page(ownerFull, { cursor: start });
     expect(mine.events.map((e) => [e.type, e.valueGp])).toEqual([['death', 34_906]]);

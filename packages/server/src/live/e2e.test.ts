@@ -56,8 +56,9 @@ beforeAll(async () => {
   });
   device = await h.seedDevice();
   memberId = await h.seedUser();
-  // Live location is shared with the guild by default (D-82). The fixture accounts keep it private,
-  // so the member has no location category: created bare ahead of ingest, which fills them in.
+  // Every category is shared with the guild by default (D-96). The fixture accounts keep both
+  // location categories private, so the member has none: created bare ahead of ingest, which fills
+  // them in.
   const names = new Map<string, string>();
   for (const name of FIXTURES) {
     const player = fixtureJson<{ player?: { accountHash?: string; name?: string } }>(name).player;
@@ -68,6 +69,7 @@ beforeAll(async () => {
   for (const [accountHash, name] of names) {
     const account = await seedAccount(t.db, { name: name || 'Unknown', accountHash });
     await share(t.db, account.id, 'location_live', 'private');
+    await share(t.db, account.id, 'location_history', 'private');
   }
   owner = fakeSubscriber({ userId: device.userId, status: 'active', isAdmin: false });
   member = fakeSubscriber({ userId: memberId, status: 'active', isAdmin: false });
