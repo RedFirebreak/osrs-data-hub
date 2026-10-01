@@ -9,12 +9,11 @@ import {
   meetsMinimumVersion,
   normalizeEvents,
   parsePayload,
-  stripNul,
   type NormalizeResult,
   type ParsedPayload,
 } from '@hub/core';
 import { isDataDbError, isTransientDbError, pgErrorCode, safeDbErrorMessage } from '@hub/db';
-import type { PluginResponse } from '../feed';
+import { storedVersionText, type PluginResponse } from '../plugin/protocol';
 import { archivePayload, finishArchive, type ArchiveRef } from './archive';
 import {
   authenticateDevice,
@@ -27,7 +26,6 @@ import { findAccountByName, identityClaim, type AccountRef } from './identity';
 import {
   INGEST_MIN_RETRY_AFTER_SECONDS,
   MAX_EVENTS_PER_PAYLOAD,
-  MAX_VERSION_TEXT,
   eventTypeLabel,
   versionLabel,
 } from './limits';
@@ -48,10 +46,16 @@ interface IngestRun {
   recv: Date;
   /** performance.now() at the start (recv may come from a test clock). */
   startedAt: number;
-  /** X-Osrs-Exporter-Version as stored on the device and archive. */
+  /** X-Osrs-Exporter-Version as stored on the device and archive (storedVersionText). */
   versionText: string | null;
   device: IngestDevice | null;
+  /**
+   * The archive row recordOutcome still has to finish. Stays null for a body archived with its final
+   * status and meta in one statement (rejectUnparsable): there is nothing left to record on it.
+   */
   archive: ArchiveRef | null;
+  /** The body is in raw_payloads: a response without it is counted as unarchived instead (D-83). */
+  archived: boolean;
   accountId: number | null;
   meta: IngestMeta;
 }
@@ -74,6 +78,7 @@ export async function handleIngest(deps: IngestDeps, req: IngestRequest): Promis
     versionText: storedVersionText(req.versionHeader),
     device: null,
     archive: null,
+    archived: false,
     accountId: null,
     meta: {},
   };
@@ -85,7 +90,7 @@ export async function handleIngest(deps: IngestDeps, req: IngestRequest): Promis
   }
   await recordOutcome(run, response);
   deps.metrics.ingestPayloads.inc({ status: String(response.status) });
-  if (run.archive === null) deps.metrics.ingestUnarchived.add(String(response.status), recv);
+  if (!run.archived) deps.metrics.ingestUnarchived.add(String(response.status), recv);
   stopTimer();
   return response;
 }
@@ -123,6 +128,7 @@ async function ingest(run: IngestRun): Promise<PluginResponse> {
     pluginVersion: run.versionText,
     body: text,
   });
+  run.archived = true;
   const normalized = normalizeCapped(run, payload);
   return processPayload(run, device, payload, normalized);
 }
@@ -183,16 +189,6 @@ async function processPayload(
 }
 
 /**
- * The header as stored in devices.plugin_version and raw_payloads.plugin_version: trimmed, NUL-free
- * (a text column rejects NUL, DB-1), at most 32 characters; null when missing or blank.
- */
-function storedVersionText(header: string | null): string | null {
-  if (header === null) return null;
-  const text = stripNul(header.trim()).slice(0, MAX_VERSION_TEXT);
-  return text === '' ? null : text;
-}
-
-/**
  * Reads the body with the size cap (enforced while streaming by the host, not from Content-Length).
  * A failed read (the client went away mid-body) is answered 400: there is nothing to retry from.
  */
@@ -234,6 +230,9 @@ async function rejectUnparsable(
     status: 400,
     meta: { error },
   });
+  // Archived, so not "rejected, not archived" (D-83); run.archive stays null because the row is
+  // already final, and recordOutcome would replace its meta (the parser's error) with the response's.
+  run.archived = true;
   return res.invalidJson();
 }
 
@@ -353,27 +352,24 @@ function errorResponse(run: IngestRun, err: unknown): PluginResponse {
   const pgCode = pgErrorCode(err);
   if (pgCode !== undefined) run.meta.pgCode = pgCode;
   const context = { deviceId: run.device?.id, accountId: run.accountId ?? undefined, pgCode };
-  let response: PluginResponse;
   if (isTransientDbError(err)) {
     logger.warn(context, 'ingest: transient database error');
-    response = res.temporarilyUnavailable();
-  } else if (isPayloadError(err)) {
-    logger.warn({ ...context, error: errorName(err) }, 'ingest: payload rejected');
-    response = res.invalidPayload();
-  } else {
-    logger.error(
-      {
-        ...context,
-        error: errorName(err),
-        message: safeDbErrorMessage(err),
-        frames: stackFrames(err),
-      },
-      'ingest: failed',
-    );
-    response = res.internalError();
+    return res.temporarilyUnavailable();
   }
-  run.meta.error = res.responseError(response);
-  return response;
+  if (isPayloadError(err)) {
+    logger.warn({ ...context, error: errorName(err) }, 'ingest: payload rejected');
+    return res.invalidPayload();
+  }
+  logger.error(
+    {
+      ...context,
+      error: errorName(err),
+      message: safeDbErrorMessage(err),
+      frames: stackFrames(err),
+    },
+    'ingest: failed',
+  );
+  return res.internalError();
 }
 
 function isPayloadError(err: unknown): boolean {
@@ -405,9 +401,7 @@ function stackFrames(err: unknown): string | undefined {
 /** Records status, meta and account on the archive row (only once the body was archived). */
 async function recordOutcome(run: IngestRun, response: PluginResponse): Promise<void> {
   if (run.archive === null) return;
-  if (response.status !== 200 && run.meta.error === undefined) {
-    run.meta.error = res.responseError(response);
-  }
+  if (response.status !== 200) run.meta.error = res.responseError(response);
   run.meta.ms = Math.round(performance.now() - run.startedAt);
   await finishArchive(run.deps.db, run.deps.logger, run.archive, {
     status: response.status,

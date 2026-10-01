@@ -22,11 +22,16 @@ import {
 } from '@hub/db';
 import { and, eq, gt, isNull, sql } from 'drizzle-orm';
 import { audit } from '../audit';
-import type { PluginResponse } from '../feed';
 import type { Logger } from '../logger';
-import type { HubMetrics } from '../metrics';
+import type { HubMetrics, PairResult } from '../metrics';
 import { notifyPairing } from '../notify';
-import { pairRateKey, type PairLimits } from './limits';
+import {
+  TRANSIENT_RETRY_AFTER_SECONDS,
+  storedVersionText,
+  type PluginResponse,
+} from '../plugin/protocol';
+import { pairRateKey } from '../rate-key';
+import type { PairLimits } from './limits';
 
 /** "HA Exporter 1.5 or newer is required. …" for a MIN_PLUGIN_VERSION ("1.5.1" keeps its patch). */
 export function outdatedPluginMessage(minPluginVersion: string): string {
@@ -75,32 +80,15 @@ export interface PairRequest {
   body: string | null;
 }
 
-/** pairAttempts{result} label values. */
-type PairResult =
-  | 'decommissioned'
-  | 'locked_out'
-  | 'rate_limited_global'
-  | 'rate_limited_ip'
-  | 'malformed'
-  | 'outdated'
-  | 'invalid'
-  | 'inactive'
-  | 'paired'
-  | 'unavailable'
-  | 'error';
-
 interface Outcome {
+  /** The pairAttempts{result} label. */
   result: PairResult;
   response: PluginResponse;
 }
 
-/** Longest version header text stored (it is free text from the client). */
-const VERSION_TEXT_MAX = 32;
 /** Longest wait for a row lock and for one statement, well inside the plugin's 10 s (PLUGIN-4). */
 const LOCK_TIMEOUT = '3s';
 const STATEMENT_TIMEOUT = '5s';
-/** Retry-After for transient database failures (D-19, D-30). */
-const TRANSIENT_RETRY_AFTER_SECONDS = 30;
 
 /**
  * Handles one pairing request, in this order:
@@ -156,7 +144,7 @@ async function pairWithCode(
   v: { key: string; code: string },
 ): Promise<Outcome> {
   const now = deps.now?.() ?? new Date();
-  const version = versionText(req.versionHeader);
+  const version = storedVersionText(req.versionHeader);
   if (!meetsMinimumVersion(req.versionHeader, deps.minPluginVersion)) {
     await recordOutdatedAttempt(deps, { code: v.code, version, now });
     return reject('outdated', 400, outdatedPluginMessage(deps.minPluginVersion));
@@ -169,7 +157,7 @@ async function pairWithCode(
     case 'inactive':
       return reject('inactive', 403, PAIR_MESSAGES.inactive);
     case 'paired':
-      // Deliberately no lockout.recordSuccess(key): clearing the failures would let a guild member
+      // A success deliberately doesn't clear the lockout's failures: that would let a guild member
       // interleave their own valid codes between guesses and never reach the lockout. Failures age
       // out with the lockout window instead.
       return paired(deps, consumed);
@@ -243,15 +231,6 @@ function parseCode(body: string | null): string | null {
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return null;
   const code: unknown = (parsed as Record<string, unknown>).code;
   return isValidPairingCode(code) ? code : null;
-}
-
-/** The version header as stored and shown: control characters removed, trimmed, ≤ 32 characters. */
-function versionText(header: string | null): string | null {
-  const text = header
-    ?.replace(/\p{Cc}/gu, '')
-    .trim()
-    .slice(0, VERSION_TEXT_MAX);
-  return text ? text : null;
 }
 
 function activeCode(code: string, now: Date) {

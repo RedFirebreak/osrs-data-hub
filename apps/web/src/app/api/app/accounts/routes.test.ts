@@ -1,14 +1,12 @@
 /**
- * The account read routes: GET /api/app/accounts/[publicId]/{xp,sessions,equipment,wealth,locations}.
+ * The account read routes: GET /api/app/accounts/[publicId]/{xp,locations}.
  * Auth (401), visibility and category gating (404, existence never leaks), query validation (400)
  * and the happy paths over seeded rows.
  */
+import { CATEGORIES, HOUR_MS } from '@hub/core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { withTestDb, type WebTestContext } from '@/lib/test-utils';
-import { GET as getEquipment } from './[publicId]/equipment/route';
 import { GET as getLocations } from './[publicId]/locations/route';
-import { GET as getSessions } from './[publicId]/sessions/route';
-import { GET as getWealth } from './[publicId]/wealth/route';
 import { GET as getXp } from './[publicId]/xp/route';
 import { accountSeeder, type AccountSeeder, type SeededAccount } from './test-seed';
 
@@ -39,8 +37,6 @@ async function signedIn(opts: Parameters<WebTestContext['seedUser']>[0] = {}) {
   const userId = await ctx.seedUser(opts);
   return { userId, cookie: await ctx.signIn(userId) };
 }
-
-const HOUR = 60 * 60 * 1000;
 
 describe('GET /api/app/accounts/[publicId]/xp', () => {
   let owner: { userId: string; cookie: string };
@@ -127,7 +123,7 @@ describe('GET /api/app/accounts/[publicId]/xp', () => {
     expect((await call(getXp, 'NoSuchAccount1', '', stranger.cookie)).status).toBe(404);
 
     const hidden = await seed.account({ owner: owner.userId });
-    for (const category of ['stats', 'events', 'activity', 'location_live'] as const) {
+    for (const category of CATEGORIES) {
       await seed.sharing(hidden.id, category, 'private');
     }
     const res = await call(getXp, hidden.publicId, '', stranger.cookie);
@@ -150,7 +146,7 @@ describe('GET /api/app/accounts/[publicId]/xp', () => {
   });
 });
 
-describe('history routes', () => {
+describe('GET /api/app/accounts/[publicId]/locations', () => {
   let owner: { userId: string; cookie: string };
   let member: { userId: string; cookie: string };
   let account: SeededAccount;
@@ -160,116 +156,66 @@ describe('history routes', () => {
     owner = await signedIn();
     member = await signedIn();
     account = await seed.account({ owner: owner.userId, name: 'History' });
-    await seed.session(account.id, {
-      startedAt: new Date(now - 3 * HOUR),
-      endedAt: new Date(now - 2 * HOUR),
-      endReason: 'logout',
-      worlds: [302, 330],
-    });
-    await seed.session(account.id, {
-      startedAt: new Date(now - 40 * 24 * HOUR),
-      endedAt: new Date(now - 40 * 24 * HOUR + HOUR),
-      endReason: 'timeout',
-    });
-    await seed.equipmentChange(account.id, new Date(now - HOUR), [
-      { id: 4151, name: 'Abyssal whip', gePrice: 1_500_000, quantity: 1, equipmentSlot: 'WEAPON' },
-    ]);
-    const today = new Date(now).toISOString().slice(0, 10);
-    await seed.wealth(account.id, today, 2_000_000, 3_000_000);
     await seed.location(account.id, new Date(now - 10 * 60 * 1000), {
       x: 3222,
       y: 3218,
       world: 302,
     });
+    await seed.location(account.id, new Date(now - 20 * 24 * HOUR_MS), { x: 3100, y: 3100 });
   });
 
-  it('401 without a session on every history route', async () => {
-    for (const handler of [getSessions, getEquipment, getWealth, getLocations]) {
-      expect((await call(handler, account.publicId, '')).status).toBe(401);
-    }
+  it('401 without a session', async () => {
+    expect((await call(getLocations, account.publicId, '')).status).toBe(401);
   });
 
-  it('sessions: the last 30 days by default, newest first, with duration and worlds', async () => {
-    const res = await call(getSessions, account.publicId, '', owner.cookie);
+  it('the trail of the last 30 days by default, oldest first', async () => {
+    const res = await call(getLocations, account.publicId, '', owner.cookie);
     expect(res.status).toBe(200);
-    const body = (await res.json()) as {
-      from: string;
-      to: string;
-      sessions: { durationMs: number; worlds: number[]; endReason: string }[];
-    };
-    expect(Date.parse(body.to) - Date.parse(body.from)).toBe(30 * 24 * HOUR);
-    expect(body.sessions).toHaveLength(1);
-    expect(body.sessions[0]).toMatchObject({
-      durationMs: HOUR,
-      worlds: [302, 330],
-      endReason: 'logout',
-    });
-
-    const wide = await call(
-      getSessions,
-      account.publicId,
-      `?from=${new Date(now - 60 * 24 * HOUR).toISOString()}`,
-      owner.cookie,
-    );
-    expect(((await wide.json()) as { sessions: unknown[] }).sessions).toHaveLength(2);
-  });
-
-  it('equipment, wealth and locations for the owner', async () => {
-    const equipment = await call(getEquipment, account.publicId, '', owner.cookie);
-    expect(equipment.status).toBe(200);
-    const changes = ((await equipment.json()) as { changes: { items: { name: string }[] }[] })
-      .changes;
-    expect(changes.map((c) => c.items[0]?.name)).toEqual(['Abyssal whip']);
-
-    const wealth = await call(getWealth, account.publicId, '', owner.cookie);
-    expect(wealth.status).toBe(200);
-    expect(((await wealth.json()) as { days: unknown[] }).days).toEqual([
-      {
-        day: new Date(now).toISOString().slice(0, 10),
-        lastValue: 2_000_000,
-        maxValue: 3_000_000,
-      },
-    ]);
-
-    const locations = await call(getLocations, account.publicId, '', owner.cookie);
-    expect(locations.status).toBe(200);
-    expect(((await locations.json()) as { points: unknown[] }).points).toMatchObject([
+    expect(res.headers.get('cache-control')).toBe('no-store');
+    const body = (await res.json()) as { from: string; to: string; points: unknown[] };
+    expect(Date.parse(body.to) - Date.parse(body.from)).toBe(30 * 24 * HOUR_MS);
+    expect(body.points).toMatchObject([
+      { x: 3100, y: 3100 },
       { x: 3222, y: 3218, plane: 0, world: 302, onBoat: false },
     ]);
+
+    const narrow = await call(
+      getLocations,
+      account.publicId,
+      `?from=${new Date(now - HOUR_MS).toISOString()}`,
+      owner.cookie,
+    );
+    expect(((await narrow.json()) as { points: unknown[] }).points).toHaveLength(1);
   });
 
-  it('gates each route by its category: guild defaults give activity only', async () => {
-    // activity is guild by default; equipment, inventory and location_history are private.
-    expect((await call(getSessions, account.publicId, '', member.cookie)).status).toBe(200);
-    for (const handler of [getEquipment, getWealth, getLocations]) {
-      const res = await call(handler, account.publicId, '', member.cookie);
-      expect(res.status).toBe(404);
-      expect(((await res.json()) as ErrorBody).error.code).toBe('not_found');
-    }
+  it('is gated by location_history: private is 404 for a member, not for the owner', async () => {
+    expect((await call(getLocations, account.publicId, '', member.cookie)).status).toBe(200);
+    await seed.sharing(account.id, 'location_history', 'private');
+    const res = await call(getLocations, account.publicId, '', member.cookie);
+    expect(res.status).toBe(404);
+    expect(((await res.json()) as ErrorBody).error.code).toBe('not_found');
+    expect((await call(getLocations, account.publicId, '', owner.cookie)).status).toBe(200);
   });
 
-  it("follows the owner's sharing: guild audience and selected grants", async () => {
+  it("follows the owner's sharing: selected grants", async () => {
     const shared = await seed.account({ owner: owner.userId });
-    await seed.sharing(shared.id, 'equipment', 'guild');
-    await seed.sharing(shared.id, 'inventory', 'selected');
-    await seed.sharing(shared.id, 'activity', 'private');
-    await seed.grant(shared.id, 'inventory', member.userId);
+    await seed.sharing(shared.id, 'location_history', 'selected');
+    await seed.grant(shared.id, 'location_history', member.userId);
     const other = await signedIn();
-    expect((await call(getEquipment, shared.publicId, '', other.cookie)).status).toBe(200);
-    expect((await call(getWealth, shared.publicId, '', member.cookie)).status).toBe(200);
-    expect((await call(getWealth, shared.publicId, '', other.cookie)).status).toBe(404);
-    expect((await call(getSessions, shared.publicId, '', other.cookie)).status).toBe(404);
+    expect((await call(getLocations, shared.publicId, '', member.cookie)).status).toBe(200);
+    expect((await call(getLocations, shared.publicId, '', other.cookie)).status).toBe(404);
   });
 
   it('a contributor sees every category; a hidden account is 404 for all but admins', async () => {
     const contributor = await signedIn();
     const admin = await signedIn({ isAdmin: true });
     const acc = await seed.account({ owner: owner.userId, contributors: [contributor.userId] });
+    await seed.sharing(acc.id, 'location_history', 'private');
     expect((await call(getLocations, acc.publicId, '', contributor.cookie)).status).toBe(200);
 
     const hidden = await seed.account({ owner: owner.userId, status: 'hidden' });
-    expect((await call(getSessions, hidden.publicId, '', owner.cookie)).status).toBe(404);
-    expect((await call(getSessions, hidden.publicId, '', admin.cookie)).status).toBe(200);
+    expect((await call(getLocations, hidden.publicId, '', owner.cookie)).status).toBe(404);
+    expect((await call(getLocations, hidden.publicId, '', admin.cookie)).status).toBe(200);
   });
 
   it('400 for a malformed or inverted range', async () => {
@@ -278,14 +224,14 @@ describe('history routes', () => {
       '?to=not-a-date',
       '?from=2026-09-29T00:00:00Z&to=2026-09-01T00:00:00Z',
     ]) {
-      const res = await call(getWealth, account.publicId, query, owner.cookie);
+      const res = await call(getLocations, account.publicId, query, owner.cookie);
       expect(res.status, query).toBe(400);
       expect(((await res.json()) as ErrorBody).error.code).toBe('invalid_request');
     }
   });
 
   it('404 for a public id that is too long to exist', async () => {
-    const res = await call(getSessions, 'x'.repeat(100), '', owner.cookie);
+    const res = await call(getLocations, 'x'.repeat(100), '', owner.cookie);
     expect(res.status).toBe(404);
   });
 
@@ -293,7 +239,7 @@ describe('history routes', () => {
     // Next decodes `%00` in the path into a NUL character, which Postgres refuses as a parameter
     // (22021); such an id matches no account, so it is the same 404 as any unknown id.
     for (const publicId of ['abc\u0000def', 'a b', 'Zézima', '../x']) {
-      for (const handler of [getXp, getSessions, getEquipment, getWealth, getLocations]) {
+      for (const handler of [getXp, getLocations]) {
         const res = await call(handler, publicId, '', owner.cookie);
         expect(res.status, JSON.stringify(publicId)).toBe(404);
         expect(((await res.json()) as ErrorBody).error.code).toBe('not_found');

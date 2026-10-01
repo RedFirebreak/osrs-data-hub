@@ -4,6 +4,26 @@
  * computed from the redacted data, so nothing hidden leaks through the text either.
  */
 import { describeEvent, redactEventData, type Category } from '@hub/core';
+import { events } from '@hub/db';
+
+/** The `events` columns a FeedEvent is built from (plus the account, for multi-account reads). */
+export const EVENT_ROW_COLUMNS = {
+  id: events.id,
+  seq: events.seq,
+  accountId: events.accountId,
+  type: events.type,
+  occurredAt: events.occurredAt,
+  receivedAt: events.receivedAt,
+  valueGp: events.valueGp,
+  itemId: events.itemId,
+  npcId: events.npcId,
+  skill: events.skill,
+  level: events.level,
+  tier: events.tier,
+  points: events.points,
+  specialWorld: events.specialWorld,
+  data: events.data,
+};
 
 /** The columns of an `events` row that a feed needs. */
 export interface EventRowLike {
@@ -54,7 +74,7 @@ export function toFeedEvent(
   account: { publicId: string; name: string },
   categories: ReadonlySet<Category>,
 ): FeedEvent {
-  const data = redactEventData(row.type, row.data, categories);
+  const data = redactEventData(row.data, categories);
   const d = describeEvent(account.name, { ...row, data });
   return {
     id: row.id,
@@ -76,11 +96,4 @@ export function toFeedEvent(
     line: d.line,
     icon: d.icon,
   };
-}
-
-/** Plugin endpoint response (route handlers turn it into a Response). */
-export interface PluginResponse {
-  status: number;
-  body: Record<string, unknown>;
-  headers?: Record<string, string>;
 }

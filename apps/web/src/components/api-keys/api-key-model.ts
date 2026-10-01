@@ -1,14 +1,14 @@
 /**
  * Pure helpers for the API keys page (handoff §13, D-69, D-76): display texts, the create form's
- * state, validation and request body, and the error text for a failed create or revoke. No React, no
+ * state, validation and request body, and how a failed create or revoke is told. No React, no
  * browser APIs; unit-tested in api-key-model.test.ts.
  *
  * Only `import type` from @hub/server: the page's client components import this module (NEXT-12).
  * The server's limits (name length, active keys) reach the client as props from the page.
  */
-import { CATEGORIES, relativeTime, type Category } from '@hub/core';
+import { CATEGORIES, DAY_MS, HOUR_MS, relativeTime, type Category } from '@hub/core';
 import type { ApiKeyInfo, ApiKeyStatus } from '@hub/server';
-import { apiErrorMessage } from '@/components/onboarding/wizard-model';
+import type { FailureOptions } from '@/lib/api-client';
 
 /** How a key is shown: its prefix only; the secret is never stored in a readable form. */
 export function maskedKey(prefix: string): string {
@@ -35,8 +35,6 @@ export function scopeText(
   return count === 1 ? '1 account' : `${count} accounts`;
 }
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-
 /**
  * When a key expires, relative to `now`: "Never", "in 3 days", "in 5 h", "today" (under an hour),
  * or "Expired 2 d ago" once past (relativeTime).
@@ -53,7 +51,7 @@ export function expiryText(expiresAt: string | null, now: string | Date): string
     const days = Math.round(left / DAY_MS);
     return days === 1 ? 'in 1 day' : `in ${days} days`;
   }
-  const hours = Math.floor(left / (60 * 60 * 1000));
+  const hours = Math.floor(left / HOUR_MS);
   return hours >= 1 ? `in ${hours} h` : 'within the hour';
 }
 
@@ -82,15 +80,28 @@ export function emptyCreateForm(): CreateKeyForm {
 export type CreateKeyField = 'name' | 'categories' | 'accountPublicIds' | 'expiresInDays';
 export type CreateKeyErrors = Partial<Record<CreateKeyField, string>>;
 
+/**
+ * What is wrong with a key's name, or undefined: it must not be empty and not longer than `nameMax`,
+ * counted as the server counts (control characters become spaces, then trimmed, in code points).
+ * `example` is the name the hint suggests ("Home Assistant"). Shared by user and service keys.
+ */
+export function keyNameError(name: string, nameMax: number, example: string): string | undefined {
+  const cleaned = name.replace(/\p{Cc}/gu, ' ').trim();
+  if (cleaned.length === 0) return `Give the key a name, e.g. "${example}".`;
+  if (Array.from(cleaned).length > nameMax) return `At most ${nameMax} characters.`;
+  return undefined;
+}
+
+/** The days of an EXPIRY_OPTIONS value; null for "never" (and for a value that isn't an option). */
+export function expiryDays(expiry: string): number | null {
+  return EXPIRY_OPTIONS.find((o) => o.value === expiry)?.days ?? null;
+}
+
 /** Client-side checks before sending (the server checks everything again). */
 export function validateCreateForm(form: CreateKeyForm, nameMax: number): CreateKeyErrors {
   const errors: CreateKeyErrors = {};
-  // As the server counts: control characters become spaces, then trimmed, in code points.
-  const name = form.name.replace(/\p{Cc}/gu, ' ').trim();
-  if (name.length === 0) errors.name = 'Give the key a name, e.g. "Home Assistant".';
-  else if (Array.from(name).length > nameMax) {
-    errors.name = `At most ${nameMax} characters.`;
-  }
+  const name = keyNameError(form.name, nameMax, 'Home Assistant');
+  if (name) errors.name = name;
   if (form.categories.length === 0) errors.categories = 'Choose at least one category.';
   if (form.scope === 'list' && form.accountPublicIds.length === 0) {
     errors.accountPublicIds = 'Choose at least one account.';
@@ -100,58 +111,39 @@ export function validateCreateForm(form: CreateKeyForm, nameMax: number): Create
 
 /** The POST /api/app/api-keys body for a valid form (CreateApiKeySchema's input). */
 export function createKeyBody(form: CreateKeyForm): Record<string, unknown> {
-  const days = EXPIRY_OPTIONS.find((o) => o.value === form.expiry)?.days ?? null;
   return {
     name: form.name.trim(),
     categories: CATEGORIES.filter((c) => form.categories.includes(c)),
     accountScope: form.scope,
     ...(form.scope === 'list' ? { accountPublicIds: form.accountPublicIds } : {}),
-    expiresInDays: days,
+    expiresInDays: expiryDays(form.expiry),
   };
 }
 
-const FIELDS: ReadonlySet<string> = new Set<CreateKeyField>([
+/** The form's fields the server's 400 `details` can name (fieldErrorsFrom, lib/api-client.ts). */
+export const CREATE_KEY_FIELDS: readonly CreateKeyField[] = [
   'name',
   'categories',
   'accountPublicIds',
   'expiresInDays',
-]);
+];
 
-/** The server's 400 `details` ([{ path, message }]) by form field (first message per field). */
-export function createKeyFieldErrors(details: unknown): CreateKeyErrors {
-  const errors: CreateKeyErrors = {};
-  if (!Array.isArray(details)) return errors;
-  for (const d of details) {
-    if (typeof d !== 'object' || d === null) continue;
-    const { path, message } = d as { path?: unknown; message?: unknown };
-    if (typeof path !== 'string' || typeof message !== 'string') continue;
-    const field = path.split('.')[0] ?? '';
-    if (FIELDS.has(field) && errors[field as CreateKeyField] === undefined) {
-      errors[field as CreateKeyField] = message;
-    }
-  }
-  return errors;
-}
+/** How a failed POST /api/app/api-keys is told (failureMessage, lib/api-client.ts). */
+export const CREATE_KEY_FAILURE: FailureOptions = {
+  fallback: "Couldn't create the key. Try again in a moment.",
+  conflict: 'You have the most active keys allowed. Revoke one first.',
+};
 
-/** What to tell the user when POST /api/app/api-keys failed with `status` and `body`. */
-export function createFailureMessage(status: number, body: unknown): string {
-  if (status === 401) return 'Your session has ended. Sign in again.';
-  if (status === 409) {
-    return apiErrorMessage(body, 'You have the most active keys allowed. Revoke one first.');
-  }
-  const fallback = "Couldn't create the key. Try again in a moment.";
-  if (status === 400 || status === 403 || status === 503) return apiErrorMessage(body, fallback);
-  return fallback;
-}
-
-/** What to tell the user when DELETE /api/app/api-keys/[id] failed. */
-export function revokeFailureMessage(status: number, body: unknown): string {
-  if (status === 401) return 'Your session has ended. Sign in again.';
-  if (status === 404) return 'This key no longer exists. Reload the page.';
-  const fallback = "Couldn't revoke the key. Try again in a moment.";
-  if (status === 403 || status === 503) return apiErrorMessage(body, fallback);
-  return fallback;
-}
+/**
+ * How a failed DELETE /api/app/api-keys/[id] is told. A key that no longer exists was revoked
+ * elsewhere: the page is refreshed, so it leaves the active list.
+ */
+export const REVOKE_KEY_FAILURE: FailureOptions = {
+  fallback: "Couldn't revoke the key. Try again in a moment.",
+  notFound: 'This key no longer exists. Reload the page.',
+  hubMessageFor: [403, 503],
+  refreshOnNotFound: true,
+};
 
 /** The API path of one key. */
 export function apiKeyPath(id: string): string {

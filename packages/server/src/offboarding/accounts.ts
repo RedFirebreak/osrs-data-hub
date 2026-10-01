@@ -1,6 +1,7 @@
 /**
- * Account-ownership steps shared by offboarding, grace expiry, restore and ingest (handoff §14.3,
- * §14.5, D-60): the per-account lock, choosing a successor owner, and moving ownership.
+ * Account-ownership steps shared by offboarding, grace expiry, restore, ingest and the sharing page's
+ * transfer and claim (handoff §10, §14.3, §14.5, D-60): the per-account lock, choosing a successor
+ * owner, and moving ownership.
  */
 import { accountLinks, osrsAccounts, users, type Tx, type UserStatus } from '@hub/db';
 import { and, asc, desc, eq, gt, notInArray, or, sql } from 'drizzle-orm';
@@ -67,13 +68,14 @@ export async function findSuccessor(
 /**
  * Makes `successor` the owner and aligns every link's role with it. An active owner makes the account
  * visible again; an owner who is in grace keeps (or puts) it hidden, since accounts of an owner in
- * grace are hidden (handoff §10) until restoreUser un-hides them.
+ * grace are hidden (handoff §10) until restoreUser un-hides them. `now` is only the hidden_at of an
+ * account this hides.
  */
 export async function setOwner(
   tx: Tx,
   accountId: number,
   successor: Successor,
-  now: Date,
+  now: Date = new Date(),
 ): Promise<void> {
   const visible = successor.status === 'active';
   await tx
@@ -94,15 +96,28 @@ export async function setOwner(
     .where(eq(accountLinks.accountId, accountId));
 }
 
-/** Why ownership moved: offboarding, grace expiry, or an owner in grace (D-60). */
-export type TransferReason = 'offboarding' | 'grace_expired' | 'owner_in_grace';
+/**
+ * Why ownership moved: offboarding, grace expiry, an owner in grace (D-60), or 'manual' when the
+ * owner or an admin handed it over (sharing/mutations.ts transferOwnership).
+ */
+export type TransferReason = 'offboarding' | 'grace_expired' | 'owner_in_grace' | 'manual';
 
-/** Audit entry for an ownership move; `from` is null when the previous owner no longer exists. */
+/**
+ * The meta of an 'account.ownership_transferred' audit entry, whoever writes it; `from` is null when
+ * the previous owner no longer exists.
+ */
+export type OwnershipTransfer = {
+  from: string | null;
+  to: string;
+  reason: TransferReason;
+};
+
+/** Audit entry for an ownership move the hub makes on its own. */
 export async function auditTransfer(
   tx: Tx,
   actor: AuditActor,
   account: { publicId: string },
-  change: { from: string | null; to: string; reason: TransferReason },
+  change: OwnershipTransfer,
 ): Promise<void> {
   await audit(tx, {
     ...actor,

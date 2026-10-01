@@ -6,7 +6,7 @@
  */
 import { getConfig } from '@hub/core';
 import { getDb } from '@hub/db';
-import { listDevices, type DeviceSummary } from '@hub/server';
+import { DEVICE_LABEL_MAX, listDevices, type DeviceSummary } from '@hub/server';
 import { MonitorSmartphoneIcon, PlusIcon } from 'lucide-react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
@@ -84,7 +84,7 @@ function DeviceSection({
         <ul className="flex flex-col gap-4">
           {devices.map((device) => (
             <li key={device.id}>
-              <DeviceCard device={device} now={now} />
+              <DeviceCard device={device} now={now} labelMax={DEVICE_LABEL_MAX} />
             </li>
           ))}
         </ul>

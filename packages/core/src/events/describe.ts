@@ -1,6 +1,16 @@
 import { formatGp, formatNumber } from '../format';
+import { isRecord } from '../guards';
+import { INT32_MAX } from '../ints';
 import { parseCombatTaskName } from './combat-task';
-import { EVENT_TYPE_MAP } from './types';
+import { highestValueItem, storedEventData } from './stored';
+import {
+  EVENT_TYPES,
+  UNKNOWN_EVENT_ICON,
+  isKnownEventType,
+  storedEventType,
+  type EventIconHint,
+  type KnownEventType,
+} from './types';
 
 /** Minimal event shape needed to describe it (a stored row, possibly redacted). */
 export interface DescribableEvent {
@@ -26,14 +36,14 @@ export interface EventDescription {
    * "A superior Nechryarch spawned for Zezima", unknown types: "Zezima: questComplete".
    */
   line: string;
-  /** lucide-react icon name hint: 'gift' | 'skull' | 'trending-up' | 'book' | 'swords' | 'map' | 'sparkles' | 'bell'. */
-  icon: string;
+  /** lucide-react icon name hint. */
+  icon: EventIconHint;
 }
 
 /** Longest piece of plugin-sent text (item, NPC, source, task name…) put into a line. */
 const MAX_TEXT = 100;
 /** Largest stack the plugin can send (a Java int). */
-const MAX_QUANTITY = 2_147_483_647;
+const MAX_QUANTITY = INT32_MAX;
 /**
  * C0, DEL and C1 controls (U+009B is a terminal CSI) and the bidi marks, embeddings, overrides and
  * isolates (U+202E would reverse the rest of the toast line).
@@ -59,24 +69,32 @@ const CONTROL_CHARS = /[\p{Cc}\p{Bidi_Control}]/gu;
 export function describeEvent(accountName: string, event: DescribableEvent): EventDescription {
   const name = clean(accountName) ?? 'Someone';
   const type = storedType(event.type);
-  const envelope = isObject(event.data) ? event.data : {};
-  const d = isObject(envelope.data) ? envelope.data : {};
+  if (!isKnownEventType(type)) {
+    const label = clean(type) ?? 'event';
+    return { title: label, line: `${name}: ${label}`, icon: UNKNOWN_EVENT_ICON };
+  }
+  const { title, icon } = EVENT_TYPES[type];
+  return { title, line: lineFor(type, name, event), icon };
+}
+
+/** The line of a known type. No default case: a type added to EVENT_TYPES must get its line here. */
+function lineFor(type: KnownEventType, name: string, event: DescribableEvent): string {
+  const d = storedEventData(event.data);
 
   switch (type) {
     case 'loot': {
-      const top = isObject(d.highestValueItem) ? d.highestValueItem : {};
+      const top = highestValueItem(event.data);
       const item = clean(top.name);
       const value = finite(event.valueGp) ?? finite(d.totalValue);
-      const source = clean(isObject(d.source) ? d.source.text : undefined);
+      const source = clean(isRecord(d.source) ? d.source.text : undefined);
       let line = `${name} received ${item === null ? 'loot' : stack(item, top.quantity)}`;
       if (value !== null) line += ` (${formatGp(value)})`;
       if (source !== null) line += ` from ${source}`;
-      return { title: 'Loot', line, icon: 'gift' };
+      return line;
     }
     case 'pk_loot': {
       const value = finite(event.valueGp) ?? finite(d.totalValue);
-      const line = `${name} opened a loot chest${value === null ? '' : ` worth ${formatGp(value)}`}`;
-      return { title: 'Loot chest', line, icon: 'gift' };
+      return `${name} opened a loot chest${value === null ? '' : ` worth ${formatGp(value)}`}`;
     }
     case 'death': {
       const killerName = clean(d.killerName);
@@ -86,13 +104,13 @@ export function describeEvent(accountName: string, event: DescribableEvent): Eve
       let line = killer === null ? `${name} died` : `${name} was killed by ${killer}`;
       if (danger === 'SAFE' || danger === 'EXCEPTIONAL') line += ' (safe death)';
       else if (value !== null) line += ` (inventory value lost: ${formatGp(value)})`;
-      return { title: 'Death', line, icon: 'skull' };
+      return line;
     }
     case 'level_up': {
       // A level_up row's data holds the whole levelUp array; only a one-element array identifies it.
-      const only =
-        Array.isArray(envelope.data) && envelope.data.length === 1 ? envelope.data[0] : undefined;
-      const fallback = isObject(only) ? only : {};
+      const sent = isRecord(event.data) ? event.data.data : undefined;
+      const only = Array.isArray(sent) && sent.length === 1 ? sent[0] : undefined;
+      const fallback = isRecord(only) ? only : {};
       const skill = clean(event.skill) ?? clean(fallback.skill);
       const level = integer(event.level) ?? integer(fallback.level);
       let line: string;
@@ -109,17 +127,15 @@ export function describeEvent(accountName: string, event: DescribableEvent): Eve
       } else {
         line = level === null ? `${name} gained a level` : `${name} reached level ${level}`;
       }
-      return { title: 'Level up', line, icon: 'trending-up' };
+      return line;
     }
     case 'collection_log': {
       const item = clean(d.itemName);
-      const line = `${name}: new collection log item${item === null ? '' : ` ${item}`}`;
-      return { title: 'Collection log', line, icon: 'book' };
+      return `${name}: new collection log item${item === null ? '' : ` ${item}`}`;
     }
     case 'superior_spawn': {
       const npc = clean(d.name);
-      const line = `A superior ${npc === null ? '' : `${npc} `}spawned for ${name}`;
-      return { title: 'Superior spawn', line, icon: 'sparkles' };
+      return `A superior ${npc === null ? '' : `${npc} `}spawned for ${name}`;
     }
     case 'achievement_diary': {
       const words = [capitalize(clean(event.tier) ?? clean(d.tier)), clean(d.region)].filter(
@@ -127,7 +143,7 @@ export function describeEvent(accountName: string, event: DescribableEvent): Eve
       );
       const what =
         words.length === 0 ? 'a diary task' : `${article(words[0])} ${words.join(' ')} diary task`;
-      return { title: 'Achievement diary', line: `${name} completed ${what}`, icon: 'map' };
+      return `${name} completed ${what}`;
     }
     case 'combat_task': {
       const tier = capitalize(clean(event.tier) ?? clean(d.tier));
@@ -137,23 +153,14 @@ export function describeEvent(accountName: string, event: DescribableEvent): Eve
       let line = `${name} completed ${tier === null ? 'a' : `${article(tier)} ${tier}`} combat task`;
       if (task !== null) line += `: ${task}`;
       if (points !== null) line += ` (${points} ${points === 1 ? 'point' : 'points'})`;
-      return { title: 'Combat task', line, icon: 'swords' };
-    }
-    default: {
-      const label = clean(type) ?? 'event';
-      return { title: label, line: `${name}: ${label}`, icon: 'bell' };
+      return line;
     }
   }
 }
 
 /** Plugin type names are mapped to the stored names; anything else is used as is. */
 function storedType(type: unknown): string {
-  const t = typeof type === 'string' ? type : String(type);
-  return Object.hasOwn(EVENT_TYPE_MAP, t) ? EVENT_TYPE_MAP[t as keyof typeof EVENT_TYPE_MAP] : t;
-}
-
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+  return storedEventType(typeof type === 'string' ? type : String(type));
 }
 
 function finite(value: unknown): number | null {

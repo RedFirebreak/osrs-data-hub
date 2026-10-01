@@ -7,15 +7,9 @@
 import { formatGain } from '@hub/core';
 import type { Leaderboard, LeaderboardPeriod } from '@hub/server';
 import { TrophyIcon } from 'lucide-react';
-import { useId, useState } from 'react';
+import { useState } from 'react';
 import { AccountLink } from '@/components/accounts/account-link';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { SkillSelect, defaultSkill } from '@/components/common/skill-select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 
@@ -34,8 +28,7 @@ export interface LeaderboardsProps {
 }
 
 export function Leaderboards({ boards, skills }: LeaderboardsProps) {
-  const id = useId();
-  const [skill, setSkill] = useState(skills.includes('Overall') ? 'Overall' : (skills[0] ?? ''));
+  const [skill, setSkill] = useState(() => defaultSkill(skills));
   const [period, setPeriod] = useState<LeaderboardPeriod>('day');
 
   return (
@@ -49,23 +42,7 @@ export function Leaderboards({ boards, skills }: LeaderboardsProps) {
           ))}
         </TabsList>
         {skills.length > 0 && (
-          <div>
-            <label htmlFor={`${id}-skill`} className="sr-only">
-              Skill
-            </label>
-            <Select value={skill} onValueChange={setSkill}>
-              <SelectTrigger id={`${id}-skill`} size="sm" className="min-w-36">
-                <SelectValue placeholder="Skill" />
-              </SelectTrigger>
-              <SelectContent position="popper" align="end" className="max-h-72">
-                {skills.map((s) => (
-                  <SelectItem key={s} value={s}>
-                    {s}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <SkillSelect skills={skills} value={skill} onChange={setSkill} align="end" />
         )}
       </div>
       {PERIODS.map((p) => {

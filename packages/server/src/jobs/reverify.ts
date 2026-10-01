@@ -1,3 +1,4 @@
+import { HOUR_MS } from '@hub/core';
 import { auditLog, pgErrorCode, users, type Db } from '@hub/db';
 import {
   and,
@@ -13,6 +14,7 @@ import {
   or,
   sql,
 } from 'drizzle-orm';
+import type { AuditAction } from '../audit';
 import {
   avatarUrl,
   displayName,
@@ -26,7 +28,7 @@ import {
   type MembershipVerdict,
 } from '../discord';
 import type { Logger } from '../logger';
-import type { HubMetrics } from '../metrics';
+import type { DiscordVerifyBreakerRule, HubMetrics } from '../metrics';
 import { offboardUser } from '../offboarding';
 
 export interface ReverifyDeps {
@@ -58,7 +60,6 @@ export interface ReverifyResult {
   aborted: boolean;
 }
 
-const HOUR_MS = 3_600_000;
 /** The per-batch breaker needs at least this many answers before it judges a batch (DISCORD-1). */
 export const BREAKER_MIN_CHECKED = 5;
 /** More than this share of departures (in a batch, or in the window) is a config problem (D-34). */
@@ -185,9 +186,9 @@ async function breakerTripped(
 ): Promise<boolean> {
   const departures = batch.departures.length;
   const { recent, active } = await windowCounts(deps.db, batch.now, batch.intervalHours);
-  const rules = [
-    ...(breakerTrips(batch.answered, departures) ? ['batch'] : []),
-    ...(windowBreakerTrips(recent, departures, active) ? ['window'] : []),
+  const rules: DiscordVerifyBreakerRule[] = [
+    ...(breakerTrips(batch.answered, departures) ? (['batch'] as const) : []),
+    ...(windowBreakerTrips(recent, departures, active) ? (['window'] as const) : []),
   ];
   if (rules.length === 0) return false;
   for (const rule of rules) deps.metrics.discordVerifyBreakerTrips.inc({ rule });
@@ -227,7 +228,7 @@ async function windowCounts(
     .where(
       and(
         gt(auditLog.at, since),
-        eq(auditLog.action, 'user.offboarded'),
+        eq(auditLog.action, 'user.offboarded' satisfies AuditAction),
         eq(auditLog.targetType, 'user'),
         eq(auditLog.actorLabel, REVERIFY_ACTOR),
         isNull(auditLog.actorUserId),

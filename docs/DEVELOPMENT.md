@@ -61,7 +61,7 @@ an older installed version; the hub refuses anything below `MIN_PLUGIN_VERSION`.
 | `pnpm build` | `next build` (standalone) and the bundled worker. |
 | `pnpm db:generate` | Generate a migration after changing `packages/db/src/schema/`. |
 | `pnpm db:check` | Check the migration journal for consistency. |
-| `pnpm db:migrate` | Apply migrations to `DATABASE_URL`. |
+| `pnpm db:migrate` | Apply migrations to `DATABASE_URL` (runs `apps/worker/src/migrate.ts`, the entrypoint of the `migrate` container, from source). |
 | `pnpm gotchas` | Validate `docs/gotchas/` (must print `OK`). |
 
 ## Tests and the database
@@ -112,8 +112,7 @@ clamps event times to at most 15 minutes before receipt, so the seeded history s
 
 ### Running the production builds locally
 
-After `pnpm build`, against a migrated database of your own (`DATABASE_URL=… pnpm --filter @hub/worker
-migrate`):
+After `pnpm build`, against a migrated database of your own (`DATABASE_URL=… pnpm db:migrate`):
 
 ```bash
 # worker: reconciles the Timescale policies, creates the pg-boss queues and schedules, runs the jobs
@@ -182,7 +181,8 @@ CI fails when the schema and the committed migrations disagree.
 - Never log tokens, request bodies, coordinates, or database error messages (DB-3); log codes and counts.
 - Cite gotchas by ID in comments when code works around one (`// See PLUGIN-2: …`), and record new ones
   with the `gotcha` skill.
-- Document decisions in `docs/ARCHITECTURE.md` (decision log) and changes in `docs/CHANGELOG.md`.
+- Document decisions in `docs/ARCHITECTURE.md` (decision log). There is no changelog file: what changed
+  is the git history (commit messages and pull requests).
 
 ## CI
 
@@ -191,9 +191,22 @@ CI fails when the schema and the committed migrations disagree.
 | Job | Checks |
 |---|---|
 | Lint & typecheck | gotcha registry, Prettier, `tsc`, ESLint, migrations in sync with the schema |
-| Tests | Vitest against a `timescale/timescaledb:2.30.1-pg18` service container |
+| Tests | Vitest against the pinned `timescale/timescaledb` service container |
 | Build | `next build` and the worker bundle |
 | Docker images | both image targets build |
 | E2E (wizard) | `next build`, then the Playwright wizard test (`pnpm test:e2e`) against a TimescaleDB service container; uploads the Playwright report and traces when it fails |
 
 `main` is protected: make these jobs required checks in the branch protection rule.
+
+### Dependency updates
+
+Renovate (`renovate.json`) opens a PR for a release once it is 7 days old and merges it itself when the
+jobs above are green; a major update stays open for a person to merge (D-97). A red Renovate PR is
+never merged and needs a look. Two repository settings carry this:
+
+- the five jobs are **required status checks** on `main`. Without them GitHub's auto-merge has nothing
+  to wait for and can merge before the jobs finish;
+- **Allow auto-merge** is on (Settings → General). Without it Renovate merges on its own next run
+  instead, hours later.
+
+Merging is not releasing: an update reaches a deployment with the next release (OPERATIONS §10).

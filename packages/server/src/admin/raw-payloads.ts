@@ -6,8 +6,9 @@
 import { rawPayloads, type Db } from '@hub/db';
 import { and, desc, eq, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
 import { audit } from '../audit';
-import { isUuid } from '../devices/util';
 import type { IngestMeta } from '../ingest/types';
+import { clampLimit } from '../paging';
+import { isUuid } from '../uuid';
 import { AdminError } from './errors';
 
 export const RAW_PAYLOAD_PAGE_MAX = 200;
@@ -33,8 +34,8 @@ export interface RawPayloadCursor {
 
 /**
  * Archived payloads, newest first, without bodies. Filters: a device, and a status (a number, or
- * 'pending' for rows without one). `before` pages: pass the last row's { receivedAt, id } (a bare
- * Date means "received before"; an invalid date throws AdminError 'invalid'). `limit` is clamped to
+ * 'pending' for rows without one). `before` pages: pass the last row's { receivedAt, id } (an
+ * invalid date, or an id that isn't a uuid, throws AdminError 'invalid'). `limit` is clamped to
  * 1…RAW_PAYLOAD_PAGE_MAX. A malformed device id matches nothing.
  */
 export async function listRawPayloads(
@@ -43,7 +44,7 @@ export async function listRawPayloads(
     deviceId?: string;
     status?: number | 'pending';
     limit: number;
-    before?: RawPayloadCursor | Date;
+    before?: RawPayloadCursor;
   },
 ): Promise<RawPayloadRow[]> {
   if (opts.deviceId !== undefined && !isUuid(opts.deviceId)) return [];
@@ -67,18 +68,18 @@ export async function listRawPayloads(
       ),
     )
     .orderBy(desc(rawPayloads.receivedAt), desc(rawPayloads.id))
-    .limit(clampLimit(opts.limit));
+    .limit(clampLimit(opts.limit, RAW_PAYLOAD_PAGE_MAX, RAW_PAYLOAD_PAGE_MAX));
   return rows.map((r) => ({ ...r, meta: (r.meta ?? null) as IngestMeta | null }));
 }
 
 /**
  * One archived body as stored (text, possibly invalid JSON), or null when it doesn't exist (or has
- * aged out). With `actorUserId`, the view is audited as 'raw_payload.viewed': bodies can hold data
- * the player shares with nobody (locations, inventories).
+ * aged out). Every body returned is audited as 'raw_payload.viewed' by `actorUserId`: bodies can
+ * hold data the player shares with nobody (locations, inventories).
  */
 export async function getRawPayload(
   db: Db,
-  opts: { id: string; receivedAt: Date; actorUserId?: string | null },
+  opts: { id: string; receivedAt: Date; actorUserId: string },
 ): Promise<string | null> {
   if (!isUuid(opts.id) || Number.isNaN(opts.receivedAt.getTime())) return null;
   const [row] = await db
@@ -86,15 +87,13 @@ export async function getRawPayload(
     .from(rawPayloads)
     .where(and(eq(rawPayloads.id, opts.id), eq(rawPayloads.receivedAt, opts.receivedAt)));
   if (!row) return null;
-  if (opts.actorUserId) {
-    await audit(db, {
-      actorUserId: opts.actorUserId,
-      action: 'raw_payload.viewed',
-      targetType: 'raw_payload',
-      targetId: opts.id,
-      meta: { deviceId: row.deviceId, receivedAt: opts.receivedAt.toISOString() },
-    });
-  }
+  await audit(db, {
+    actorUserId: opts.actorUserId,
+    action: 'raw_payload.viewed',
+    targetType: 'raw_payload',
+    targetId: opts.id,
+    meta: { deviceId: row.deviceId, receivedAt: opts.receivedAt.toISOString() },
+  });
   return row.body;
 }
 
@@ -106,20 +105,15 @@ function statusFilter(status: number | 'pending' | undefined): SQL | undefined {
   return eq(rawPayloads.status, status);
 }
 
-function beforeFilter(before: RawPayloadCursor | Date | undefined): SQL | undefined {
+function beforeFilter(before: RawPayloadCursor | undefined): SQL | undefined {
   if (before === undefined) return undefined;
-  // An unparseable date (a tampered `?before=`) is the caller's error, not a 500 from toISOString.
-  const at = before instanceof Date ? before : before.receivedAt;
-  if (Number.isNaN(at.getTime())) throw new AdminError('invalid', 'invalid cursor');
-  if (before instanceof Date) return lt(rawPayloads.receivedAt, before);
-  if (!isUuid(before.id)) return lt(rawPayloads.receivedAt, before.receivedAt);
+  // An unparseable date or id (a tampered `?before=`) is the caller's error, not a 500 from
+  // toISOString or a 22P02 from Postgres.
+  if (Number.isNaN(before.receivedAt.getTime()) || !isUuid(before.id)) {
+    throw new AdminError('invalid', 'invalid cursor');
+  }
   return or(
     lt(rawPayloads.receivedAt, before.receivedAt),
     and(eq(rawPayloads.receivedAt, before.receivedAt), lt(rawPayloads.id, before.id)),
   );
-}
-
-function clampLimit(limit: number): number {
-  if (!Number.isFinite(limit)) return RAW_PAYLOAD_PAGE_MAX;
-  return Math.min(RAW_PAYLOAD_PAGE_MAX, Math.max(1, Math.floor(limit)));
 }

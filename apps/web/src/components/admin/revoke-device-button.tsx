@@ -6,8 +6,8 @@
  */
 import { BanIcon } from 'lucide-react';
 import { toast } from 'sonner';
-import { adminDevicePath } from './admin-model';
-import { ConfirmAction } from './confirm-action';
+import { ConfirmAction } from '@/components/common/confirm-action';
+import { adminDevicePath, adminFailure } from './admin-model';
 
 export interface AdminRevokeDeviceButtonProps {
   deviceId: string;
@@ -37,7 +37,7 @@ export function AdminRevokeDeviceButton({ deviceId, name, owner }: AdminRevokeDe
       }
       confirmLabel="Revoke device"
       request={{ path: adminDevicePath(deviceId), method: 'DELETE' }}
-      failure="Couldn't revoke the device. Try again in a moment."
+      failure={adminFailure("Couldn't revoke the device. Try again in a moment.")}
       onDone={() => toast.success(`${name} revoked`)}
     >
       <BanIcon aria-hidden data-icon="inline-start" />

@@ -4,6 +4,7 @@
  * redact paths below are a safety net; callers must not log payload bodies or DB error messages
  * (DB-3), only codes and counts.
  */
+import { logLevelFromEnv } from '@hub/core';
 import pino, { type Logger } from 'pino';
 
 export type { Logger };
@@ -30,7 +31,8 @@ const g = globalThis as unknown as { __hubLogger?: Logger };
 
 export function getLogger(): Logger {
   g.__hubLogger ??= pino({
-    level: process.env.LOG_LEVEL ?? 'info',
+    // Not getConfig().logLevel: the logger is created first, to report an invalid configuration.
+    level: logLevelFromEnv(process.env.LOG_LEVEL),
     base: { service: process.env.HUB_SERVICE ?? 'hub' },
     redact: { paths: REDACT, censor: '[redacted]' },
     timestamp: pino.stdTimeFunctions.isoTime,

@@ -11,8 +11,7 @@
     "typecheck": "tsc -p tsconfig.json",
     "lint": "eslint .",
     "generate": "drizzle-kit generate",
-    "check": "drizzle-kit check",
-    "migrate": "tsx --import=../../tools/dev-env.mjs src/migrate-cli.ts"
+    "check": "drizzle-kit check"
   },
   "dependencies": {
     "@hub/core": "workspace:*",
@@ -21,7 +20,6 @@
   },
   "devDependencies": {
     "@types/pg": "^8.23.1",
-    "drizzle-kit": "0.31.11",
-    "tsx": "4.23.15"
+    "drizzle-kit": "0.31.11"
   }
 }

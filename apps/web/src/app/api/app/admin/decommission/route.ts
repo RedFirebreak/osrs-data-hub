@@ -17,7 +17,7 @@ import { getConfig } from '@hub/core';
 import { getDb } from '@hub/db';
 import { setDecommissioned } from '@hub/server';
 import { z } from 'zod';
-import { decommissionConfirmMatches } from '@/components/admin/admin-model';
+import { decommissionConfirmMatches } from '@/lib/admin-rules';
 import { ApiError, assertSameOrigin, handleApi, json, readJson } from '@/lib/http';
 import { requireApiAdmin } from '../guard';
 

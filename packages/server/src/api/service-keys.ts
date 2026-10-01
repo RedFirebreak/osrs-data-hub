@@ -4,24 +4,24 @@
  * included) never revokes them and they count towards nobody's per-user limit. A service key reads
  * exactly what the guild audience sees (GUILD_AUDIENCE, D-89): the accounts and categories whose
  * sharing audience is `guild`; `private` and `selected` stay hidden, and there is no admin override
- * (D-70). Same format, storage, categories and expiry as user keys (D-69, keys.ts); its rate limit is
- * its own (`rateLimitPerMinute`, default SERVICE_KEY_RATE_LIMIT).
+ * (D-70). Same format (key-format.ts), storage, categories and expiry as user keys (D-69, keys.ts),
+ * and the same authentication (key-auth.ts); its rate limit is its own (`rateLimitPerMinute`,
+ * default SERVICE_KEY_RATE_LIMIT).
  */
 import { sha256Hex, type Viewer } from '@hub/core';
 import { apiKeys, users, type Db, type DbOrTx } from '@hub/db';
-import { and, desc, eq, isNull } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import { z } from 'zod';
-import { AdminError } from '../admin/errors';
+import { assertAdmin } from '../admin/errors';
 import { audit } from '../audit';
-import { isUuid } from '../devices/util';
+import { formatKey, newKeySecret } from './key-format';
 import {
   KEY_FIELD_SCHEMAS,
   expiryFrom,
-  formatKey,
   insertWithFreshPrefix,
   keyInfoOf,
-  newKeySecret,
   parseKeyInput,
+  revokeKey,
   type ApiKeyInfo,
 } from './keys';
 import { MAX_KEY_RATE_LIMIT } from './limits';
@@ -38,19 +38,10 @@ export const CreateServiceKeySchema = z.strictObject({
   rateLimitPerMinute: z.number().int().min(1).max(MAX_KEY_RATE_LIMIT).nullable().optional(),
 });
 
-export type CreateServiceKeyInput = z.input<typeof CreateServiceKeySchema>;
-
 /** A service key as the admin page shows it: an ApiKeyInfo plus who created it. */
 export interface ServiceKeyInfo extends ApiKeyInfo {
   /** The admin who created it; null once that user was deleted. */
   createdBy: { id: string; name: string } | null;
-}
-
-/** Only an active admin may act (the route checks too; this is the second lock). */
-function assertAdmin(actor: Viewer): void {
-  if (actor.isAdmin !== true || actor.status !== 'active') {
-    throw new AdminError('forbidden', 'admins only');
-  }
 }
 
 /**
@@ -136,26 +127,14 @@ export async function revokeServiceKey(
   opts: { actor: Viewer; keyId: string; now?: Date },
 ): Promise<boolean> {
   assertAdmin(opts.actor);
-  if (!isUuid(opts.keyId)) return false;
-  const now = opts.now ?? new Date();
-  const scope = and(eq(apiKeys.id, opts.keyId), eq(apiKeys.kind, 'service'));
-  return db.transaction(async (tx) => {
-    const [revoked] = await tx
-      .update(apiKeys)
-      .set({ revokedAt: now })
-      .where(and(scope, isNull(apiKeys.revokedAt)))
-      .returning({ id: apiKeys.id, prefix: apiKeys.prefix, name: apiKeys.name });
-    if (revoked) {
-      await audit(tx, {
-        actorUserId: opts.actor.userId,
-        action: 'service_key.revoked',
-        targetType: 'api_key',
-        targetId: revoked.id,
-        meta: { prefix: revoked.prefix, name: revoked.name },
-      });
-      return true;
-    }
-    const existing = await tx.select({ id: apiKeys.id }).from(apiKeys).where(scope);
-    return existing.length > 0;
-  });
+  const scope = eq(apiKeys.kind, 'service');
+  return revokeKey(db, { keyId: opts.keyId, scope, now: opts.now }, (tx, revoked) =>
+    audit(tx, {
+      actorUserId: opts.actor.userId,
+      action: 'service_key.revoked',
+      targetType: 'api_key',
+      targetId: revoked.id,
+      meta: { prefix: revoked.prefix, name: revoked.name },
+    }),
+  );
 }

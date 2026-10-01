@@ -4,17 +4,16 @@
  * document itself); every $ref resolves; `servers` comes from APP_URL, never the request (NEXT-2);
  * the JSON round-trips; and GET /api/v1/openapi.json serves it publicly with CORS and caching.
  */
-import { readdirSync } from 'node:fs';
-import path from 'node:path';
 import { parseConfig, setConfigForTests } from '@hub/core';
 import {
   API_RATE_LIMIT,
   EVENTS_MAX_LIMIT,
-  MAX_XP_ACCOUNTS,
-  MAX_XP_ACCOUNTS_SERVICE,
+  MAX_BULK_ACCOUNTS as MAX_XP_ACCOUNTS,
+  MAX_BULK_ACCOUNTS_SERVICE as MAX_XP_ACCOUNTS_SERVICE,
 } from '@hub/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GET, OPTIONS } from '@/app/api/v1/openapi.json/route';
+import { v1RouteFiles } from '@/app/api/v1/route-files';
 import { OPERATIONS, buildOpenApiDocument } from './openapi';
 
 vi.mock('next/server', async (importOriginal) => ({
@@ -22,24 +21,12 @@ vi.mock('next/server', async (importOriginal) => ({
   connection: () => Promise.resolve(),
 }));
 
-const V1_DIR = path.resolve(import.meta.dirname, '../../app/api/v1');
-
 /** OpenAPI paths of the route files under app/api/v1 (`[id]` → `{id}`), without the catch-all. */
 function routePaths(): string[] {
-  const out: string[] = [];
-  const walk = (dir: string, segments: string[]) => {
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      if (entry.isDirectory()) {
-        if (entry.name.startsWith('[[...') || entry.name.startsWith('[...')) continue;
-        const segment = entry.name.replace(/^\[(\w+)\]$/, '{$1}');
-        walk(path.join(dir, entry.name), [...segments, segment]);
-      } else if (entry.name === 'route.ts') {
-        out.push(`/${segments.join('/')}`);
-      }
-    }
-  };
-  walk(V1_DIR, []);
-  return out.sort();
+  return v1RouteFiles()
+    .filter((route) => !route.catchAll)
+    .map(({ segments }) => `/${segments.map((s) => s.replace(/^\[(\w+)\]$/, '{$1}')).join('/')}`)
+    .sort();
 }
 
 type Json = Record<string, unknown>;

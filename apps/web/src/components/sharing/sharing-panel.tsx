@@ -3,22 +3,21 @@
  * The sharing panel of an account page (handoff §10, §12), for its owner, its players (read-only)
  * and admins (who may override):
  * - per category an audience (Private / Guild / Selected people), the default marked, and for
- *   "Selected people" the members granted it with an "Add person" picker;
+ *   "Selected people" the members granted it with an "Add person" picker (CategoryAudiences);
  * - the account's players (owner and contributors) with block / unblock / remove, and handing
  *   ownership to one of them (confirmed in a dialog);
  * - "Claim ownership" for a player of an account that has no owner.
- * Every change is one PATCH /api/app/accounts/[publicId]/sharing (D-36); the panel shows the
- * settings the server returns. A change of owner refreshes the page (the viewer's rights change).
+ * Every change is one PATCH /api/app/accounts/[publicId]/sharing (D-36, useSharing); the panel shows
+ * the settings the server returns. A change of owner refreshes the page (the viewer's rights change).
  *
  * Focus (lib/focus.ts): the controls are disabled while a change runs, and some go away with it, so
  * the browser drops the focus to <body>. A control that stays (an audience select, "Add person", a
- * player's menu after unblocking) gets it back once the change settled; after a confirmed dialog it
- * goes to the heading of the section concerned (Players; for a new owner the Sharing card's, as the
- * panel remounts), and after Cancel back to the control that opened the dialog, which Radix can't do
- * here: the dialog has no Trigger.
+ * player's menu after unblocking) gets it back once the change settled (useSharing); after a
+ * confirmed dialog it goes to the heading of the section concerned (Players; for a new owner the
+ * Sharing card's, as the panel remounts), and after Cancel back to the control that opened the
+ * dialog, which Radix can't do here: the dialog has no Trigger.
  */
-import type { Audience, Category } from '@hub/core';
-import type { ActiveMember, SharingContributor, SharingSettings } from '@hub/server';
+import type { SharingContributor, SharingSettings } from '@hub/server';
 import {
   BanIcon,
   CrownIcon,
@@ -26,14 +25,11 @@ import {
   LockIcon,
   UserCheckIcon,
   UserMinusIcon,
-  XIcon,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useEffect, useId, useRef, useState } from 'react';
-import { toast } from 'sonner';
-import type { SharingChange } from '@/app/api/app/accounts/sharing-change';
-import { UserAvatar } from '@/components/account/user-avatar';
-import { RelativeTime } from '@/components/events/relative-time';
+import { useId, useRef, useState } from 'react';
+import { UserAvatar } from '@/components/common/user-avatar';
+import { RelativeTime } from '@/components/time/relative-time';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -54,30 +50,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { focusIsLost, headingOfSection, moveFocus, useFocusReturn } from '@/lib/focus';
-import { GrantPicker } from './grant-picker';
-import {
-  AUDIENCE_OPTIONS,
-  audienceLabel,
-  errorMessage,
-  successMessage,
-  transferCandidates,
-} from './sharing-model';
+import { headingOfSection, useFocusReturn } from '@/lib/focus';
+import { CategoryAudiences } from './category-audiences';
+import { transferCandidates } from './sharing-model';
+import { useSharing } from './use-sharing';
 
 export interface SharingPanelProps {
   publicId: string;
   initial: SharingSettings;
-  /** CATEGORY_LABELS from @hub/core (passed as data, NEXT-12). */
-  categoryLabels: Readonly<Record<Category, { label: string; covers: string }>>;
-  /** DEFAULT_AUDIENCE from @hub/core. */
-  defaults: Readonly<Record<Category, Audience>>;
   /** The account has an owner (claiming is offered only when it hasn't). */
   hasOwner: boolean;
   /** The viewer's relation to the account. */
@@ -92,100 +72,28 @@ type Confirm =
   | { kind: 'block'; user: SharingContributor }
   | { kind: 'claim' };
 
-interface PatchResponse {
-  sharing?: SharingSettings | null;
-  error?: { message?: string };
-}
-
-export function SharingPanel({
-  publicId,
-  initial,
-  categoryLabels,
-  defaults,
-  hasOwner,
-  relation,
-  now,
-}: SharingPanelProps) {
+export function SharingPanel({ publicId, initial, hasOwner, relation, now }: SharingPanelProps) {
   const router = useRouter();
   const id = useId();
-  const [settings, setSettings] = useState(initial);
-  const [pending, setPending] = useState(false);
   const [confirm, setConfirm] = useState<Confirm | null>(null);
-  const [members, setMembers] = useState<ActiveMember[] | null>(null);
-  const canManage = settings.canManage;
   const rootRef = useRef<HTMLDivElement>(null);
   const playersHeadingRef = useRef<HTMLHeadingElement>(null);
   const claimRef = useRef<HTMLButtonElement>(null);
   const dialogFocus = useFocusReturn();
-  /** Id of the control that gets the focus back once the running change settled (effect below). */
-  const refocusId = useRef<string | null>(null);
-
-  /** The trigger of a player's menu (it stays when they are blocked or unblocked). */
-  const manageId = (userId: string) => `${id}-manage-${userId}`;
 
   /** The Sharing card's heading, outside the panel: it stays when a new owner remounts the panel. */
   const cardHeading = () => headingOfSection(rootRef.current);
 
-  // The change settled and the controls are enabled again: if the focus fell to <body> meanwhile,
-  // back to the control the change came from (or the card's heading when it went away).
-  useEffect(() => {
-    if (pending || refocusId.current === null) return;
-    const target = refocusId.current;
-    refocusId.current = null;
-    if (focusIsLost()) moveFocus(document.getElementById(target), cardHeading);
-  }, [pending]);
+  const sharing = useSharing(publicId, initial, {
+    focusFallback: cardHeading,
+    // A new owner changes what the viewer may do on the whole page.
+    onRightsChanged: () => router.refresh(),
+  });
+  const { settings, pending, apply } = sharing;
+  const canManage = settings.canManage;
 
-  /** Loads the grant picker's members; false (after a toast) when that failed. */
-  async function loadMembers(): Promise<boolean> {
-    try {
-      const res = await fetch('/api/app/members', { credentials: 'same-origin' });
-      const body = (await res.json().catch(() => null)) as { members?: ActiveMember[] } | null;
-      if (res.ok && body?.members) {
-        setMembers(body.members);
-        return true;
-      }
-      toast.error("The member list couldn't be loaded. Try again in a moment.");
-    } catch {
-      toast.error("The member list couldn't be loaded. Check your connection.");
-    }
-    return false;
-  }
-
-  /**
-   * Sends one change. `refocus`: id of the control to give the focus back to afterwards, when the
-   * focus was lost while the change ran (see the effect above).
-   */
-  async function apply(
-    change: SharingChange,
-    names: { category?: string; user?: string } = {},
-    refocus?: string,
-  ) {
-    refocusId.current = refocus ?? null;
-    setPending(true);
-    try {
-      const res = await fetch(`/api/app/accounts/${encodeURIComponent(publicId)}/sharing`, {
-        method: 'PATCH',
-        credentials: 'same-origin',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(change),
-      });
-      const body = (await res.json().catch(() => null)) as PatchResponse | null;
-      if (!res.ok) {
-        toast.error(errorMessage(body?.error?.message, "That change couldn't be saved."));
-        return;
-      }
-      if (body?.sharing) setSettings(body.sharing);
-      toast.success(successMessage(change, names));
-      // A new owner changes what the viewer may do on the whole page.
-      if (change.action === 'transfer' || change.action === 'claim' || !body?.sharing) {
-        router.refresh();
-      }
-    } catch {
-      toast.error("That change couldn't be saved. Check your connection and try again.");
-    } finally {
-      setPending(false);
-    }
-  }
+  /** The trigger of a player's menu (it stays when they are blocked or unblocked). */
+  const manageId = (userId: string) => `${id}-manage-${userId}`;
 
   /** Opens a confirmation; Cancel returns the focus to `opener` (the dialog has no Trigger). */
   function openConfirm(c: Confirm, opener: () => HTMLElement | null): void {
@@ -248,121 +156,7 @@ export function SharingPanel({
           The account&apos;s players always see everything. The plugin decides what reaches the hub
           at all.
         </p>
-        <ul className="flex flex-col divide-y">
-          {settings.categories.map((c) => {
-            const { label, covers } = categoryLabels[c.category];
-            const selectId = `${id}-${c.category}`;
-            return (
-              <li key={c.category} className="flex flex-col gap-2 py-3">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="min-w-0">
-                    <label htmlFor={selectId} className="text-sm font-medium">
-                      {label}
-                    </label>
-                    <p className="text-xs text-muted-foreground">{covers}</p>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    {c.isDefault && (
-                      <Badge variant="secondary" title="No choice made yet: the hub's default">
-                        Default
-                      </Badge>
-                    )}
-                    <Select
-                      value={c.audience}
-                      disabled={!canManage || pending}
-                      onValueChange={(value) =>
-                        void apply(
-                          {
-                            action: 'audience',
-                            category: c.category,
-                            audience: value as Audience,
-                          },
-                          { category: label },
-                          selectId,
-                        )
-                      }
-                    >
-                      <SelectTrigger id={selectId} size="sm" className="w-44">
-                        <SelectValue>{audienceLabel(c.audience)}</SelectValue>
-                      </SelectTrigger>
-                      <SelectContent position="popper" align="end">
-                        {AUDIENCE_OPTIONS.map((o) => (
-                          <SelectItem key={o.value} value={o.value}>
-                            <span className="flex flex-col">
-                              <span>
-                                {o.label}
-                                {defaults[c.category] === o.value && (
-                                  <span className="text-muted-foreground"> (default)</span>
-                                )}
-                              </span>
-                              <span className="text-xs text-muted-foreground">{o.hint}</span>
-                            </span>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                {c.audience === 'selected' && (
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    {c.grants.length === 0 && (
-                      <span className="text-xs text-muted-foreground">
-                        Nobody added yet: only the players see it.
-                      </span>
-                    )}
-                    {c.grants.map((g) => (
-                      <Badge key={g.userId} variant="outline" className="h-6 gap-1 pr-1">
-                        {g.name}
-                        {canManage && (
-                          <button
-                            type="button"
-                            disabled={pending}
-                            onClick={() =>
-                              void apply(
-                                { action: 'revoke', category: c.category, userId: g.userId },
-                                { category: label, user: g.name },
-                                // This badge goes away: "Add person" of the same category.
-                                `${selectId}-add`,
-                              )
-                            }
-                            className="rounded-full p-0.5 hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none"
-                            aria-label={`Remove ${g.name} from ${label}`}
-                          >
-                            <XIcon aria-hidden className="size-3" />
-                          </button>
-                        )}
-                      </Badge>
-                    ))}
-                    {canManage && (
-                      <GrantPicker
-                        triggerId={`${selectId}-add`}
-                        category={c.category}
-                        categoryLabel={label}
-                        settings={settings}
-                        members={members}
-                        loadMembers={loadMembers}
-                        disabled={pending}
-                        onGrant={(m) =>
-                          void apply(
-                            { action: 'grant', category: c.category, userId: m.userId },
-                            { category: label, user: m.name },
-                            `${selectId}-add`,
-                          )
-                        }
-                      />
-                    )}
-                  </div>
-                )}
-                {c.audience !== 'selected' && c.grants.length > 0 && (
-                  <p className="text-xs text-muted-foreground">
-                    {c.grants.length === 1 ? '1 person is' : `${c.grants.length} people are`} added;
-                    that applies while this is set to Selected people.
-                  </p>
-                )}
-              </li>
-            );
-          })}
-        </ul>
+        <CategoryAudiences idPrefix={id} sharing={sharing} />
       </section>
 
       <section aria-labelledby={`${id}-players`} className="flex flex-col gap-2">

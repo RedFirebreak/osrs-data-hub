@@ -7,11 +7,10 @@
  */
 import type { GuildMember } from '@hub/server';
 import { useLivePresenceMap } from '@/components/live/live-provider';
-import { accountHref } from '@/components/accounts/account-link';
+import { AccountLink } from '@/components/accounts/account-link';
 import { AccountTypeBadge } from '@/components/accounts/account-type-badge';
 import { OnlineDot } from '@/components/accounts/online-dot';
-import { UserAvatar } from '@/components/account/user-avatar';
-import Link from 'next/link';
+import { UserAvatar } from '@/components/common/user-avatar';
 
 export interface MemberListProps {
   members: readonly GuildMember[];
@@ -43,12 +42,11 @@ export function MemberList({ members }: MemberListProps) {
                   return (
                     <li key={a.publicId} className="flex min-w-0 items-center gap-1.5 text-sm">
                       <OnlineDot online={online} pulse={false} />
-                      <Link
-                        href={accountHref(a.publicId)}
-                        className="truncate underline-offset-4 hover:underline focus-visible:underline"
-                      >
-                        {a.name}
-                      </Link>
+                      <AccountLink
+                        publicId={a.publicId}
+                        name={a.name}
+                        className="truncate font-normal"
+                      />
                       <AccountTypeBadge accountType={a.accountType} compact />
                     </li>
                   );

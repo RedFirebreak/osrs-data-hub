@@ -2,6 +2,7 @@
  * The public API's read models over data written by the real ingest pipeline from the plugin
  * fixtures: /me, /accounts, /accounts/{id}, /snapshot, XP, gains, histories and leaderboards.
  */
+import { CATEGORIES } from '@hub/core';
 import { type Db } from '@hub/db';
 import { osrsAccounts } from '@hub/db';
 import { createTestDatabase, type TestDatabase } from '@hub/db/testing';
@@ -20,7 +21,13 @@ import {
 import { updateUserSettings } from '../settings/user-settings';
 import { apiGetAccount, apiListAccounts, type ApiAccountDetail } from './accounts';
 import { ApiError } from './errors';
-import { apiEquipmentHistory, apiLocations, apiSessions, apiWealth } from './history';
+import {
+  apiEquipmentHistory,
+  apiLocations,
+  apiLocationsMulti,
+  apiSessions,
+  apiWealth,
+} from './history';
 import { apiLeaderboardGains } from './leaderboards';
 import { apiMe } from './me';
 import { SNAPSHOT_SINCE_OVERLAP_MS, apiSnapshot, etagMatches } from './snapshot';
@@ -62,6 +69,15 @@ async function publicIdOf(hash: string): Promise<string> {
   return row.publicId;
 }
 
+async function rowIdOf(publicId: string): Promise<number> {
+  const [row] = await t.db
+    .select({ id: osrsAccounts.id })
+    .from(osrsAccounts)
+    .where(eq(osrsAccounts.publicId, publicId));
+  if (!row) throw new Error('account missing');
+  return row.id;
+}
+
 async function send(device: SeededDevice, body: Wire, at: number): Promise<void> {
   body.timestamp = at - SEC;
   expect((await h.send(device, body, { at })).status).toBe(200);
@@ -85,13 +101,11 @@ beforeAll(async () => {
   const death = wire('event-death-dangerous', { freshEventIds: true });
   await send(ironDevice, death, t0 + 10 * MIN);
   iron = await publicIdOf(death.player?.accountHash as string);
-  // Iron Mira keeps her live location private (the default is guild, D-82).
-  const [ironRow] = await t.db
-    .select({ id: osrsAccounts.id })
-    .from(osrsAccounts)
-    .where(eq(osrsAccounts.publicId, iron));
-  if (!ironRow) throw new Error('account missing');
-  await seedSharing(t.db, ironRow.id, 'location_live', 'private');
+  // Iron Mira keeps her locations, equipment and inventory private (every category is guild by
+  // default, D-96).
+  const ironRowId = await rowIdOf(iron);
+  for (const c of ['location_live', 'location_history', 'equipment', 'inventory'] as const)
+    await seedSharing(t.db, ironRowId, c, 'private');
 
   const bareHash = newHash();
   await send(
@@ -322,13 +336,8 @@ describe('apiGetAccount', () => {
 
   it('answers null for accounts the key cannot see', async () => {
     expect(await apiGetAccount(t.db, memberKey.principal, 'unknown1234', NOW)).toBeNull();
-    // A member's defaults, live location included (D-82).
-    expect((await detail(memberKey, zezima)).categories).toEqual([
-      'stats',
-      'events',
-      'activity',
-      'location_live',
-    ]);
+    // A member's defaults: every category (D-96).
+    expect((await detail(memberKey, zezima)).categories).toEqual([...CATEGORIES]);
   });
 });
 
@@ -586,6 +595,19 @@ describe('XP', () => {
       'invalid',
     );
   });
+
+  it('resolves access once per request: a further account costs only its own two reads', async () => {
+    const params = { skills: ['Attack'], from: new Date(t0 - HOUR), to: NOW };
+    const counted = countQueries(t.db);
+    await apiXpMulti(counted.db, memberKey.principal, { ...params, ids: [zezima] }, NOW);
+    const forOne = counted.reset();
+    await apiXpMulti(counted.db, memberKey.principal, { ...params, ids: [iron, zezima] }, NOW);
+    // The value carried in at the range start, and the buckets in the range (readXpSeries).
+    expect(counted.reset() - forOne).toBe(2);
+    // The skills, the accounts with their access (4 tables), the raw tier's start, and the two reads.
+    await apiXp(counted.db, memberKey.principal, zezima, params, NOW);
+    expect(counted.reset()).toBe(9);
+  });
 });
 
 describe('apiGains', () => {
@@ -671,11 +693,28 @@ describe('histories', () => {
       world: 302,
       isOnBoat: false,
     });
+    // Zezima keeps all three private from here on (they are guild by default, D-96): the member's
+    // key reads none of them, and the owner's map key lacks the categories.
+    const zezimaRowId = await rowIdOf(zezima);
+    for (const c of ['location_history', 'equipment', 'inventory'] as const)
+      await seedSharing(t.db, zezimaRowId, c, 'private');
     for (const key of [memberKey, mapKey]) {
       expect(await apiEquipmentHistory(t.db, key.principal, zezima, {}, NOW)).toBeNull();
       expect(await apiWealth(t.db, key.principal, zezima, {}, NOW)).toBeNull();
       expect(await apiLocations(t.db, key.principal, zezima, {}, NOW)).toBeNull();
     }
+  });
+
+  it('resolves access once per request, for one account and for several', async () => {
+    const counted = countQueries(t.db);
+    await apiSessions(counted.db, ownerKey.principal, zezima, {}, NOW);
+    // The account with its access (4 tables), then the sessions.
+    expect(counted.reset()).toBe(6);
+    await apiLocationsMulti(counted.db, ownerKey.principal, { ids: [zezima] }, NOW);
+    const forOne = counted.reset();
+    await apiLocationsMulti(counted.db, ownerKey.principal, { ids: [bare, zezima] }, NOW);
+    // One trail read per further account.
+    expect(counted.reset() - forOne).toBe(1);
   });
 
   it('refuses a range that ends before it starts', async () => {

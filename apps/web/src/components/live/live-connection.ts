@@ -39,17 +39,17 @@ export interface EventSourceLike {
 export const EVENT_SOURCE_OPEN = 1;
 export const EVENT_SOURCE_CLOSED = 2;
 
-export const LIVE_STREAM_URL = '/api/live/stream';
-export const LIVE_POLL_URL = '/api/live/events';
+const LIVE_STREAM_URL = '/api/live/stream';
+const LIVE_POLL_URL = '/api/live/events';
 /** Handoff §11: poll every 10 s while the stream is down. */
-export const LIVE_POLL_INTERVAL_MS = 10_000;
+const LIVE_POLL_INTERVAL_MS = 10_000;
 /**
  * Delays before reopening a stream the browser gave up on (a non-200 answer such as 401, 503 or the
  * 429 for a user's sixth stream, D-80: EventSource can read neither the status nor Retry-After; plain
  * network errors are retried by the browser itself after the server's `retry: 5000`). Polling carries
  * the events meanwhile, so the last delay repeats: at most one attempt a minute.
  */
-export const LIVE_RECONNECT_DELAYS_MS: readonly number[] = [5_000, 10_000, 30_000, 60_000];
+const LIVE_RECONNECT_DELAYS_MS: readonly number[] = [5_000, 10_000, 30_000, 60_000];
 
 /**
  * - `connecting`: the stream is being opened for the first time (or after `reconnect()`);
@@ -64,22 +64,14 @@ export interface LiveConnectionOptions {
   onMessage<T extends LiveMessageType>(type: T, data: LiveMessageMap[T]): void;
   /** The poll got 401: the session is gone. The connection has stopped itself. */
   onUnauthorized?(): void;
-  streamUrl?: string;
-  pollUrl?: string;
   createEventSource?: (url: string) => EventSourceLike;
   fetchFn?: typeof fetch;
-  pollIntervalMs?: number;
-  reconnectDelaysMs?: readonly number[];
 }
 
 export class LiveConnection {
   private readonly opts: LiveConnectionOptions;
-  private readonly streamUrl: string;
-  private readonly pollUrl: string;
   private readonly createEventSource: (url: string) => EventSourceLike;
   private readonly fetchFn: typeof fetch;
-  private readonly pollIntervalMs: number;
-  private readonly reconnectDelaysMs: readonly number[];
   private readonly seen = new SeenIds(1000);
 
   private es: EventSourceLike | null = null;
@@ -94,13 +86,9 @@ export class LiveConnection {
 
   constructor(opts: LiveConnectionOptions) {
     this.opts = opts;
-    this.streamUrl = opts.streamUrl ?? LIVE_STREAM_URL;
-    this.pollUrl = opts.pollUrl ?? LIVE_POLL_URL;
     this.createEventSource = opts.createEventSource ?? ((url) => new EventSource(url));
     // Bound: calling an unbound window.fetch throws "Illegal invocation" in browsers.
     this.fetchFn = opts.fetchFn ?? ((input, init) => fetch(input, init));
-    this.pollIntervalMs = opts.pollIntervalMs ?? LIVE_POLL_INTERVAL_MS;
-    this.reconnectDelaysMs = opts.reconnectDelaysMs ?? LIVE_RECONNECT_DELAYS_MS;
   }
 
   /** Opens the stream and starts the polling timer (idempotent). */
@@ -108,7 +96,7 @@ export class LiveConnection {
     if (this.running) return;
     this.running = true;
     this.openStream();
-    this.pollTimer = setInterval(() => void this.pollIfDown(), this.pollIntervalMs);
+    this.pollTimer = setInterval(() => void this.pollIfDown(), LIVE_POLL_INTERVAL_MS);
   }
 
   /** Closes everything; the instance can be started again. */
@@ -154,7 +142,7 @@ export class LiveConnection {
   private openStream(): void {
     // 0 is a real cursor (a hub without events yet), so it is sent too.
     const url =
-      this.cursor !== null ? `${this.streamUrl}?lastEventId=${this.cursor}` : this.streamUrl;
+      this.cursor !== null ? `${LIVE_STREAM_URL}?lastEventId=${this.cursor}` : LIVE_STREAM_URL;
     let es: EventSourceLike;
     try {
       es = this.createEventSource(url);
@@ -198,7 +186,7 @@ export class LiveConnection {
 
   private scheduleReopen(): void {
     if (!this.running || this.reconnectTimer !== null) return;
-    const delays = this.reconnectDelaysMs;
+    const delays = LIVE_RECONNECT_DELAYS_MS;
     const delay = delays[Math.min(this.attempt, delays.length - 1)] ?? LIVE_POLL_INTERVAL_MS;
     this.attempt += 1;
     this.reconnectTimer = setTimeout(() => {
@@ -246,7 +234,7 @@ export class LiveConnection {
   private async poll(): Promise<void> {
     // Only a client without any cursor asks for one; `after=0` replays a new hub's first events.
     const after = this.cursor;
-    const url = after === null ? this.pollUrl : `${this.pollUrl}?after=${after}`;
+    const url = after === null ? LIVE_POLL_URL : `${LIVE_POLL_URL}?after=${after}`;
     const res = await this.fetchFn(url, {
       cache: 'no-store',
       credentials: 'same-origin',

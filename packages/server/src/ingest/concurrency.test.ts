@@ -5,7 +5,7 @@ import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { CHANNELS } from '../notify';
 import { offboardUser } from '../offboarding';
-import { ACCOUNT_LOCK_CLASS } from './store';
+import { ACCOUNT_LOCK_CLASS } from './lock';
 import { captureLogger, createHarness, newHash, wire, type Harness } from './test-support';
 
 let t: TestDatabase;

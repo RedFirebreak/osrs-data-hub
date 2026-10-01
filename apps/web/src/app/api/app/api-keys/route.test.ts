@@ -1,11 +1,11 @@
 /**
- * The API keys routes (D-69, D-76): GET/POST /api/app/api-keys and DELETE /api/app/api-keys/[id].
+ * The API keys routes (D-69, D-76): POST /api/app/api-keys and DELETE /api/app/api-keys/[id].
  * Create (201, the key shown once and working on /api/v1, never in the list), validation errors with
  * field details, the active-key limit (409), idempotent revoke, another user's key (404), session
  * auth and the Origin check.
  */
 import { auditLog } from '@hub/db';
-import { MAX_ACTIVE_KEYS, type ApiKeyInfo } from '@hub/server';
+import { MAX_ACTIVE_KEYS, listApiKeys, type ApiKeyInfo } from '@hub/server';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GET as getMe } from '@/app/api/v1/me/route';
@@ -13,7 +13,7 @@ import { freshLimits, seedWorld, v1Request, type World } from '@/app/api/v1/test
 import { setApiLimitsForTests } from '@/lib/api-v1/with-api-key';
 import { withTestDb, type WebTestContext } from '@/lib/test-utils';
 import { DELETE } from './[id]/route';
-import { GET, POST } from './route';
+import { POST } from './route';
 
 // /api/v1/me (to check a created key works) calls connection().
 vi.mock('next/server', async (importOriginal) => ({
@@ -59,10 +59,6 @@ function create(
       sameOrigin: opts.origin === undefined,
     }),
   );
-}
-
-function list(cookie: string | undefined): Promise<Response> {
-  return GET(ctx.request('/api/app/api-keys', { cookie }));
 }
 
 function revoke(cookie: string | undefined, id: string, opts: { origin?: string } = {}) {
@@ -112,10 +108,8 @@ describe('POST /api/app/api-keys', () => {
     const me = await getMe(v1Request(ctx, '/me', { key: body.key }));
     expect(me.status).toBe(200);
 
-    // The list never contains the secret.
-    const listed = await list(owner);
-    expect(listed.status).toBe(200);
-    const text = await listed.text();
+    // The list the page renders never contains the secret.
+    const text = JSON.stringify(await listApiKeys(ctx.t.db, world.ownerId));
     expect(text).toContain(body.info.id);
     expect(text).not.toContain(body.key.slice(16));
 
@@ -192,24 +186,6 @@ describe('POST /api/app/api-keys', () => {
   });
 });
 
-describe('GET /api/app/api-keys', () => {
-  it('lists only the user’s own keys, newest first', async () => {
-    const a = await signedIn();
-    const b = await signedIn();
-    await create(a.cookie, { ...valid, name: 'first' });
-    await create(a.cookie, { ...valid, name: 'second' });
-    await create(b.cookie, { ...valid, name: 'someone else' });
-    const res = await list(a.cookie);
-    const { keys } = (await res.json()) as { keys: ApiKeyInfo[] };
-    expect(keys.map((k) => k.name)).toEqual(['second', 'first']);
-    expect(res.headers.get('cache-control')).toBe('no-store');
-  });
-
-  it('401 without a session', async () => {
-    expect((await list(undefined)).status).toBe(401);
-  });
-});
-
 describe('DELETE /api/app/api-keys/[id]', () => {
   it('revokes: 204, idempotent, and the key stops working', async () => {
     const owner = await ctx.signIn(world.ownerId);
@@ -225,7 +201,7 @@ describe('DELETE /api/app/api-keys/[id]', () => {
     expect((await revoke(owner, created.info.id)).status).toBe(204);
     expect((await getMe(v1Request(ctx, '/me', { key: created.key }))).status).toBe(401);
 
-    const { keys } = (await (await list(owner)).json()) as { keys: ApiKeyInfo[] };
+    const keys = await listApiKeys(ctx.t.db, world.ownerId);
     expect(keys.find((k) => k.id === created.info.id)?.status).toBe('revoked');
   });
 
@@ -239,7 +215,7 @@ describe('DELETE /api/app/api-keys/[id]', () => {
     expect((await revoke(b.cookie, 'not-a-uuid')).status).toBe(404);
     expect((await revoke(b.cookie, '0192f0e2-8d3c-7cc4-a4f4-0123456789ab')).status).toBe(404);
     // Still active for its owner.
-    const { keys } = (await (await list(a.cookie)).json()) as { keys: ApiKeyInfo[] };
+    const keys = await listApiKeys(ctx.t.db, a.userId);
     expect(keys[0]?.status).toBe('active');
   });
 

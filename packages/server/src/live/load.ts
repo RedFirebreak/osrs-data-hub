@@ -6,7 +6,7 @@ import type { Viewer } from '@hub/core';
 import { devices, events, latestState, osrsAccounts, users, type DbOrTx } from '@hub/db';
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
-import type { EventRowLike } from '../feed';
+import { EVENT_ROW_COLUMNS, type EventRowLike } from '../feed';
 
 /** The account fields every live message shows. */
 export interface LiveAccount {
@@ -15,25 +15,6 @@ export interface LiveAccount {
   name: string;
   accountType: number | null;
 }
-
-/** The `events` columns a FeedEvent is built from (plus the account, for multi-account reads). */
-export const EVENT_ROW_COLUMNS = {
-  id: events.id,
-  seq: events.seq,
-  accountId: events.accountId,
-  type: events.type,
-  occurredAt: events.occurredAt,
-  receivedAt: events.receivedAt,
-  valueGp: events.valueGp,
-  itemId: events.itemId,
-  npcId: events.npcId,
-  skill: events.skill,
-  level: events.level,
-  tier: events.tier,
-  points: events.points,
-  specialWorld: events.specialWorld,
-  data: events.data,
-};
 
 /**
  * The events of one account with these seqs, ascending by seq. The account filter is defensive: a
@@ -66,7 +47,7 @@ export async function loadLiveAccount(db: DbOrTx, accountId: number): Promise<Li
 }
 
 /** An account with the presence columns of its latest_state (null columns when it has no row yet). */
-export interface PresenceRow extends LiveAccount {
+export interface LivePresenceRow extends LiveAccount {
   /** latest_state.last_seen, else the account's own last_seen. */
   lastSeen: Date;
   gameState: string | null;
@@ -75,7 +56,10 @@ export interface PresenceRow extends LiveAccount {
   specialWorld: boolean;
 }
 
-export async function loadPresence(db: DbOrTx, accountId: number): Promise<PresenceRow | null> {
+export async function loadLivePresence(
+  db: DbOrTx,
+  accountId: number,
+): Promise<LivePresenceRow | null> {
   const [row] = await db
     .select({
       id: osrsAccounts.id,

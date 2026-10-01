@@ -1,7 +1,8 @@
 /**
- * One-shot migration entrypoint (compose `migrate` service): applies pending migrations, then exits.
- * In the image the SQL files sit next to the bundle in dist/drizzle (the migrator reads them from
- * disk at runtime); from source they are read from packages/db/drizzle.
+ * One-shot migration entrypoint (compose `migrate` service, and `pnpm db:migrate` from source):
+ * applies pending migrations, then exits. In the image the SQL files sit next to the bundle in
+ * dist/drizzle (the migrator reads them from disk at runtime); from source they are read from
+ * packages/db/drizzle.
  */
 import { existsSync } from 'node:fs';
 import path from 'node:path';

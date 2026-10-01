@@ -202,8 +202,11 @@ export async function loadPresence(
   return out;
 }
 
-/** Presence as the UI shows it: online per @hub/core isOnline (D-28). */
-export function toPresence(row: PresenceRow, now: Date): Presence {
+/**
+ * Presence from a latest_state row, for the UI and the public API alike: online per @hub/core
+ * isOnline (D-28). A row always has a last-seen time.
+ */
+export function toPresence(row: PresenceRow, now: Date): Presence & { lastSeen: string } {
   return {
     online: isOnline(row, now),
     world: row.world,

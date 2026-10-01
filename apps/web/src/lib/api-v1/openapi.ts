@@ -31,15 +31,18 @@ import { z } from 'zod';
 import * as S from './schemas';
 
 /** One GET operation of the document. */
-export interface OperationSpec {
+interface OperationSpec {
   /** OpenAPI path, relative to the server URL (…/api/v1). */
   path: string;
   operationId: string;
   tag: string;
   summary: string;
   description: string;
-  /** Name of the 200 body under components.schemas (the `{ data, meta }` envelope). */
-  response: string;
+  /**
+   * The 200 body, a `{ data, meta }` envelope exported by schemas.ts. Its export name there is its
+   * name under components.schemas (componentName), so an endpoint names its response once.
+   */
+  response: z.ZodType;
   query?: z.ZodObject;
   /** The `{id}` account path parameter. */
   accountPath?: boolean;
@@ -60,7 +63,7 @@ export const OPERATIONS: readonly OperationSpec[] = [
     summary: 'The key and its creator',
     description:
       'The key behind the request (kind, name, prefix, categories, scope, rate limit, expiry), its creator’s display name (`user`, null for a service key) and how many accounts it can see right now. Handy as a connection test.',
-    response: 'MeResponse',
+    response: S.MeResponse,
   },
   {
     path: '/accounts',
@@ -69,7 +72,7 @@ export const OPERATIONS: readonly OperationSpec[] = [
     summary: 'List visible accounts',
     description:
       'Every account the key may see, sorted by name, each with its `owner` (the active owner as the guild page shows them, or null) and, for service keys, its `account_hash`. `online`, `world` and `last_seen` are null for accounts whose `activity` the key can’t read. `meta.count` is the number returned.',
-    response: 'AccountsResponse',
+    response: S.AccountsResponse,
     query: S.AccountsQuery,
   },
   {
@@ -79,7 +82,7 @@ export const OPERATIONS: readonly OperationSpec[] = [
     summary: 'One account’s current state',
     description:
       'The account’s current state, section by section. A section of a category the key can’t read on this account is **omitted**; a readable section the player’s plugin never sent is `{ "shared": false, "updated_at": null }` ("not shared"), never an empty value. Every sent section carries `updated_at`.',
-    response: 'AccountResponse',
+    response: S.AccountResponse,
     accountPath: true,
     notFound: true,
   },
@@ -96,7 +99,7 @@ export const OPERATIONS: readonly OperationSpec[] = [
       'Send the last `ETag` as `If-None-Match`: while nothing you would see has changed, the answer is `304 Not Modified` without a body (it still counts towards the rate limits). With `since` (the previous `meta.last_modified`), only accounts that changed after it are returned, re-sending those that changed up to ' +
         `${SECONDS(SNAPSHOT_SINCE_OVERLAP_MS)} s before it; accounts whose \`activity\` the key can’t read are always returned, and an account that leaves the key’s scope simply stops appearing, so fetch without \`since\` now and then. A location older than 2 minutes has \`stale: true\`.`,
     ].join('\n'),
-    response: 'SnapshotResponse',
+    response: S.SnapshotResponse,
     query: S.SnapshotQuery,
     conditional: true,
   },
@@ -106,7 +109,7 @@ export const OPERATIONS: readonly OperationSpec[] = [
     tag: 'XP and gains',
     summary: 'XP series of one account',
     description: `XP per skill over time (\`stats\`). Defaults: Overall, the last ${XP_DEFAULT_DAYS} days, \`resolution=auto\`.`,
-    response: 'XpResponse',
+    response: S.XpResponse,
     query: S.XpQuery,
     accountPath: true,
     notFound: true,
@@ -117,7 +120,7 @@ export const OPERATIONS: readonly OperationSpec[] = [
     tag: 'XP and gains',
     summary: 'XP series of several accounts',
     description: `The same series for several accounts at once, in request order (\`stats\`): up to ${MAX_BULK_ACCOUNTS} accounts with a user key, ${MAX_BULK_ACCOUNTS_SERVICE} with a service key. An account the key can’t read makes the whole request 404, exactly like an unknown id.`,
-    response: 'XpMultiResponse',
+    response: S.XpMultiResponse,
     query: S.XpMultiQuery,
     notFound: true,
   },
@@ -128,7 +131,7 @@ export const OPERATIONS: readonly OperationSpec[] = [
     summary: 'Gains per skill',
     description:
       'XP gained per skill in a period or an explicit range (`stats`): every skill the account has, 0 when nothing was gained. Default `period=day`.',
-    response: 'GainsResponse',
+    response: S.GainsResponse,
     query: S.GainsQuery,
     accountPath: true,
     notFound: true,
@@ -145,7 +148,7 @@ export const OPERATIONS: readonly OperationSpec[] = [
       '',
       `The feed only serves events stored at least ${SECONDS(API_EVENTS_SETTLE_MS)} s ago, so a cursor can never skip an event that is still being committed: expect an event 10–15 s after the hub received it. \`occurred_at\` is when it happened in game, \`received_at\` when the hub got it (the plugin may resend events up to ~10 minutes late).`,
     ].join('\n'),
-    response: 'EventsResponse',
+    response: S.EventsResponse,
     query: S.EventsQuery,
     notFound: true,
   },
@@ -155,7 +158,7 @@ export const OPERATIONS: readonly OperationSpec[] = [
     tag: 'Histories',
     summary: 'Play sessions',
     description: `Play sessions overlapping the range, newest first (\`activity\`). Default: the last ${HISTORY_DEFAULT_DAYS} days.`,
-    response: 'SessionsResponse',
+    response: S.SessionsResponse,
     query: S.HistoryQuery,
     accountPath: true,
     notFound: true,
@@ -166,7 +169,7 @@ export const OPERATIONS: readonly OperationSpec[] = [
     tag: 'Histories',
     summary: 'Equipment change log',
     description: `Every change of the worn set in the range, newest first, each with the whole set after it (\`equipment\`). Default: the last ${HISTORY_DEFAULT_DAYS} days.`,
-    response: 'EquipmentHistoryResponse',
+    response: S.EquipmentHistoryResponse,
     query: S.HistoryQuery,
     accountPath: true,
     notFound: true,
@@ -177,7 +180,7 @@ export const OPERATIONS: readonly OperationSpec[] = [
     tag: 'Histories',
     summary: 'Carried wealth per day',
     description: `Carried value (inventory + equipment at GE prices) per UTC day, oldest first (\`inventory\`). Default: the last ${HISTORY_DEFAULT_DAYS} days.`,
-    response: 'WealthResponse',
+    response: S.WealthResponse,
     query: S.HistoryQuery,
     accountPath: true,
     notFound: true,
@@ -188,7 +191,7 @@ export const OPERATIONS: readonly OperationSpec[] = [
     tag: 'Histories',
     summary: 'Location trail',
     description: `The location trail, at most one point per minute, oldest first (\`location_history\`; kept 30 days). Default: the last ${HISTORY_DEFAULT_DAYS} days.`,
-    response: 'LocationsResponse',
+    response: S.LocationsResponse,
     query: S.HistoryQuery,
     accountPath: true,
     notFound: true,
@@ -199,7 +202,7 @@ export const OPERATIONS: readonly OperationSpec[] = [
     tag: 'Histories',
     summary: 'Location trails of several accounts',
     description: `The location trails of several accounts in one call, in request order (\`location_history\`): up to ${MAX_BULK_ACCOUNTS} accounts with a user key, ${MAX_BULK_ACCOUNTS_SERVICE} with a service key, each trail exactly what \`/accounts/{id}/locations\` returns for the same range (at most one point per minute, oldest first, kept 30 days). An account the key can’t read makes the whole request 404. Default: the last ${HISTORY_DEFAULT_DAYS} days.`,
-    response: 'LocationsMultiResponse',
+    response: S.LocationsMultiResponse,
     query: S.LocationsMultiQuery,
     notFound: true,
   },
@@ -210,7 +213,7 @@ export const OPERATIONS: readonly OperationSpec[] = [
     summary: 'Gains leaderboards',
     description:
       'The guild page’s gains leaderboards over the accounts whose `stats` the key may read: the top 10 per skill. Default `period=day`.',
-    response: 'LeaderboardsResponse',
+    response: S.LeaderboardsResponse,
     query: S.LeaderboardQuery,
   },
   {
@@ -219,16 +222,16 @@ export const OPERATIONS: readonly OperationSpec[] = [
     tag: 'Leaderboards',
     summary: 'Loot leaderboard',
     description: `The period’s most valuable drops over the accounts whose \`events\` the key may read: \`loot\` and \`pk_loot\` events with a value, not on a special world, highest \`value_gp\` first. Each entry’s \`event\` is exactly what \`/events\` serves (with \`data.location\` removed the same way), though it can appear here a few seconds before the \`/events\` cursor serves it. Default \`period=day\`, \`limit=${LOOT_LEADERBOARD_DEFAULT_LIMIT}\` (at most ${LOOT_LEADERBOARD_MAX_LIMIT}).`,
-    response: 'LootLeaderboardResponse',
+    response: S.LootLeaderboardResponse,
     query: S.LootLeaderboardQuery,
   },
 ];
 
 /** The public operation serving this document (no key, no rate limit). */
-export const OPENAPI_PATH = '/openapi.json';
+const OPENAPI_PATH = '/openapi.json';
 
-/** Response shapes under components.schemas; nested ones become `$ref`s. */
-const COMPONENTS: readonly [string, z.ZodType][] = [
+/** Shapes several responses nest: each becomes a `$ref` under components.schemas. */
+const SHARED_COMPONENTS: readonly [string, z.ZodType][] = [
   ['AccountRef', S.AccountRef],
   ['Owner', S.Owner],
   ['AccountLocations', S.AccountLocations],
@@ -243,23 +246,32 @@ const COMPONENTS: readonly [string, z.ZodType][] = [
   ['SnapshotLocation', S.SnapshotLocation],
   ['XpSeries', S.XpSeries],
   ['Event', S.Event],
-  ['MeResponse', S.MeResponse],
-  ['AccountsResponse', S.AccountsResponse],
-  ['AccountResponse', S.AccountResponse],
-  ['SnapshotResponse', S.SnapshotResponse],
-  ['XpResponse', S.XpResponse],
-  ['XpMultiResponse', S.XpMultiResponse],
-  ['GainsResponse', S.GainsResponse],
-  ['EventsResponse', S.EventsResponse],
-  ['SessionsResponse', S.SessionsResponse],
-  ['EquipmentHistoryResponse', S.EquipmentHistoryResponse],
-  ['WealthResponse', S.WealthResponse],
-  ['LocationsResponse', S.LocationsResponse],
-  ['LocationsMultiResponse', S.LocationsMultiResponse],
-  ['LeaderboardsResponse', S.LeaderboardsResponse],
-  ['LootLeaderboardResponse', S.LootLeaderboardResponse],
-  ['Error', S.ErrorResponse],
 ];
+
+const SCHEMA_NAMES = new Map<unknown, string>(
+  Object.entries(S).map(([name, schema]): [unknown, string] => [schema, name]),
+);
+
+/** A response envelope's name under components.schemas: the name schemas.ts exports it by. */
+function componentName(schema: z.ZodType): string {
+  const name = SCHEMA_NAMES.get(schema);
+  if (name === undefined) {
+    throw new Error('openapi: an operation’s response must be a schema exported by schemas.ts');
+  }
+  return name;
+}
+
+/**
+ * Everything under components.schemas: the shared shapes, every operation's response envelope (in
+ * OPERATIONS order) and the error body.
+ */
+function components(): [string, z.ZodType][] {
+  return [
+    ...SHARED_COMPONENTS,
+    ...OPERATIONS.map((op): [string, z.ZodType] => [componentName(op.response), op.response]),
+    ['Error', S.ErrorResponse],
+  ];
+}
 
 type Json = Record<string, unknown>;
 
@@ -286,7 +298,7 @@ function tidy(node: unknown, response: boolean): unknown {
 
 function componentSchemas(): Record<string, Json> {
   const registry = z.registry<{ id: string }>();
-  for (const [id, schema] of COMPONENTS) registry.add(schema, { id });
+  for (const [id, schema] of components()) registry.add(schema, { id });
   const { schemas } = z.toJSONSchema(registry, {
     target: 'draft-2020-12',
     io: 'output',
@@ -350,7 +362,9 @@ function operation(op: OperationSpec): Json {
           }
         : RATE_HEADERS,
       content: {
-        'application/json': { schema: { $ref: `#/components/schemas/${op.response}` } },
+        'application/json': {
+          schema: { $ref: `#/components/schemas/${componentName(op.response)}` },
+        },
       },
     },
   };

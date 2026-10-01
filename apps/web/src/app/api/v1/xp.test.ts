@@ -3,7 +3,10 @@
  * fixtures: the documented shapes, skill names canonicalised (data keys unchanged), the `stats`
  * gate (the one 404, D-70) and 400 for bad parameters.
  */
-import { MAX_XP_ACCOUNTS, MAX_XP_ACCOUNTS_SERVICE } from '@hub/server';
+import {
+  MAX_BULK_ACCOUNTS as MAX_XP_ACCOUNTS,
+  MAX_BULK_ACCOUNTS_SERVICE as MAX_XP_ACCOUNTS_SERVICE,
+} from '@hub/server';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   GainsResponse,

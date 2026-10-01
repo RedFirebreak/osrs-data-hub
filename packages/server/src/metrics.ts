@@ -5,10 +5,16 @@
  * Web and worker create the same set and each serves its own (D-84): a series only moves in the
  * process that does the work, so dashboards sum over both. Every label value comes from a fixed set
  * in our own code, never an id, name, address or coordinate (D-53).
+ *
+ * The fixed sets are the `as const` arrays below, one per label. The types at the emit sites derive
+ * from them, and a counter made with fixedCounter() accepts no other value and has every series at 0
+ * from startup (PROM-1). Names, labels and values are a contract with the dashboard and the alert
+ * rules in ops/ (D-85): add values, never rename them.
  */
 import { constantTimeEqual } from '@hub/core';
 import { OFFBOARD_REASONS } from '@hub/db';
 import { Counter, Gauge, Histogram, Registry, collectDefaultMetrics } from 'prom-client';
+import type { ApiAuthFailure } from './api';
 import { RecentMinuteCounts } from './recent-counts';
 
 /** Minutes of unarchived ingest responses kept for the ingest health chart (HEALTH_MINUTES). */
@@ -23,6 +29,64 @@ export const JOB_NAMES = [
 ] as const;
 export type JobName = (typeof JOB_NAMES)[number];
 
+/** hub_job_runs_total{result}. */
+export const JOB_RESULTS = ['success', 'failure'] as const;
+export type JobResult = (typeof JOB_RESULTS)[number];
+
+/** hub_pair_attempts_total{result}: how a pairing request ended (pairing/pair.ts). */
+export const PAIR_RESULTS = [
+  'decommissioned',
+  'locked_out',
+  'rate_limited_global',
+  'rate_limited_ip',
+  'malformed',
+  'outdated',
+  'invalid',
+  'inactive',
+  'paired',
+  'unavailable',
+  'error',
+] as const;
+export type PairResult = (typeof PAIR_RESULTS)[number];
+
+/** hub_ingest_ignored_total{reason}: why an accepted payload stored nothing (IgnoredReason). */
+export const INGEST_IGNORED_REASONS = ['no_identity', 'blocked'] as const;
+
+/** hub_discord_verify_failures_total{kind}: why a member lookup failed (MemberLookup's reason). */
+export const DISCORD_VERIFY_FAILURE_KINDS = [
+  'config',
+  'auth',
+  'rate_limited',
+  'unavailable',
+] as const;
+export type DiscordVerifyFailureKind = (typeof DISCORD_VERIFY_FAILURE_KINDS)[number];
+
+/** hub_discord_verify_checks_total{verdict}. */
+export const DISCORD_VERIFY_VERDICTS = ['member', 'not_member', 'missing_role', 'error'] as const;
+
+/** hub_discord_verify_breaker_trips_total{rule}: the per-batch and the rolling breaker (D-62). */
+export const DISCORD_VERIFY_BREAKER_RULES = ['batch', 'window'] as const;
+export type DiscordVerifyBreakerRule = (typeof DISCORD_VERIFY_BREAKER_RULES)[number];
+
+/** hub_accounts_deleted_total{cause}. */
+export const ACCOUNT_DELETION_CAUSES = ['grace_expiry', 'orphan_purge'] as const;
+
+/** hub_data_exports_total{result}. */
+export const DATA_EXPORT_RESULTS = ['completed', 'failed', 'cancelled', 'rate_limited'] as const;
+
+/** hub_api_rate_limited_total{limit}. */
+export const API_RATE_LIMITS = ['key', 'snapshot', 'auth_ip'] as const;
+
+/** hub_api_auth_failures_total{reason}: the reasons authenticateApiKey gives (api/keys.ts). */
+export const API_AUTH_FAILURES = [
+  'missing',
+  'malformed',
+  'unknown',
+  'revoked',
+  'expired',
+  'inactive_user',
+] as const satisfies readonly ApiAuthFailure[];
+
 /** Route groups of the public API: the `group` label of the hub_api_* metrics. */
 export const API_ROUTE_GROUPS = [
   'me',
@@ -36,6 +100,34 @@ export const API_ROUTE_GROUPS = [
   'unknown',
 ] as const;
 export type ApiRouteGroup = (typeof API_ROUTE_GROUPS)[number];
+
+/**
+ * A counter whose labels only take values of fixed sets: inc() refuses anything else at compile
+ * time, so a new value has to be added to the label's array above, which also creates it at 0.
+ */
+export interface FixedCounter<L extends Record<string, string>> {
+  inc(labels: L, value?: number): void;
+  get: Counter<keyof L & string>['get'];
+}
+
+/**
+ * A counter with one label of a fixed value set, every series created at 0. prom-client creates a
+ * labelled series on its first inc(), already at 1, and increase() over a series that appears at 1
+ * is 0: the first breaker trip or refused key after a restart would never alert (PROM-1).
+ */
+function fixedCounter<L extends string, V extends string>(
+  registry: Registry,
+  def: { name: string; help: string; label: L; values: readonly V[] },
+): FixedCounter<Record<L, V>> {
+  const counter = new Counter<string>({
+    name: def.name,
+    help: def.help,
+    labelNames: [def.label],
+    registers: [registry],
+  });
+  for (const value of def.values) counter.inc({ [def.label]: value }, 0);
+  return counter;
+}
 
 function create() {
   const registry = new Registry();
@@ -69,11 +161,11 @@ function create() {
       help: 'Malformed events dropped',
       registers: [registry],
     }),
-    ingestIgnored: new Counter({
+    ingestIgnored: fixedCounter(registry, {
       name: 'hub_ingest_ignored_total',
       help: 'Payloads accepted but ignored, by reason',
-      labelNames: ['reason'] as const,
-      registers: [registry],
+      label: 'reason',
+      values: INGEST_IGNORED_REASONS,
     }),
     ingestLatency: new Histogram({
       name: 'hub_ingest_duration_seconds',
@@ -87,11 +179,11 @@ function create() {
       labelNames: ['version'] as const,
       registers: [registry],
     }),
-    pairAttempts: new Counter({
+    pairAttempts: fixedCounter(registry, {
       name: 'hub_pair_attempts_total',
       help: 'Pairing attempts by result',
-      labelNames: ['result'] as const,
-      registers: [registry],
+      label: 'result',
+      values: PAIR_RESULTS,
     }),
     sseConnections: new Gauge({
       name: 'hub_sse_connections',
@@ -103,46 +195,46 @@ function create() {
      * minute and status, for the ingest health chart (D-83). Not exported to Prometheus.
      */
     ingestUnarchived: new RecentMinuteCounts(RECENT_REJECTION_MINUTES),
-    discordVerifyFailures: new Counter({
+    discordVerifyFailures: fixedCounter(registry, {
       name: 'hub_discord_verify_failures_total',
       help: 'Discord membership checks that failed (errors, not "not a member")',
-      labelNames: ['kind'] as const,
-      registers: [registry],
+      label: 'kind',
+      values: DISCORD_VERIFY_FAILURE_KINDS,
     }),
-    discordVerifyChecks: new Counter({
+    discordVerifyChecks: fixedCounter(registry, {
       name: 'hub_discord_verify_checks_total',
       help: 'Discord membership re-verifications by verdict (member, not_member, missing_role, error)',
-      labelNames: ['verdict'] as const,
-      registers: [registry],
+      label: 'verdict',
+      values: DISCORD_VERIFY_VERDICTS,
     }),
-    discordVerifyBreakerTrips: new Counter({
+    discordVerifyBreakerTrips: fixedCounter(registry, {
       name: 'hub_discord_verify_breaker_trips_total',
       help: 'Re-verification runs a circuit breaker stopped (nobody offboarded), by rule',
-      labelNames: ['rule'] as const,
-      registers: [registry],
+      label: 'rule',
+      values: DISCORD_VERIFY_BREAKER_RULES,
     }),
-    offboardedUsers: new Counter({
+    offboardedUsers: fixedCounter(registry, {
       name: 'hub_offboarded_users_total',
       help: 'Active users moved into grace, by reason (self_delete: Delete my data)',
-      labelNames: ['reason'] as const,
-      registers: [registry],
+      label: 'reason',
+      values: OFFBOARD_REASONS,
     }),
     graceExpiredUsers: new Counter({
       name: 'hub_grace_expired_users_total',
       help: 'Users deleted when their grace period ended',
       registers: [registry],
     }),
-    accountsDeleted: new Counter({
+    accountsDeleted: fixedCounter(registry, {
       name: 'hub_accounts_deleted_total',
       help: 'OSRS accounts deleted with their data, by cause (grace_expiry, orphan_purge)',
-      labelNames: ['cause'] as const,
-      registers: [registry],
+      label: 'cause',
+      values: ACCOUNT_DELETION_CAUSES,
     }),
-    dataExports: new Counter({
+    dataExports: fixedCounter(registry, {
       name: 'hub_data_exports_total',
       help: 'Download my data requests by result (completed, failed, cancelled, rate_limited)',
-      labelNames: ['result'] as const,
-      registers: [registry],
+      label: 'result',
+      values: DATA_EXPORT_RESULTS,
     }),
     liveStreamsRefused: new Counter({
       name: 'hub_live_streams_refused_total',
@@ -172,17 +264,17 @@ function create() {
       buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10],
       registers: [registry],
     }),
-    apiRateLimited: new Counter({
+    apiRateLimited: fixedCounter(registry, {
       name: 'hub_api_rate_limited_total',
       help: 'Public API 429s by limit (key, snapshot, auth_ip)',
-      labelNames: ['limit'] as const,
-      registers: [registry],
+      label: 'limit',
+      values: API_RATE_LIMITS,
     }),
-    apiAuthFailures: new Counter({
+    apiAuthFailures: fixedCounter(registry, {
       name: 'hub_api_auth_failures_total',
       help: 'Public API requests refused 401, by why the key failed',
-      labelNames: ['reason'] as const,
-      registers: [registry],
+      label: 'reason',
+      values: API_AUTH_FAILURES,
     }),
     jobDuration: new Histogram({
       name: 'hub_job_duration_seconds',
@@ -196,7 +288,7 @@ function create() {
       help: 'Worker job runs by job and result (success, failure)',
       labelNames: ['job_name', 'result'] as const,
       registers: [registry],
-    }),
+    }) as FixedCounter<{ job_name: JobName; result: JobResult }>,
     jobLastSuccess: new Gauge({
       name: 'hub_job_last_success_timestamp_seconds',
       help: 'Unix time the job last succeeded (absent until it has, since the worker started)',
@@ -209,28 +301,14 @@ function create() {
 }
 
 /**
- * Creates every series of a fixed label set at 0. prom-client creates a labelled series on its first
- * inc(), already at 1, and increase() over a series that appears at 1 is 0: the first breaker trip or
- * job failure after a restart would never alert (PROM-1).
+ * Creates the job series at 0 (PROM-1, as fixedCounter() does for the single-label counters): every
+ * job × result, and each job's duration histogram.
  */
 function initSeries(m: HubMetrics): void {
   for (const job_name of JOB_NAMES) {
-    for (const result of ['success', 'failure']) m.jobRuns.inc({ job_name, result }, 0);
+    for (const result of JOB_RESULTS) m.jobRuns.inc({ job_name, result }, 0);
     m.jobDuration.zero({ job_name });
   }
-  for (const rule of ['batch', 'window']) m.discordVerifyBreakerTrips.inc({ rule }, 0);
-  for (const verdict of ['member', 'not_member', 'missing_role', 'error']) {
-    m.discordVerifyChecks.inc({ verdict }, 0);
-  }
-  for (const kind of ['config', 'auth', 'rate_limited', 'unavailable']) {
-    m.discordVerifyFailures.inc({ kind }, 0);
-  }
-  for (const reason of OFFBOARD_REASONS) m.offboardedUsers.inc({ reason }, 0);
-  for (const cause of ['grace_expiry', 'orphan_purge']) m.accountsDeleted.inc({ cause }, 0);
-  for (const result of ['completed', 'failed', 'cancelled', 'rate_limited']) {
-    m.dataExports.inc({ result }, 0);
-  }
-  for (const limit of ['key', 'snapshot', 'auth_ip']) m.apiRateLimited.inc({ limit }, 0);
 }
 
 export type HubMetrics = ReturnType<typeof create>;
@@ -240,7 +318,7 @@ export type HubMetrics = ReturnType<typeof create>;
  * reload but keeps globalThis, so without it the old object (missing the new member) would be
  * handed to the new code until the dev server restarts. A new version starts fresh counters.
  */
-const METRICS_VERSION = 3;
+const METRICS_VERSION = 4;
 
 const g = globalThis as unknown as { __hubMetrics?: HubMetrics; __hubMetricsVersion?: number };
 

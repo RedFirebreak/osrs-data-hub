@@ -119,8 +119,9 @@ describe('listFeed', () => {
   });
 
   it('describes the redacted event', async () => {
-    // No location category for the member: live location isn't shared (it is by default, D-82).
+    // No location category for the member: neither is shared (both are by default, D-96).
     await seedSharing(t.db, alpha.id, 'location_live', 'private');
+    await seedSharing(t.db, alpha.id, 'location_history', 'private');
     await seedEvent(t.db, alpha.id, { type: 'death', data: deathData() });
     const [death] = await listFeed(t.db, member.viewer, { types: ['death'], limit: 1 });
     expect(death?.title).toBe('Death');

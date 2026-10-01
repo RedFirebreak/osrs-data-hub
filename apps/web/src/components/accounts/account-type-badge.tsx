@@ -1,7 +1,7 @@
 /**
  * Badge for an account type (the IRONMAN varbit: Ironman, Ultimate, Hardcore, Group…), labelled by
- * @hub/core accountTypeLabel. Normal accounts get no badge unless `showNormal`; an unknown type gets
- * none unless `showUnknown`. Server- and client-safe.
+ * @hub/core accountTypeLabel. Normal accounts and accounts of an unknown type get no badge. Server-
+ * and client-safe.
  */
 import { accountTypeLabel } from '@hub/core';
 import { ShieldIcon } from 'lucide-react';
@@ -20,10 +20,6 @@ const TONES: Readonly<Record<number, string>> = {
 
 export interface AccountTypeBadgeProps {
   accountType: number | null | undefined;
-  /** Also badge normal accounts ("Normal"). */
-  showNormal?: boolean;
-  /** Also badge an unknown/missing type ("Unknown"). */
-  showUnknown?: boolean;
   /** Icon only (the label goes to the tooltip title and screen readers), for tight lists. */
   compact?: boolean;
   className?: string;
@@ -31,14 +27,11 @@ export interface AccountTypeBadgeProps {
 
 export function AccountTypeBadge({
   accountType,
-  showNormal = false,
-  showUnknown = false,
   compact = false,
   className,
 }: AccountTypeBadgeProps) {
   const label = accountTypeLabel(accountType);
-  if (label === 'Unknown' && !showUnknown) return null;
-  if (accountType === 0 && !showNormal) return null;
+  if (label === 'Unknown' || accountType === 0) return null;
   const tone =
     typeof accountType === 'number' && Object.hasOwn(TONES, accountType)
       ? TONES[accountType]

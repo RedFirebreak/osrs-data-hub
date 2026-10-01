@@ -6,6 +6,7 @@
  */
 import { RotateCwIcon, TriangleAlertIcon } from 'lucide-react';
 import Link from 'next/link';
+import { StatusPage } from '@/components/common/status-page';
 import { Button } from '@/components/ui/button';
 
 export default function ErrorPage({
@@ -16,40 +17,33 @@ export default function ErrorPage({
   retry: () => void;
 }) {
   return (
-    <main
-      id="main"
-      className="flex min-h-[60dvh] flex-1 flex-col items-center justify-center gap-4 px-4 py-16 text-center"
+    <StatusPage
+      standalone
+      alert
+      icon={TriangleAlertIcon}
+      tone="destructive"
+      title="Something went wrong"
+      actions={
+        <div className="flex flex-wrap justify-center gap-2">
+          <Button onClick={() => retry()}>
+            <RotateCwIcon aria-hidden data-icon="inline-start" />
+            Try again
+          </Button>
+          <Button asChild variant="outline">
+            <Link href="/">Go to the dashboard</Link>
+          </Button>
+        </div>
+      }
     >
-      <span
-        aria-hidden
-        className="flex size-12 items-center justify-center rounded-full bg-destructive/10 text-destructive"
-      >
-        <TriangleAlertIcon className="size-6" />
-      </span>
-      {/* The alert role on the content: <main> may not change its role (it stays the landmark). */}
-      <div role="alert" className="flex flex-col gap-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Something went wrong</h1>
-        <p className="max-w-md text-sm text-balance text-muted-foreground">
-          The hub couldn&apos;t load this page. This is usually temporary: try again in a moment. If
-          it keeps happening, tell an admin
-          {error.digest ? (
-            <>
-              {' '}
-              and mention the code <code className="font-mono text-foreground">{error.digest}</code>
-            </>
-          ) : null}
-          .
-        </p>
-      </div>
-      <div className="flex flex-wrap justify-center gap-2">
-        <Button onClick={() => retry()}>
-          <RotateCwIcon aria-hidden data-icon="inline-start" />
-          Try again
-        </Button>
-        <Button asChild variant="outline">
-          <Link href="/">Go to the dashboard</Link>
-        </Button>
-      </div>
-    </main>
+      The hub couldn&apos;t load this page. This is usually temporary: try again in a moment. If it
+      keeps happening, tell an admin
+      {error.digest ? (
+        <>
+          {' '}
+          and mention the code <code className="font-mono text-foreground">{error.digest}</code>
+        </>
+      ) : null}
+      .
+    </StatusPage>
   );
 }

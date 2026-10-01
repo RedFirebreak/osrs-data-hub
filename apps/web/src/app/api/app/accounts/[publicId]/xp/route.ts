@@ -7,11 +7,10 @@
  * lacks its `stats` category (existence never leaks). 400 for a malformed query (parseXpQuery).
  */
 import { getDb } from '@hub/db';
-import { getXpSeries } from '@hub/server';
-import { handleApi, json } from '@/lib/http';
+import { getXpSeries, isPublicIdLike } from '@hub/server';
+import { accountNotFound, handleApi, json } from '@/lib/http';
 import { requireApiUser } from '@/lib/session';
-import { accountNotFound } from '../../history';
-import { isPublicIdShape, parseXpQuery } from '../../query';
+import { parseXpQuery } from '../../query';
 
 export async function GET(
   request: Request,
@@ -20,7 +19,7 @@ export async function GET(
   return handleApi(async () => {
     const { viewer } = await requireApiUser(request);
     const { publicId } = await ctx.params;
-    if (!isPublicIdShape(publicId)) throw accountNotFound();
+    if (!isPublicIdLike(publicId)) throw accountNotFound();
     const query = parseXpQuery(request.url, new Date());
     const series = await getXpSeries(getDb().db, viewer, publicId, query);
     if (!series) throw accountNotFound();

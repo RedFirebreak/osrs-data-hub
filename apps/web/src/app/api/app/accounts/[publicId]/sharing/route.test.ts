@@ -2,6 +2,7 @@
  * GET/PATCH /api/app/accounts/[publicId]/sharing: who may read the settings, who may change them,
  * each action of the PATCH body, CSRF (403 bad_origin) and body validation (400).
  */
+import { CATEGORIES } from '@hub/core';
 import { accountLinks, accountShareGrants, accountSharing, auditLog, osrsAccounts } from '@hub/db';
 import type { SharingSettings } from '@hub/server';
 import { and, eq } from 'drizzle-orm';
@@ -90,7 +91,7 @@ describe('GET /api/app/accounts/[publicId]/sharing', () => {
     expect((await get(account.publicId)).status).toBe(401);
   });
 
-  it('the owner reads every category with its defaults (D-22, D-82), and the contributors', async () => {
+  it('the owner reads every category with its defaults (D-96), and the contributors', async () => {
     const sharing = await sharingOf(await get(account.publicId, owner.cookie));
     expect(sharing.canManage).toBe(true);
     expect(sharing.categories.map((c) => [c.category, c.audience, c.isDefault])).toEqual([
@@ -98,9 +99,9 @@ describe('GET /api/app/accounts/[publicId]/sharing', () => {
       ['events', 'guild', true],
       ['activity', 'guild', true],
       ['location_live', 'guild', true],
-      ['location_history', 'private', true],
-      ['equipment', 'private', true],
-      ['inventory', 'private', true],
+      ['location_history', 'guild', true],
+      ['equipment', 'guild', true],
+      ['inventory', 'guild', true],
     ]);
     expect(sharing.contributors.map((c) => [c.name, c.role])).toEqual([
       ['Owner', 'owner'],
@@ -132,11 +133,11 @@ describe('PATCH /api/app/accounts/[publicId]/sharing', () => {
       await patch(account.publicId, owner.cookie, {
         action: 'audience',
         category: 'inventory',
-        audience: 'guild',
+        audience: 'private',
       }),
     );
     expect(sharing.categories.find((c) => c.category === 'inventory')).toMatchObject({
-      audience: 'guild',
+      audience: 'private',
       isDefault: false,
     });
     // The same change again succeeds without another audit entry.
@@ -144,7 +145,7 @@ describe('PATCH /api/app/accounts/[publicId]/sharing', () => {
       await patch(account.publicId, owner.cookie, {
         action: 'audience',
         category: 'inventory',
-        audience: 'guild',
+        audience: 'private',
       }),
     );
     expect(await audits(account.publicId, 'sharing.audience_changed')).toBe(1);
@@ -292,7 +293,7 @@ describe('PATCH /api/app/accounts/[publicId]/sharing', () => {
     expect((await patch(account.publicId, member.cookie, change)).status).toBe(403);
 
     const secret = await seed.account({ owner: owner.userId });
-    for (const category of ['stats', 'events', 'activity', 'location_live'] as const) {
+    for (const category of CATEGORIES) {
       await seed.sharing(secret.id, category, 'private');
     }
     const res = await patch(secret.publicId, member.cookie, change);

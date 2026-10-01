@@ -1,3 +1,5 @@
+import { DAY_MS, HOUR_MS, MINUTE_MS } from './time';
+
 /** What the formatters show for a missing or non-finite value. */
 const NO_VALUE = '—';
 
@@ -64,10 +66,6 @@ export function accountTypeLabel(type: number | null | undefined): string {
   if (type === null || type === undefined || !Object.hasOwn(ACCOUNT_TYPES, type)) return 'Unknown';
   return ACCOUNT_TYPES[type] ?? 'Unknown';
 }
-
-const MINUTE_MS = 60_000;
-const HOUR_MS = 60 * MINUTE_MS;
-const DAY_MS = 24 * HOUR_MS;
 
 /**
  * "just now", "3 min ago", "2 h ago", "5 d ago" relative to `now` (floored: 59 s → "just now",

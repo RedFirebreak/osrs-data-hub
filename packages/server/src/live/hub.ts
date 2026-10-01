@@ -28,11 +28,11 @@ import {
   loadDeviceAccount,
   loadEventRows,
   loadLiveAccount,
-  loadPresence,
+  loadLivePresence,
   loadViewers,
   type DeviceAccountRow,
   type LiveAccount,
-  type PresenceRow,
+  type LivePresenceRow,
 } from './load';
 import {
   toEventMessage,
@@ -214,7 +214,7 @@ export class LiveHub {
     const deviceId = n.firstDataForDevice === true ? n.deviceId : null;
     const subscribed = this.snapshot();
     const [presence, accessMap, device, viewers] = await Promise.all([
-      loadPresence(this.db, n.accountId),
+      loadLivePresence(this.db, n.accountId),
       loadAccountAccess(this.db, [n.accountId]),
       deviceId ? loadDeviceAccount(this.db, deviceId, n.accountId) : null,
       loadViewers(this.db, userIdsOf(subscribed)),
@@ -226,7 +226,7 @@ export class LiveHub {
     if (deviceId && device) this.sendDevice(deviceId, presence, device);
   }
 
-  private sendPresence(row: PresenceRow, access: AccountAccess): void {
+  private sendPresence(row: LivePresenceRow, access: AccountAccess): void {
     const now = this.now();
     const online = isOnline(row, now);
     const data: PresenceMessage = {
@@ -333,7 +333,7 @@ export class LiveHub {
 }
 
 /** Time left until isOnline turns false for this row (it is online at `now`). */
-function onlineForMs(row: PresenceRow, now: Date): number {
+function onlineForMs(row: LivePresenceRow, now: Date): number {
   const offlineAt = row.lastSeen.getTime() + presenceTimeoutSeconds(row.tickDelay) * 1000;
   return Math.max(0, offlineAt - now.getTime());
 }

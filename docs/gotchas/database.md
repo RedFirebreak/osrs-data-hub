@@ -44,7 +44,7 @@ column goes through `stripNul` (packages/core/src/json.ts); a remaining data err
 `text` can't hold NUL either: any text *parameter* carrying one is refused (`22021`), including a
 `WHERE public_id = $1` lookup. Next decodes `%00` in a path segment into a NUL before the route or
 page sees `params`, so `/accounts/abc%00def` turned a not-found into a 400 or an error page. Fix: check
-an id's shape before querying (apps/web `isPublicIdShape`) and answer anything else like an unknown
+an id's shape before querying (@hub/server `isPublicIdLike`) and answer anything else like an unknown
 id.
 
 *Source: `OBSERVED` (research sandbox, timescale/timescaledb:2.30.1-pg17, 2026-09-28; apps/web account
@@ -79,7 +79,7 @@ cursor to 2 and never sees 1. PG17's `transaction_timeout` is no fix: when it fi
 session. Fix: never hand out a cursor past rows that may still commit: serve only the seqs **below the
 first row that is younger than a margin** (measured from a `clock_timestamp()` insert column), not "every
 row older than the margin": filtering young rows one by one still returns a settled higher seq while a
-lower one is held back, and the cursor skips it (packages/server/src/live/replay.ts `settledCeiling`).
+lower one is held back, and the cursor skips it (packages/server/src/settled-cursor.ts `settledCeiling`).
 Keep event-inserting transactions short (the events insert last, lock waits before it). Filtering on
 `pg_snapshot_xmin(pg_current_snapshot())` is an untested alternative. The warning sits on `events.seq`
 in packages/db/src/schema/activity.ts.

@@ -3,6 +3,7 @@ import {
   type AnyPgColumn,
   bigint,
   boolean,
+  check,
   date,
   index,
   integer,
@@ -17,6 +18,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { devices } from './devices';
 import { osrsAccounts } from './accounts';
+import { isNullOrOneOf } from './checks';
 
 const tstz = (name: string) => timestamp(name, { withTimezone: true });
 
@@ -121,6 +123,7 @@ export const playSessions = pgTable(
     index('play_sessions_account_started_idx').on(t.accountId, t.startedAt.desc()),
     // For the device FK's ON DELETE SET NULL, as on events.
     index('play_sessions_device_idx').on(t.deviceId),
+    check('play_sessions_end_reason_chk', isNullOrOneOf(t.endReason, SESSION_END_REASONS)),
   ],
 );
 

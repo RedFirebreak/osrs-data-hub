@@ -1,3 +1,5 @@
+import type { Viewer } from '@hub/core';
+
 export type AdminErrorCode = 'forbidden' | 'not_found' | 'invalid';
 
 /**
@@ -13,5 +15,15 @@ export class AdminError extends Error {
     message: string = code,
   ) {
     super(message);
+  }
+}
+
+/**
+ * Only an active admin may act: AdminError 'forbidden' otherwise. The routes check too; this is the
+ * second lock, inside every admin action.
+ */
+export function assertAdmin(actor: Viewer): void {
+  if (actor.isAdmin !== true || actor.status !== 'active') {
+    throw new AdminError('forbidden', 'admins only');
   }
 }

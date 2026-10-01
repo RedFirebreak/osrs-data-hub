@@ -38,6 +38,7 @@ import {
   sseHello,
 } from '@hub/server';
 import { ApiError, handleApi } from '@/lib/http';
+import { parseSeqCursor } from '@/lib/query';
 import { getApiUser, requireApiUser } from '@/lib/session';
 
 const SSE_HEADERS: Record<string, string> = {
@@ -210,12 +211,9 @@ export async function GET(request: Request): Promise<Response> {
  * cursor of a hub that had no events yet); anything else (absent, garbage) means "no replay".
  */
 function parseLastEventId(request: Request): number | null {
-  const raw =
-    request.headers.get('last-event-id') ?? new URL(request.url).searchParams.get('lastEventId');
-  const value = raw?.trim() ?? '';
-  if (!/^\d{1,16}$/.test(value)) return null;
-  const n = Number(value);
-  return Number.isSafeInteger(n) ? n : null;
+  return parseSeqCursor(
+    request.headers.get('last-event-id') ?? new URL(request.url).searchParams.get('lastEventId'),
+  );
 }
 
 /** The LISTEN connection, normally started by instrumentation; started here if it wasn't. */

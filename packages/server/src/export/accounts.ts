@@ -3,7 +3,7 @@
  * current state section by section, and its full histories, each only for a category the user can see
  * today (resolveAccess). The histories are streamed in keyset-paginated batches, never loaded whole.
  */
-import { CATEGORIES, accountTypeLabel, floorTo, type Category } from '@hub/core';
+import { CATEGORIES, DAY_MS, accountTypeLabel, floorTo, type Category } from '@hub/core';
 import {
   accountLinks,
   accountNames,
@@ -19,19 +19,9 @@ import {
 } from '@hub/db';
 import { and, asc, desc, eq, gt, min, ne, sql, type SQL } from 'drizzle-orm';
 import type { AccountWithAccess } from '../accounts/load';
-import {
-  itemsOf,
-  loadLatestRows,
-  locationOf,
-  presenceOf,
-  skillsOf,
-  vitalsFrom,
-  vitalsUpdatedAt,
-  type LatestRow,
-} from '../api/state';
-import { toApiItems, type ApiSection } from '../api/types';
-import { toFeedEvent } from '../feed';
-import { EVENT_ROW_COLUMNS } from '../live/load';
+import { loadAccountSections } from '../api/state';
+import { toApiItems } from '../api/types';
+import { EVENT_ROW_COLUMNS, toFeedEvent } from '../feed';
 import { jsonArray, jsonObject, keysetPages, streamed, type Field } from './json';
 import {
   wireEvent,
@@ -42,9 +32,8 @@ import {
   wireSection,
   wireSkills,
   wireVitals,
+  wireWealthDay,
 } from './wire';
-
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 export interface AccountExportContext {
   db: Db;
@@ -156,57 +145,25 @@ async function previousNames(db: Db, { account }: AccountWithAccess) {
 }
 
 /**
- * The current state, section by section as GET /api/v1/accounts/{id} returns it (apiGetAccount):
- * `{ shared: true, updated_at, … }`, `{ shared: false, updated_at: null }` when the plugin never sent
- * it, and no field at all for a category the user can't see. Without `activity`, skills, equipment
- * and inventory carry only the day (D-50).
+ * The current state, section by section exactly as GET /api/v1/accounts/{id} returns it (the same
+ * accountSections, in the wire format): `{ shared: true, updated_at, … }`,
+ * `{ shared: false, updated_at: null }` when the plugin never sent it, and no field at all for a
+ * category the user can't see. Without `activity`, skills, equipment and inventory carry only the
+ * day (D-50).
  */
 async function* stateFields(db: Db, entry: AccountWithAccess, now: Date): AsyncGenerator<Field> {
-  const can = (c: Category) => entry.access.categories.has(c);
-  const rows = await loadLatestRows(db, [entry.account.id], {
-    skills: can('stats'),
-    equipment: can('equipment'),
-    inventory: can('inventory'),
-  });
-  const row: LatestRow | undefined = rows.get(entry.account.id);
-  const stamp = (at: Date | null) => (at === null || can('activity') ? at : floorTo(at, DAY_MS));
-  if (can('activity')) {
-    yield [
-      'presence',
-      wireSection(section(row?.lastSeen, row && presenceOf(row, now)), wirePresence),
-    ];
-    yield [
-      'vitals',
-      wireSection(section(row && vitalsUpdatedAt(row), row && vitalsFrom(row)), wireVitals),
-    ];
-  }
-  if (can('stats')) {
-    const at = stamp(row?.skillsUpdatedAt ?? null);
-    yield ['skills', wireSection(section(at, row && skillsOf(row)), wireSkills)];
-  }
-  if (can('location_live')) {
-    const at = row?.locationUpdatedAt ?? null;
-    yield ['location', wireSection(section(at, row && locationOf(row, now)), wireLocation)];
-  }
-  if (can('equipment')) {
-    const at = row?.equipmentUpdatedAt ?? null;
-    const items = row ? itemsOf(row.equipment, at) : null;
-    yield ['equipment', wireSection(section(stamp(at), items), wireItems)];
-  }
-  if (can('inventory')) {
-    const at = row?.inventoryUpdatedAt ?? null;
-    const items = row ? itemsOf(row.inventory, at) : null;
-    yield ['inventory', wireSection(section(stamp(at), items), wireItems)];
-  }
-}
-
-/** A shared section when there is data and a time, else "not shared" (as apiGetAccount). */
-function section<T extends object>(
-  updatedAt: Date | null | undefined,
-  data: T | null | undefined,
-): ApiSection<T> {
-  if (!updatedAt || !data) return { shared: false, updatedAt: null };
-  return { ...data, shared: true, updatedAt: updatedAt.toISOString() };
+  const { presence, vitals, skills, location, equipment, inventory } = await loadAccountSections(
+    db,
+    entry.account.id,
+    entry.access.categories,
+    now,
+  );
+  if (presence) yield ['presence', wireSection(presence, wirePresence)];
+  if (vitals) yield ['vitals', wireSection(vitals, wireVitals)];
+  if (skills) yield ['skills', wireSection(skills, wireSkills)];
+  if (location) yield ['location', wireSection(location, wireLocation)];
+  if (equipment) yield ['equipment', wireSection(equipment, wireItems)];
+  if (inventory) yield ['inventory', wireSection(inventory, wireItems)];
 }
 
 /** The histories, each gated by its category (handoff §10) and streamed in batches. */
@@ -240,7 +197,7 @@ async function* historyFields(
     yield ['equipment_changes', streamed(() => jsonArray(equipmentPages(ctx, id), wireChange))];
   }
   if (can('inventory')) {
-    yield ['wealth_days', streamed(() => jsonArray(wealthPages(ctx, id), wireWealth))];
+    yield ['wealth_days', streamed(() => jsonArray(wealthPages(ctx, id), wireWealthDay))];
   }
   if (can('location_history')) {
     yield ['location_trail', streamed(() => jsonArray(locationPages(ctx, id), wirePoint))];
@@ -487,10 +444,6 @@ function wealthPages(ctx: AccountExportContext, accountId: number) {
         .limit(limit),
     ctx.batchSize,
   );
-}
-
-function wireWealth(r: WealthRow) {
-  return { day: r.day, last_value: r.lastValue, max_value: r.maxValue };
 }
 
 type PointRow = {

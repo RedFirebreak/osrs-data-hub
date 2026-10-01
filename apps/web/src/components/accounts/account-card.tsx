@@ -11,6 +11,7 @@ import { formatGain, formatNumber } from '@hub/core';
 import type { AccountCard as AccountCardData } from '@hub/server';
 import { ArrowRightIcon } from 'lucide-react';
 import Link from 'next/link';
+import { Stat } from '@/components/common/stat';
 import { EventFeed } from '@/components/events/event-feed';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -22,7 +23,6 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { cn } from '@/lib/utils';
 import { accountHref } from './account-link';
 import { AccountPresence } from './account-presence';
 import { AccountTypeBadge } from './account-type-badge';
@@ -38,22 +38,6 @@ export interface AccountCardProps {
    */
   headingLevel?: 2 | 3 | 4;
   className?: string;
-}
-
-function Stat({ label, value, muted }: { label: string; value: string; muted?: boolean }) {
-  return (
-    <div className="min-w-0">
-      <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd
-        className={cn(
-          'truncate text-base font-semibold tabular-nums',
-          muted && 'font-normal text-muted-foreground',
-        )}
-      >
-        {value}
-      </dd>
-    </div>
-  );
 }
 
 export function AccountCard({ card, now, headingLevel = 3, className }: AccountCardProps) {
@@ -88,14 +72,20 @@ export function AccountCard({ card, now, headingLevel = 3, className }: AccountC
       <CardContent className="flex flex-col gap-4">
         {hasStats ? (
           <dl className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4">
-            <Stat label="Total level" value={formatNumber(card.totalLevel)} />
-            <Stat label="Overall XP" value={formatNumber(card.overallXp)} />
+            <Stat truncate label="Total level" value={formatNumber(card.totalLevel)} />
+            <Stat truncate label="Overall XP" value={formatNumber(card.overallXp)} />
             <Stat
+              truncate
               label="XP today"
               value={today === null ? '—' : formatGain(today)}
               muted={!today}
             />
-            <Stat label="XP 7 days" value={week === null ? '—' : formatGain(week)} muted={!week} />
+            <Stat
+              truncate
+              label="XP 7 days"
+              value={week === null ? '—' : formatGain(week)}
+              muted={!week}
+            />
           </dl>
         ) : (
           <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">

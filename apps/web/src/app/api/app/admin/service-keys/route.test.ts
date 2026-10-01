@@ -1,15 +1,15 @@
 /**
  * The admin service-key routes (D-88): who gets through (401 signed out, 403 non-admins, 403 for a
- * foreign Origin on mutations), creating a key (shown once, audited, no user), listing, revoking,
- * and that the key then authenticates on /api/v1 as a service principal.
+ * foreign Origin), creating a key (shown once, audited, no user), revoking, and that the key then
+ * authenticates on /api/v1 as a service principal.
  */
 import { apiKeys, auditLog } from '@hub/db';
-import { authenticateApiKey } from '@hub/server';
+import { authenticateApiKey, listServiceKeys } from '@hub/server';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { withTestDb, type WebTestContext } from '@/lib/test-utils';
 import { DELETE as revoke } from './[id]/route';
-import { GET as list, POST as create } from './route';
+import { POST as create } from './route';
 
 let ctx: WebTestContext;
 let adminId: string;
@@ -51,10 +51,6 @@ function createCall(body: unknown): Caller {
     );
 }
 
-function listCall(): Caller {
-  return (cookie) => list(ctx.request('/api/app/admin/service-keys', { cookie }));
-}
-
 function revokeCall(id: string): Caller {
   return (cookie, opts = {}) =>
     revoke(
@@ -67,17 +63,15 @@ function revokeCall(id: string): Caller {
     );
 }
 
-async function expectGuarded(call: Caller, opts: { mutation: boolean }): Promise<void> {
+async function expectGuarded(call: Caller): Promise<void> {
   expect((await call(undefined)).status).toBe(401);
   const member = await call(memberCookie);
   expect(member.status).toBe(403);
   expect(((await member.json()) as ErrorBody).error.code).toBe('forbidden');
-  if (opts.mutation) {
-    const foreign = await call(adminCookie, { origin: 'https://evil.test' });
-    expect(foreign.status).toBe(403);
-    expect(((await foreign.json()) as ErrorBody).error.code).toBe('bad_origin');
-    expect((await call(adminCookie, { origin: null })).status).toBe(403);
-  }
+  const foreign = await call(adminCookie, { origin: 'https://evil.test' });
+  expect(foreign.status).toBe(403);
+  expect(((await foreign.json()) as ErrorBody).error.code).toBe('bad_origin');
+  expect((await call(adminCookie, { origin: null })).status).toBe(403);
 }
 
 interface Created {
@@ -134,25 +128,15 @@ describe('POST /api/app/admin/service-keys', () => {
   });
 
   it('is guarded', async () => {
-    await expectGuarded(createCall(valid), { mutation: true });
+    await expectGuarded(createCall(valid));
   });
 });
 
-describe('GET and DELETE', () => {
-  it('lists every service key newest first and revokes one (idempotent, audited)', async () => {
+describe('DELETE /api/app/admin/service-keys/[id]', () => {
+  it('revokes a service key (idempotent, audited)', async () => {
     const first = (await (
       await createCall({ ...valid, name: 'First' })(adminCookie)
     ).json()) as Created;
-    const second = (await (
-      await createCall({ ...valid, name: 'Second' })(adminCookie)
-    ).json()) as Created;
-    const listed = await listCall()(adminCookie);
-    expect(listed.status).toBe(200);
-    const { keys } = (await listed.json()) as { keys: { id: string; kind: string }[] };
-    const ids = keys.map((k) => k.id);
-    expect(ids.indexOf(second.info.id)).toBeLessThan(ids.indexOf(first.info.id));
-    expect(keys.every((k) => k.kind === 'service')).toBe(true);
-    expect(JSON.stringify(keys)).not.toContain(first.key.slice(16));
 
     const revoked = await revokeCall(first.info.id)(adminCookie);
     expect(revoked.status).toBe(200);
@@ -164,20 +148,17 @@ describe('GET and DELETE', () => {
       .from(auditLog)
       .where(eq(auditLog.targetId, first.info.id));
     expect(audits.map((a) => a.action)).toEqual(['service_key.created', 'service_key.revoked']);
-    const after = (await (await listCall()(adminCookie)).json()) as {
-      keys: { id: string; status: string }[];
-    };
-    expect(after.keys.find((k) => k.id === first.info.id)?.status).toBe('revoked');
+    const after = await listServiceKeys(ctx.t.db);
+    expect(after.find((k) => k.id === first.info.id)?.status).toBe('revoked');
   });
 
-  it('404 for unknown ids and non-uuids; both routes are guarded', async () => {
+  it('404 for unknown ids and non-uuids; the route is guarded', async () => {
     expect((await revokeCall('not-a-uuid')(adminCookie)).status).toBe(404);
     expect((await revokeCall('00000000-0000-7000-8000-000000000000')(adminCookie)).status).toBe(
       404,
     );
-    await expectGuarded(listCall(), { mutation: false });
     const created = (await (await createCall(valid)(adminCookie)).json()) as Created;
-    await expectGuarded(revokeCall(created.info.id), { mutation: true });
+    await expectGuarded(revokeCall(created.info.id));
     expect((await authenticateApiKey(ctx.t.db, `Bearer ${created.key}`)).ok).toBe(true);
   });
 });

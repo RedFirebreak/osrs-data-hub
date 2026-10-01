@@ -3,6 +3,8 @@
  *  - as the USER (OAuth token, scope guilds.members.read) at sign-in;
  *  - as the BOT (no permissions, no privileged intents) for the 6-hourly re-verification.
  */
+import type { DiscordVerifyFailureKind } from '../metrics';
+
 export const DISCORD_API = 'https://discord.com/api/v10';
 
 export interface DiscordUser {
@@ -39,7 +41,7 @@ export type MemberLookup =
       kind: 'error';
       status: number;
       code?: number;
-      reason: 'config' | 'auth' | 'rate_limited' | 'unavailable';
+      reason: DiscordVerifyFailureKind;
     };
 
 export type FetchFn = typeof fetch;

@@ -11,6 +11,7 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { cpSync, existsSync, rmSync } from 'node:fs';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 const appDir = path.join(import.meta.dirname, '..');
 const standaloneApp = path.join(appDir, '.next', 'standalone', 'apps', 'web');
@@ -23,10 +24,12 @@ const RUNTIME_ONLY = ['DATABASE_URL', 'AUTH_SECRET', 'DISCORD_CLIENT_ID', 'DISCO
 if (process.env.E2E_SKIP_BUILD !== '1') {
   const buildEnv = { ...process.env };
   for (const name of RUNTIME_ONLY) delete buildEnv[name];
+  // On Windows pnpm is pnpm.cmd, which spawn only finds through a shell (TOOL-10).
   const build = spawnSync('pnpm', ['run', 'build'], {
     cwd: appDir,
     env: buildEnv,
     stdio: 'inherit',
+    shell: process.platform === 'win32',
   });
   if (build.status !== 0) {
     console.error(
@@ -49,7 +52,11 @@ for (const [from, to] of [
   if (existsSync(from)) cpSync(from, to, { recursive: true });
 }
 
-const nodeOptions = [process.env.NODE_OPTIONS, `--import ${JSON.stringify(mock)}`]
+// --import takes a URL: a bare Windows path (E:\…) reads as scheme "e:" (TOOL-10).
+const nodeOptions = [
+  process.env.NODE_OPTIONS,
+  `--import ${JSON.stringify(pathToFileURL(mock).href)}`,
+]
   .filter(Boolean)
   .join(' ');
 const server = spawn(process.execPath, [serverJs], {

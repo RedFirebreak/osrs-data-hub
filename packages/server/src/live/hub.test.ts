@@ -39,7 +39,7 @@ let blocked: Awaited<ReturnType<typeof seedUser>>;
 let grace: Awaited<ReturnType<typeof seedUser>>;
 let admin: Awaited<ReturnType<typeof seedUser>>;
 // Accounts
-let zezima: SeededAccount; // defaults; location_live selected for `granted`
+let zezima: SeededAccount; // defaults; location_live selected for `granted`, history private
 let privy: SeededAccount; // events + activity private
 let selective: SeededAccount; // events selected for `granted`
 let hidden: SeededAccount; // owner in grace without transfer
@@ -58,6 +58,7 @@ beforeAll(async () => {
   await link(t.db, zezima.id, contributor.userId);
   await link(t.db, zezima.id, grace.userId);
   await share(t.db, zezima.id, 'location_live', 'selected');
+  await share(t.db, zezima.id, 'location_history', 'private');
   await grant(t.db, zezima.id, 'location_live', granted.userId);
 
   privy = await seedAccount(t.db, { name: 'Private Pete', ownerUserId: owner.userId });

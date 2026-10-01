@@ -1,4 +1,4 @@
-import { parseConfig } from '@hub/core';
+import { CONFIG_ENV_NAMES, parseConfig } from '@hub/core';
 import { describe, expect, it } from 'vitest';
 import { REDACTED, configSections, redactDatabaseUrl, type ConfigValue } from './config-view';
 
@@ -58,6 +58,14 @@ describe('configSections', () => {
     });
     expect(valueOf('APP_URL')).toEqual({ kind: 'text', text: 'https://hub.example.com' });
     expect(valueOf('HUB_NAME')).toEqual({ kind: 'text', text: 'Test Hub' });
+    expect(valueOf('OSRS_ICONS_URL')).toEqual({
+      kind: 'text',
+      text: 'https://icons.scapekeeper.com',
+    });
+    expect(valueOf('OSRS_ICONS_URL', configSections(config({ OSRS_ICONS_URL: '' })))).toEqual({
+      kind: 'text',
+      text: 'off (text only)',
+    });
     expect(valueOf('DISCORD_CLIENT_ID')).toEqual({ kind: 'text', text: '123456789012345678' });
     expect(valueOf('DISCORD_ADMIN_ROLE_IDS')).toEqual({
       kind: 'list',
@@ -66,6 +74,17 @@ describe('configSections', () => {
     expect(valueOf('DISCORD_REQUIRED_ROLE_IDS')).toEqual({ kind: 'list', items: [] });
     expect(valueOf('OFFBOARD_GRACE_DAYS')).toEqual({ kind: 'text', text: '30 days' });
     expect(valueOf('INGEST_MAX_BODY_KB')).toEqual({ kind: 'text', text: '256 KB' });
+    expect(valueOf('WORKER_METRICS_PORT')).toEqual({ kind: 'text', text: '9464' });
+    expect(
+      valueOf('WORKER_METRICS_PORT', configSections(config({ WORKER_METRICS_PORT: '0' }))),
+    ).toEqual({ kind: 'text', text: 'off (no endpoint)' });
+  });
+
+  // The page is an allowlist, so a new variable stays off it until someone lists it here and
+  // decides how to show it. This is the reminder to do that.
+  it('lists every variable the configuration reads, once', () => {
+    const listed = configSections(config()).flatMap((s) => s.entries.map((e) => e.name));
+    expect([...listed].sort()).toEqual([...CONFIG_ENV_NAMES].sort());
   });
 });
 

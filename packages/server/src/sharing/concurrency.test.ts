@@ -12,7 +12,7 @@ import { and, eq } from 'drizzle-orm';
 import pg from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { seedAccount, seedLink } from '../accounts/test-support';
-import { ACCOUNT_LOCK_CLASS } from '../ingest/store';
+import { ACCOUNT_LOCK_CLASS } from '../ingest/lock';
 import {
   captureLogger,
   createHarness,

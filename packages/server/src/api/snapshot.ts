@@ -8,29 +8,26 @@ import {
   CATEGORIES,
   IN_GAME_STATES,
   LOCATION_STALE_MS,
-  accountTypeLabel,
   presenceTimeoutSeconds,
   type Category,
 } from '@hub/core';
 import type { DbOrTx } from '@hub/db';
-import type { AccountWithAccess } from '../accounts/load';
-import { apiAccountHash, loadApiAccounts, loadApiOwners } from './access';
-import type { ApiPrincipal } from './keys';
+import { locationOf, vitalsOf } from '../accounts/account-page';
+import { toPresence, type AccountWithAccess } from '../accounts/load';
+import { accountIdentity, loadApiAccounts, loadApiOwners } from './access';
+import type { ApiPrincipal } from './key-auth';
 import { assertDate } from './params';
 import {
   itemsOf,
   loadLatestRows,
-  locationOf,
-  presenceOf,
   skillsOf,
-  vitalsFrom,
   type ApiEquipment,
   type ApiInventory,
   type ApiLocation,
   type ApiSkills,
   type LatestRow,
 } from './state';
-import type { ApiMeter, ApiOwner } from './types';
+import type { ApiAccountIdentity, ApiMeter } from './types';
 
 /**
  * `since` also returns accounts that changed up to this long before it. latest_state.updated_at is
@@ -52,15 +49,7 @@ export interface ApiSnapshotLocation extends ApiLocation {
  * OMITTED when the key can't read that category on the account (null means "readable, but the
  * plugin never sent it").
  */
-export interface ApiSnapshotAccount {
-  id: string;
-  name: string;
-  /** The plugin's salted accountHash; only for service keys, omitted otherwise (D-91). */
-  accountHash?: string;
-  type: number | null;
-  typeLabel: string;
-  /** The account's owner as the guild page shows them; null without an active owner (D-90). */
-  owner: ApiOwner | null;
+export interface ApiSnapshotAccount extends ApiAccountIdentity {
   /** What this key may read on this account. */
   categories: Category[];
   /** `activity`: in game now (D-28). */
@@ -148,12 +137,7 @@ export async function apiSnapshot(
     const changed = entry.access.categories.has('activity') ? changedAt(entry, row, now) : null;
     if (changed !== null) newest = Math.max(newest ?? changed, changed);
     if (sinceMs !== null && changed !== null && changed <= sinceMs) continue;
-    accounts.push(
-      snapshotAccount(entry, row, now, {
-        owner: owners.get(entry.account.id) ?? null,
-        accountHash: apiAccountHash(principal, entry),
-      }),
-    );
+    accounts.push(snapshotAccount(entry, row, now, accountIdentity(principal, entry, owners)));
   }
   const lastModified = newest === null ? null : new Date(newest).toISOString();
   return { accounts, etag: snapshotEtag(principal.keyId, accounts, lastModified), lastModified };
@@ -163,22 +147,14 @@ function snapshotAccount(
   entry: AccountWithAccess,
   row: LatestRow | undefined,
   now: Date,
-  identity: { owner: ApiOwner | null; accountHash: string | undefined },
+  identity: ApiAccountIdentity,
 ): ApiSnapshotAccount {
   const { account, access } = entry;
   const can = (c: Category) => access.categories.has(c);
-  const out: ApiSnapshotAccount = {
-    id: account.publicId,
-    name: account.name,
-    ...(identity.accountHash !== undefined ? { accountHash: identity.accountHash } : {}),
-    type: account.accountType,
-    typeLabel: accountTypeLabel(account.accountType),
-    owner: identity.owner,
-    categories: CATEGORIES.filter(can),
-  };
+  const out: ApiSnapshotAccount = { ...identity, categories: CATEGORIES.filter(can) };
   if (can('activity')) {
-    const presence = row ? presenceOf(row, now) : null;
-    const vitals = row ? vitalsFrom(row) : null;
+    const presence = row ? toPresence(row, now) : null;
+    const vitals = row ? vitalsOf(row) : null;
     out.online = presence?.online ?? false;
     out.world = presence?.world ?? null;
     out.specialWorld = presence?.specialWorld ?? false;

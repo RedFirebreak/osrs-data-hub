@@ -8,10 +8,12 @@
  * Keep this file in step with `additionalFields` in apps/web/src/lib/auth.ts: Better Auth 1.7 validates
  * the schema at runtime and throws on every auth request when they disagree (AUTH-1).
  */
+import { USER_STATUSES, type UserStatus } from '@hub/core';
 import { sql } from 'drizzle-orm';
 import {
   bigint,
   boolean,
+  check,
   index,
   integer,
   pgTable,
@@ -19,42 +21,50 @@ import {
   timestamp,
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
+import { isNullOrOneOf, isOneOf } from './checks';
 
 const tstz = (name: string) => timestamp(name, { withTimezone: true });
 
-export const USER_STATUSES = ['active', 'grace'] as const;
-export type UserStatus = (typeof USER_STATUSES)[number];
+// Declared in @hub/core (the permission resolver reads it too); re-exported for this package's users.
+export { USER_STATUSES, type UserStatus };
 
 /** Why a user is in `grace`. Only membership reasons are undone by simply logging in again. */
 export const OFFBOARD_REASONS = ['left_guild', 'lost_role', 'admin', 'self_delete'] as const;
 export type OffboardReason = (typeof OFFBOARD_REASONS)[number];
 
-export const users = pgTable('users', {
-  id: text('id').primaryKey(),
-  name: text('name').notNull(),
-  // Placeholder `<discordId>@discord.invalid`: we don't request the email scope (AUTH-3).
-  email: text('email').notNull().unique(),
-  emailVerified: boolean('email_verified').default(false).notNull(),
-  image: text('image'),
-  createdAt: tstz('created_at').defaultNow().notNull(),
-  updatedAt: tstz('updated_at')
-    .defaultNow()
-    .$onUpdate(() => new Date())
-    .notNull(),
-  discordId: text('discord_id').unique(),
-  nickname: text('nickname'),
-  roles: text('roles')
-    .array()
-    .default(sql`'{}'::text[]`)
-    .notNull(),
-  isAdmin: boolean('is_admin').default(false).notNull(),
-  status: text('status', { enum: USER_STATUSES }).default('active').notNull(),
-  graceUntil: tstz('grace_until'),
-  offboardReason: text('offboard_reason', { enum: OFFBOARD_REASONS }),
-  lastVerifiedAt: tstz('last_verified_at'),
-  /** Consecutive Discord re-verification failures (errors, not "not a member"). */
-  verifyFailures: integer('verify_failures').default(0).notNull(),
-});
+export const users = pgTable(
+  'users',
+  {
+    id: text('id').primaryKey(),
+    name: text('name').notNull(),
+    // Placeholder `<discordId>@discord.invalid`: we don't request the email scope (AUTH-3).
+    email: text('email').notNull().unique(),
+    emailVerified: boolean('email_verified').default(false).notNull(),
+    image: text('image'),
+    createdAt: tstz('created_at').defaultNow().notNull(),
+    updatedAt: tstz('updated_at')
+      .defaultNow()
+      .$onUpdate(() => new Date())
+      .notNull(),
+    discordId: text('discord_id').unique(),
+    nickname: text('nickname'),
+    roles: text('roles')
+      .array()
+      .default(sql`'{}'::text[]`)
+      .notNull(),
+    isAdmin: boolean('is_admin').default(false).notNull(),
+    status: text('status', { enum: USER_STATUSES }).default('active').notNull(),
+    graceUntil: tstz('grace_until'),
+    offboardReason: text('offboard_reason', { enum: OFFBOARD_REASONS }),
+    lastVerifiedAt: tstz('last_verified_at'),
+    /** Consecutive Discord re-verification failures (errors, not "not a member"). */
+    verifyFailures: integer('verify_failures').default(0).notNull(),
+  },
+  (t) => [
+    check('users_status_chk', isOneOf(t.status, USER_STATUSES)),
+    check('users_offboard_reason_chk', isNullOrOneOf(t.offboardReason, OFFBOARD_REASONS)),
+  ],
+);
 
 export const session = pgTable(
   'session',

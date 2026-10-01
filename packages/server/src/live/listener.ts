@@ -34,14 +34,14 @@ export interface LiveListenerOptions {
 
 /** Shown in pg_stat_activity, so operators (and tests) can find the connection. */
 export const LIVE_LISTENER_APPLICATION_NAME = 'hub-live-listener';
-export const RECONNECT_INITIAL_MS = 1_000;
-export const RECONNECT_MAX_MS = 30_000;
+const RECONNECT_INITIAL_MS = 1_000;
+const RECONNECT_MAX_MS = 30_000;
 /**
  * The backoff starts over only after a connection stayed up this long: every successful LISTEN
  * broadcasts 'resync' (every client refetches), so a connection lost right after it came back must
  * not be retried, and resynced, every second.
  */
-export const STABLE_CONNECTION_MS = 60_000;
+const STABLE_CONNECTION_MS = 60_000;
 /** A silently dead TCP connection would never emit an error; a periodic query finds it. */
 const PING_INTERVAL_MS = 30_000;
 const PING_TIMEOUT_MS = 10_000;
@@ -289,6 +289,8 @@ const g = globalThis as unknown as { __hubLiveListener?: LiveListener };
  */
 export function ensureLiveListener(): LiveListener {
   if (!g.__hubLiveListener) {
+    // From the environment, as getDb() reads it (not getConfig()): the LISTEN connection and the
+    // pool then always name the same database, and instrumentation checks this variable before us.
     const connectionString = process.env.DATABASE_URL;
     if (!connectionString) throw new Error('DATABASE_URL is not set');
     g.__hubLiveListener = startLiveListener({

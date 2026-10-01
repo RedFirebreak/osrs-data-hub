@@ -1,11 +1,11 @@
 /**
  * Pure helpers for Admin → Integrations (service keys, D-88): the create form's state, validation
- * and request body, and the field errors of a failed create. No React, no browser APIs; unit-tested
+ * and request body, and the fields a failed create can name. No React, no browser APIs; unit-tested
  * in service-key-model.test.ts. The server's limits (name length, the highest rate limit) reach the
- * client as props from the page.
+ * client as props from the page. The name and expiry rules are the user keys' (api-key-model.ts).
  */
 import { CATEGORIES, type Category } from '@hub/core';
-import { EXPIRY_OPTIONS } from '@/components/api-keys/api-key-model';
+import { expiryDays, keyNameError } from '@/components/api-keys/api-key-model';
 
 export interface ServiceKeyForm {
   name: string;
@@ -30,11 +30,8 @@ export function validateServiceKeyForm(
   limits: { nameMax: number; rateLimitMax: number },
 ): ServiceKeyErrors {
   const errors: ServiceKeyErrors = {};
-  const name = form.name.replace(/\p{Cc}/gu, ' ').trim();
-  if (name.length === 0) errors.name = 'Give the key a name, e.g. "Guild live map".';
-  else if (Array.from(name).length > limits.nameMax) {
-    errors.name = `At most ${limits.nameMax} characters.`;
-  }
+  const name = keyNameError(form.name, limits.nameMax, 'Guild live map');
+  if (name) errors.name = name;
   if (form.categories.length === 0) errors.categories = 'Choose at least one category.';
   const rate = parseRateLimit(form.rateLimit);
   if (rate === undefined) {
@@ -56,34 +53,18 @@ export function parseRateLimit(value: string): number | null | undefined {
 
 /** The POST /api/app/admin/service-keys body for a valid form (CreateServiceKeySchema's input). */
 export function serviceKeyBody(form: ServiceKeyForm): Record<string, unknown> {
-  const days = EXPIRY_OPTIONS.find((o) => o.value === form.expiry)?.days ?? null;
   return {
     name: form.name.trim(),
     categories: CATEGORIES.filter((c) => form.categories.includes(c)),
-    expiresInDays: days,
+    expiresInDays: expiryDays(form.expiry),
     rateLimitPerMinute: parseRateLimit(form.rateLimit) ?? null,
   };
 }
 
-const FIELDS: ReadonlySet<string> = new Set<ServiceKeyField>([
+/** The form's fields the server's 400 `details` can name (fieldErrorsFrom, lib/api-client.ts). */
+export const SERVICE_KEY_FIELDS: readonly ServiceKeyField[] = [
   'name',
   'categories',
   'rateLimitPerMinute',
   'expiresInDays',
-]);
-
-/** The server's 400 `details` ([{ path, message }]) by form field (first message per field). */
-export function serviceKeyFieldErrors(details: unknown): ServiceKeyErrors {
-  const errors: ServiceKeyErrors = {};
-  if (!Array.isArray(details)) return errors;
-  for (const d of details) {
-    if (typeof d !== 'object' || d === null) continue;
-    const { path, message } = d as { path?: unknown; message?: unknown };
-    if (typeof path !== 'string' || typeof message !== 'string') continue;
-    const field = path.split('.')[0] ?? '';
-    if (FIELDS.has(field) && errors[field as ServiceKeyField] === undefined) {
-      errors[field as ServiceKeyField] = message;
-    }
-  }
-  return errors;
-}
+];

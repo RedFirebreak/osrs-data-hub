@@ -12,7 +12,7 @@ import {
   seedUser,
 } from '../pairing/test-support';
 import { listAllDevices, listDevices, renameDevice, revokeDevice } from './devices';
-import { DEVICE_LABEL_MAX, isUuid, normalizeDeviceLabel } from './util';
+import { DEVICE_LABEL_MAX, normalizeDeviceLabel } from './util';
 
 let t: TestDatabase;
 
@@ -44,15 +44,6 @@ describe('normalizeDeviceLabel', () => {
     expect(normalizeDeviceLabel('x'.repeat(65))).toHaveLength(DEVICE_LABEL_MAX);
     expect(Array.from(normalizeDeviceLabel('😀'.repeat(70)) ?? '')).toHaveLength(64);
     expect(normalizeDeviceLabel(`${'a'.repeat(63)} b`)).toBe('a'.repeat(63));
-  });
-});
-
-describe('isUuid', () => {
-  it('accepts canonical uuids only', () => {
-    expect(isUuid('01900000-0000-7000-8000-000000000000')).toBe(true);
-    expect(isUuid('01900000-0000-7000-8000-00000000000')).toBe(false);
-    expect(isUuid("1' or 1=1")).toBe(false);
-    expect(isUuid(42)).toBe(false);
   });
 });
 

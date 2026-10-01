@@ -9,7 +9,8 @@
  * | prune-audit-log            | daily                            |
  * | Timescale policies         | reconciled at startup            |
  *
- * Every run is timed and counted (timed.ts); the metrics are served on WORKER_METRICS_PORT (D-84).
+ * Names and schedules are in ./queues (JOBS), what each job does is in main() below. Every run is
+ * timed and counted (timed.ts); the metrics are served on WORKER_METRICS_PORT (D-84).
  * Raw payload clean-up is the raw_payloads retention policy; there is no job for it. Every queue
  * uses pg-boss's 'stately' policy (./queues): a run never overlaps the previous one, and ticks that
  * arrive meanwhile don't pile up.
@@ -17,6 +18,7 @@
 import { getConfig } from '@hub/core';
 import { applyTimescalePolicies, createDb, pgErrorCode, safeDbErrorMessage } from '@hub/db';
 import {
+  JOB_NAMES,
   closeStaleSessions,
   expireGracePeriods,
   getLogger,
@@ -26,10 +28,9 @@ import {
   reverifyDueMembers,
 } from '@hub/server';
 import type { Server } from 'node:http';
-import { PgBoss, type Job } from 'pg-boss';
+import { PgBoss } from 'pg-boss';
 import { createMetricsServer } from './metrics-server';
-import { JOBS, SCHEDULED_QUEUE_POLICY, ensureScheduledQueues } from './queues';
-import { timed } from './timed';
+import { SCHEDULED_QUEUE_POLICY, ensureScheduledQueues, workScheduledJobs } from './queues';
 
 const config = getConfig();
 // The logger's base `service` field (a child binding would repeat the key in every JSON line).
@@ -90,59 +91,61 @@ async function main() {
     log.info({ recreated, policy: SCHEDULED_QUEUE_POLICY }, 'queues re-created with a new policy');
   }
 
-  // Handlers always receive an array of jobs (PGBOSS-1).
-  await boss.work(JOBS.closeStaleSessions.name, async (_jobs: Job[]) => {
-    await timed(log, metrics, 'close-stale-sessions', () => closeStaleSessions(db, { metrics }));
-  });
-  await boss.work(JOBS.reverifyMembers.name, async (_jobs: Job[]) => {
-    const botToken = config.discord.botToken;
-    const guildId = config.discord.guildId;
-    if (!botToken || !guildId) {
-      log.warn('DISCORD_BOT_TOKEN or DISCORD_GUILD_ID not set: membership re-verification skipped');
-      return;
-    }
-    await timed(log, metrics, 'reverify-members', () =>
-      reverifyDueMembers({
-        db,
-        botToken,
-        policy: {
-          guildId,
-          requiredRoleIds: config.discord.requiredRoleIds,
-          adminRoleIds: config.discord.adminRoleIds,
-          adminUserIds: config.discord.adminUserIds,
-        },
-        graceDays: config.offboardGraceDays,
-        logger: log,
-        metrics,
-      }),
-    );
-  });
-  await boss.work(JOBS.expireGrace.name, async (_jobs: Job[]) => {
-    await timed(log, metrics, 'expire-grace', async () => {
-      // Grace expiry first (it transfers or deletes the accounts of users who leave), then the
-      // time-gated purge of accounts nobody can reclaim (D-61). The purge runs even when some users
-      // failed to expire; the first failure is reported afterwards.
-      let expired: Awaited<ReturnType<typeof expireGracePeriods>> | null = null;
-      let failure: unknown = null;
-      try {
-        expired = await expireGracePeriods(db, { metrics });
-      } catch (err) {
-        failure = err;
-      }
-      const purged = await purgeOrphanedAccounts(db, {
-        graceDays: config.offboardGraceDays,
-        metrics,
-      });
-      if (failure) throw failure;
-      return { ...expired, ...purged };
-    });
-  });
-  await boss.work(JOBS.pruneAuditLog.name, async (_jobs: Job[]) => {
-    await timed(log, metrics, 'prune-audit-log', () =>
-      pruneAuditLog(db, { retentionDays: config.auditLogRetentionDays }),
-    );
-  });
-  log.info({ jobs: Object.values(JOBS).map((j) => j.name) }, 'worker started');
+  await workScheduledJobs(
+    boss,
+    { log, metrics },
+    {
+      'close-stale-sessions': (run) => run(() => closeStaleSessions(db, { metrics })),
+      'reverify-members': async (run) => {
+        const botToken = config.discord.botToken;
+        const guildId = config.discord.guildId;
+        if (!botToken || !guildId) {
+          // Returns without `run`: a skipped re-verification is not a run and isn't counted.
+          log.warn(
+            'DISCORD_BOT_TOKEN or DISCORD_GUILD_ID not set: membership re-verification skipped',
+          );
+          return;
+        }
+        await run(() =>
+          reverifyDueMembers({
+            db,
+            botToken,
+            policy: {
+              guildId,
+              requiredRoleIds: config.discord.requiredRoleIds,
+              adminRoleIds: config.discord.adminRoleIds,
+              adminUserIds: config.discord.adminUserIds,
+            },
+            graceDays: config.offboardGraceDays,
+            logger: log,
+            metrics,
+          }),
+        );
+      },
+      'expire-grace': (run) =>
+        run(async () => {
+          // Grace expiry first (it transfers or deletes the accounts of users who leave), then the
+          // time-gated purge of accounts nobody can reclaim (D-61). The purge runs even when some
+          // users failed to expire; the first failure is reported afterwards.
+          let expired: Awaited<ReturnType<typeof expireGracePeriods>> | null = null;
+          let failure: unknown = null;
+          try {
+            expired = await expireGracePeriods(db, { metrics });
+          } catch (err) {
+            failure = err;
+          }
+          const purged = await purgeOrphanedAccounts(db, {
+            graceDays: config.offboardGraceDays,
+            metrics,
+          });
+          if (failure) throw failure;
+          return { ...expired, ...purged };
+        }),
+      'prune-audit-log': (run) =>
+        run(() => pruneAuditLog(db, { retentionDays: config.auditLogRetentionDays })),
+    },
+  );
+  log.info({ jobs: JOB_NAMES }, 'worker started');
   if (!config.discord.botToken || !config.discord.guildId) {
     // Said once at startup too: the job itself only runs every 15 minutes.
     log.warn('DISCORD_BOT_TOKEN or DISCORD_GUILD_ID not set: membership re-verification is off');

@@ -17,7 +17,8 @@ import {
 import { and, desc, eq, isNull, type SQL } from 'drizzle-orm';
 import { loadAccountAccess, loadViewer } from '../accounts/access';
 import { audit } from '../audit';
-import { isUuid, normalizeDeviceLabel } from './util';
+import { isUuid } from '../uuid';
+import { normalizeDeviceLabel } from './util';
 
 export type DeviceStatus = 'active' | 'outdated' | 'revoked';
 

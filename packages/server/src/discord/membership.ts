@@ -1,3 +1,4 @@
+import type { DiscordVerifyFailureKind } from '../metrics';
 import type { DiscordGuildMember, DiscordUser, MemberLookup } from './client';
 
 export interface GuildPolicy {
@@ -11,7 +12,7 @@ export type MembershipVerdict =
   | { kind: 'ok'; member: DiscordGuildMember }
   | { kind: 'not_member' }
   | { kind: 'missing_role' }
-  | { kind: 'error'; reason: 'config' | 'auth' | 'rate_limited' | 'unavailable' };
+  | { kind: 'error'; reason: DiscordVerifyFailureKind };
 
 /** Applies the role policy to a lookup: any-of DISCORD_REQUIRED_ROLE_IDS when set. */
 export function evaluateMembership(lookup: MemberLookup, policy: GuildPolicy): MembershipVerdict {

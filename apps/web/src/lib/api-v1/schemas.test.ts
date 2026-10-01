@@ -6,8 +6,8 @@
 import {
   EVENTS_MAX_LIMIT,
   MAX_LIST_PARAM,
-  MAX_XP_ACCOUNTS,
-  MAX_XP_ACCOUNTS_SERVICE,
+  MAX_BULK_ACCOUNTS as MAX_XP_ACCOUNTS,
+  MAX_BULK_ACCOUNTS_SERVICE as MAX_XP_ACCOUNTS_SERVICE,
   encodeEventsCursor,
   isPublicIdLike,
 } from '@hub/server';
@@ -18,7 +18,6 @@ import {
   EventsQuery,
   GainsQuery,
   HistoryQuery,
-  PUBLIC_ID_PATTERN,
   SnapshotQuery,
   XpMultiQuery,
   XpQuery,
@@ -133,7 +132,6 @@ describe('account ids', () => {
       '',
       'a\u0000b',
     ]) {
-      expect(PUBLIC_ID_PATTERN.test(id), id).toBe(isPublicIdLike(id));
       expect(AccountPath.safeParse({ id }).success, id).toBe(isPublicIdLike(id));
     }
   });

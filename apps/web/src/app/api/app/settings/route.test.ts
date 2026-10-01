@@ -1,10 +1,9 @@
-import { DEFAULT_TOAST_FILTER } from '@hub/core';
 import { userSettings } from '@hub/db';
-import type { UserSettings } from '@hub/server';
+import { getUserSettings, type UserSettings } from '@hub/server';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { withTestDb, type WebTestContext } from '@/lib/test-utils';
-import { GET, PATCH } from './route';
+import { PATCH } from './route';
 
 let ctx: WebTestContext;
 
@@ -36,33 +35,8 @@ function patch(cookie: string | undefined, body: unknown, opts: { origin?: strin
   );
 }
 
-describe('GET /api/app/settings', () => {
-  it('401 without a session', async () => {
-    const res = await GET(ctx.request('/api/app/settings'));
-    expect(res.status).toBe(401);
-    expect(((await res.json()) as ErrorBody).error.code).toBe('unauthorized');
-  });
-
-  it('returns the defaults for a user who never saved settings', async () => {
-    const { cookie } = await signedIn();
-    const res = await GET(ctx.request('/api/app/settings', { cookie }));
-    expect(res.status).toBe(200);
-    expect(res.headers.get('cache-control')).toBe('no-store');
-    expect(await res.json()).toEqual({
-      settings: { toast: DEFAULT_TOAST_FILTER, timezone: 'UTC' },
-    });
-  });
-
-  it('401 for a user in grace (offboarded)', async () => {
-    const userId = await ctx.seedUser({ status: 'grace' });
-    const cookie = await ctx.signIn(userId);
-    const res = await GET(ctx.request('/api/app/settings', { cookie }));
-    expect(res.status).toBe(401);
-  });
-});
-
 describe('PATCH /api/app/settings', () => {
-  it('saves a partial change and GET returns it', async () => {
+  it('saves a partial change, which the settings then hold', async () => {
     const { userId, cookie } = await signedIn();
     const res = await patch(cookie, {
       toastsEnabled: true,
@@ -83,8 +57,7 @@ describe('PATCH /api/app/settings', () => {
     };
     expect(await res.json()).toEqual({ settings: expected });
 
-    const again = await GET(ctx.request('/api/app/settings', { cookie }));
-    expect(await again.json()).toEqual({ settings: expected });
+    expect(await getUserSettings(ctx.t.db, userId)).toEqual(expected);
 
     // Only the fields present change.
     const second = await patch(cookie, { toastsEnabled: false, toastTypes: null });
@@ -100,8 +73,8 @@ describe('PATCH /api/app/settings', () => {
     const a = await signedIn();
     const b = await signedIn();
     expect((await patch(a.cookie, { toastMinLootValue: 5 })).status).toBe(200);
-    const res = await GET(ctx.request('/api/app/settings', { cookie: b.cookie }));
-    expect(((await res.json()) as { settings: UserSettings }).settings.toast.minLootValue).toBe(0);
+    expect((await getUserSettings(ctx.t.db, a.userId)).toast.minLootValue).toBe(5);
+    expect((await getUserSettings(ctx.t.db, b.userId)).toast.minLootValue).toBe(0);
   });
 
   it('400 with field errors for invalid values, and stores nothing', async () => {

@@ -5,8 +5,8 @@
  */
 import { BanIcon } from 'lucide-react';
 import { toast } from 'sonner';
-import { adminServiceKeyPath } from '@/components/admin/admin-model';
-import { ConfirmAction } from '@/components/admin/confirm-action';
+import { adminFailure, adminServiceKeyPath } from '@/components/admin/admin-model';
+import { ConfirmAction } from '@/components/common/confirm-action';
 
 export interface RevokeServiceKeyButtonProps {
   keyId: string;
@@ -29,7 +29,7 @@ export function RevokeServiceKeyButton({ keyId, name }: RevokeServiceKeyButtonPr
       }
       confirmLabel="Revoke key"
       request={{ path: adminServiceKeyPath(keyId), method: 'DELETE' }}
-      failure="Couldn't revoke the key. Try again in a moment."
+      failure={adminFailure("Couldn't revoke the key. Try again in a moment.")}
       onDone={() =>
         toast.success(`${name} revoked`, {
           description: 'The integration using it gets 401 from now on.',
