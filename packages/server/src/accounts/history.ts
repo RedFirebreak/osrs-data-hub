@@ -17,7 +17,7 @@ import {
   type DbOrTx,
   type SessionEndReason,
 } from '@hub/db';
-import { and, asc, desc, eq, gte, isNull, lte, or } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, isNull, lte, or, sql } from 'drizzle-orm';
 import { loadVisibleAccount } from './load';
 import { assertValidDate } from './xp';
 
@@ -107,7 +107,8 @@ export async function readSessions(
         ),
       ),
     )
-    .orderBy(desc(playSessions.startedAt))
+    // See DB-15: NULLS LAST, as play_sessions_account_started_idx has it, to read the order off it.
+    .orderBy(sql`${playSessions.startedAt} DESC NULLS LAST`)
     .limit(MAX_SESSIONS);
   return rows.map((r) => {
     const end = r.endedAt ?? r.lastSeenAt;
@@ -153,7 +154,8 @@ export async function readEquipmentHistory(
         lte(equipmentChanges.changedAt, range.to),
       ),
     )
-    .orderBy(desc(equipmentChanges.changedAt))
+    // See DB-15: NULLS LAST, as equipment_changes_account_idx has it, to read the order off it.
+    .orderBy(sql`${equipmentChanges.changedAt} DESC NULLS LAST`)
     .limit(MAX_EQUIPMENT_CHANGES);
   return rows.map((r) => ({
     changedAt: r.changedAt.toISOString(),
@@ -240,6 +242,8 @@ export async function readLocationHistory(
         lte(locationSamples.ts, range.to),
       ),
     )
+    // Plain DESC on purpose: the order is read backward off location_samples_account_ts_uq (a plain
+    // ascending index), which NULLS LAST would not match (DB-15 is about `.desc()` indexes).
     .orderBy(desc(locationSamples.ts))
     .limit(MAX_LOCATION_SAMPLES);
   return rows.reverse().map((r) => ({ ...r, ts: r.ts.toISOString() }));

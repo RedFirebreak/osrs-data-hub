@@ -512,6 +512,43 @@ describe('exportUserData', () => {
     for (const piece of xpPieces) expect(piece.match(/"bucket"/g)!.length).toBeLessThanOrEqual(2);
   });
 
+  it('pages equipment changes by time, then id, each change once', async () => {
+    const worn = (id: number) => [
+      { id, name: `Item ${id}`, quantity: 1, gePrice: 1, equipmentSlot: 'WEAPON' },
+    ];
+    // Two changes of one instant, and an earlier one stored after them (a higher id).
+    const added = await t.db
+      .insert(equipmentChanges)
+      .values([
+        { accountId: mine.id, changedAt: new Date(RECENT + 2 * MIN), equipment: worn(1) },
+        { accountId: mine.id, changedAt: new Date(RECENT + 2 * MIN), equipment: worn(2) },
+        { accountId: mine.id, changedAt: new Date(RECENT + MIN), equipment: worn(3) },
+      ])
+      .returning({ id: equipmentChanges.id });
+    try {
+      for (const batchSize of [1, 2, undefined]) {
+        const { doc } = await exportOf(me.id, batchSize);
+        const changes = accountIn(doc, mine.publicId).equipment_changes as {
+          changed_at: string;
+          items: { id: number }[];
+        }[];
+        expect(changes.map((c) => [c.changed_at, c.items[0]!.id])).toEqual([
+          [iso(RECENT), 4151],
+          [iso(RECENT + MIN), 3],
+          [iso(RECENT + 2 * MIN), 1],
+          [iso(RECENT + 2 * MIN), 2],
+        ]);
+      }
+    } finally {
+      await t.db.delete(equipmentChanges).where(
+        inArray(
+          equipmentChanges.id,
+          added.map((r) => r.id),
+        ),
+      );
+    }
+  });
+
   it('reads a history batch by batch while the consumer reads', async () => {
     const gen = exportUserData(t.db, me.id, { now: NOW, batchSize: 3 });
     const chunks: string[] = [];

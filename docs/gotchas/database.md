@@ -18,7 +18,7 @@ Postgres behaviour, drizzle-orm 0.45 and drizzle-kit 0.31 (queries, errors, the 
 | [DB-12](#db-12) | The bundled migrate entrypoint fails with `Can't find meta/_journal.json file`. |
 | [DB-13](#db-13) | `pg_notify` fails with `22023 payload string too long` and takes the transaction it was called in down with it. |
 | [DB-14](#db-14) | Node logs `DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated`, from code that runs several queries with `Promise.all` inside `db.transaction`. |
-| [DB-15](#db-15) | A newest-first query (`WHERE account_id = … ORDER BY occurred_at DESC LIMIT n`) gets slower as the table grows although an index on exactly those columns exists; `EXPLAIN` shows a top-N Sort over every matching row, or a Seq Scan, instead of an ordered index scan. |
+| [DB-15](#db-15) | A newest-first query (`WHERE account_id = … ORDER BY occurred_at DESC LIMIT n`) gets slower as the table grows although an index on exactly those columns exists; `EXPLAIN` shows a top-N Sort over every matching row, a Seq Scan, or a walk of another index with the account as a `Filter`, instead of an ordered index scan. |
 | [TSDB-1](#tsdb-1) | Hourly or daily XP history older than the raw retention disappears from `xp_hourly`/`xp_daily` after a refresh. |
 | [TSDB-2](#tsdb-2) | After deleting an account, its rows are still in `xp_hourly`/`xp_daily`, and `DELETE FROM xp_hourly` fails with `55000 cannot delete from view`. |
 | [TSDB-3](#tsdb-3) | A changed retention or compression setting has no effect after restart; the log only shows `WARNING: … A policy already exists with different arguments`. |
@@ -198,7 +198,7 @@ a transaction. Fix: run queries on a possibly-transactional handle sequentially
 *Source: `OBSERVED` (server tests, pg 8.23.0, 2026-09-28)*
 
 ### DB-15
-**A newest-first query (`WHERE account_id = … ORDER BY occurred_at DESC LIMIT n`) gets slower as the table grows although an index on exactly those columns exists; `EXPLAIN` shows a top-N Sort over every matching row, or a Seq Scan, instead of an ordered index scan.**
+**A newest-first query (`WHERE account_id = … ORDER BY occurred_at DESC LIMIT n`) gets slower as the table grows although an index on exactly those columns exists; `EXPLAIN` shows a top-N Sort over every matching row, a Seq Scan, or a walk of another index with the account as a `Filter`, instead of an ordered index scan.**
 Drizzle's `.desc()` on an index column creates the index as `DESC NULLS LAST`
 (`events_account_occurred_idx`, `events_account_seq_idx`, `events_type_occurred_idx`, …). In Postgres a
 plain `ORDER BY col DESC` means `DESC NULLS FIRST`, and the planner doesn't use the column being
@@ -213,7 +213,23 @@ Fix: whenever the order is meant to come from an index declared with `.desc()`, 
 (packages/server/src/api/events.ts `apiEventsInRange`), and check the plan on a table with real volume:
 an empty dev database hides it.
 
-*Source: `OBSERVED` (scratch copy of `events`, 2.4M rows, pg 18, 2026-10-01)*
+The same trap has two more faces. Ascending: such an index read backward gives `ASC NULLS FIRST`, and a
+plain `ORDER BY col ASC` means `ASC NULLS LAST`, so an oldest-first read needs
+``sql`${col} ASC NULLS FIRST` `` (packages/server/src/export/accounts.ts `readEvents`: a page of 1,000 of
+one account's events walked `events_seq_uidx` past 63k rows of other accounts in 29 ms, and took 1 ms
+off `events_account_seq_idx`). Per account in a `LATERAL`: the planner doesn't sort, it walks
+`events_seq_uidx` backward with the account as a `Filter`, which is fast for a busy account and reads
+most of the index for a quiet one (packages/server/src/accounts/load.ts `loadRecentEventRows`: 695 ms
+and 1.68M rows removed for an account with 50 old events, 0.2 ms with `NULLS LAST`).
+
+Don't add `NULLS LAST` everywhere, though: it's wrong wherever the order comes from a *plain* index
+read backward, which only the plain `DESC` matches. That is every newest-first read over several
+accounts or none (`account_id IN (…) ORDER BY seq DESC` and `seqFloor` walk `events_seq_uidx`: 0.2 ms
+plain, 320 ms and a parallel seq scan with `NULLS LAST`) and every read off a primary key or unique
+constraint (`location_samples_account_ts_uq`, `xp_samples_pk`). A query that serves both cases picks the
+form by the number of accounts (packages/server/src/accounts/list-feed.ts `feedForAccounts`).
+
+*Source: `OBSERVED` (scratch copy of `events`, 2.4M rows, pg 18, 2026-10-01; scratch database seeded with 2.4M events, 876k equipment changes and three hypertables, timescale/timescaledb:2.30.2-pg18, 2026-10-01)*
 
 ### TSDB-1
 **Hourly or daily XP history older than the raw retention disappears from `xp_hourly`/`xp_daily` after a refresh.**

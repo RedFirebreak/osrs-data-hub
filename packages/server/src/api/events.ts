@@ -184,11 +184,16 @@ export async function apiEvents(
     types.length > 0 ? inArray(events.type, types) : undefined,
     minValue === null ? undefined : gte(events.valueGp, minValue),
   );
+  // See DB-15: one account reads its order off events_account_seq_idx (seq DESC NULLS LAST), forward
+  // or backward, which only matches with the index's null order spelled out. Several accounts walk
+  // events_seq_uidx, a plain ascending index that only the plain forms match.
+  const newestFirst = accounts.size === 1 ? sql`${events.seq} DESC NULLS LAST` : desc(events.seq);
+  const oldestFirst = accounts.size === 1 ? sql`${events.seq} ASC NULLS FIRST` : asc(events.seq);
   const rows = await db
     .select(EVENT_ROW_COLUMNS)
     .from(events)
     .where(filter)
-    .orderBy(after === null ? desc(events.seq) : asc(events.seq))
+    .orderBy(after === null ? newestFirst : oldestFirst)
     .limit(limit);
   if (after === null) rows.reverse(); // the newest `limit`, oldest first
 

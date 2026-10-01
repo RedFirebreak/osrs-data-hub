@@ -316,6 +316,9 @@ function readEvents(
   afterSeq: number | null,
   limit: number,
 ) {
+  // See DB-15, mirrored: events_account_seq_idx (seq DESC NULLS LAST) read backward is ASC NULLS
+  // FIRST, and a plain ASC (NULLS LAST) isn't read off it: it walks events_seq_uidx past every other
+  // account's rows instead.
   return ctx.db
     .select(EVENT_ROW_COLUMNS)
     .from(events)
@@ -325,7 +328,7 @@ function readEvents(
         afterSeq === null ? undefined : gt(events.seq, afterSeq),
       ),
     )
-    .orderBy(asc(events.seq))
+    .orderBy(sql`${events.seq} ASC NULLS FIRST`)
     .limit(limit);
 }
 
@@ -373,7 +376,8 @@ function sessionPages(ctx: AccountExportContext, accountId: number) {
             ),
           ),
         )
-        .orderBy(asc(playSessions.startedAt), asc(playSessions.id))
+        // See DB-15, mirrored: play_sessions_account_started_idx read backward is ASC NULLS FIRST.
+        .orderBy(sql`${playSessions.startedAt} ASC NULLS FIRST`, asc(playSessions.id))
         .limit(limit),
     ctx.batchSize,
   );
@@ -392,9 +396,13 @@ function wirePlay(r: SessionRow) {
   };
 }
 
-type ChangeRow = { id: number; changedAt: Date; equipment: unknown };
+type ChangeRow = { id: number; changedAt: Date; equipment: unknown; cursor: string };
 
-/** `equipment_changes`: the whole worn set after each change, oldest first. */
+/**
+ * `equipment_changes`: the whole worn set after each change, oldest first (changes of one instant
+ * by id). Paged on (changed_at, id), which equipment_changes_account_idx serves; by id alone no
+ * index has an account's rows in order, and every page sorted all that were left.
+ */
 function equipmentPages(ctx: AccountExportContext, accountId: number) {
   return keysetPages<ChangeRow>(
     (last, limit) =>
@@ -403,15 +411,20 @@ function equipmentPages(ctx: AccountExportContext, accountId: number) {
           id: equipmentChanges.id,
           changedAt: equipmentChanges.changedAt,
           equipment: equipmentChanges.equipment,
+          cursor: sql<string>`${equipmentChanges.changedAt}::text`,
         })
         .from(equipmentChanges)
         .where(
           and(
             eq(equipmentChanges.accountId, accountId),
-            last === null ? undefined : gt(equipmentChanges.id, last.id),
+            after(
+              sql`${equipmentChanges.changedAt}, ${equipmentChanges.id}`,
+              last && sql`${last.cursor}::timestamptz, ${last.id}::bigint`,
+            ),
           ),
         )
-        .orderBy(asc(equipmentChanges.id))
+        // See DB-15, mirrored: equipment_changes_account_idx read backward is ASC NULLS FIRST.
+        .orderBy(sql`${equipmentChanges.changedAt} ASC NULLS FIRST`, asc(equipmentChanges.id))
         .limit(limit),
     ctx.batchSize,
   );
