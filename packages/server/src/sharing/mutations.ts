@@ -33,6 +33,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { loadAccountAccess } from '../accounts/access';
 import { audit, type AuditAction } from '../audit';
 import { lockAccount as takeAccountLock } from '../ingest/store';
+import { setOwner, type OwnershipTransfer } from '../offboarding/accounts';
 import { SharingError } from './errors';
 
 /**
@@ -163,11 +164,14 @@ export async function transferOwnership(
     ) {
       throw new SharingError('invalid', 'the new owner must be an active, non-blocked contributor');
     }
-    const unhidden = await setOwner(tx, account, newOwnerUserId);
-    await auditChange(tx, actor, asAdmin, account.publicId, 'account.ownership_transferred', {
+    const unhidden = await makeOwner(tx, account, newOwnerUserId);
+    const transfer: OwnershipTransfer = {
       from: account.ownerUserId,
       to: newOwnerUserId,
       reason: 'manual',
+    };
+    await auditChange(tx, actor, asAdmin, account.publicId, 'account.ownership_transferred', {
+      ...transfer,
       unhidden,
     });
   });
@@ -192,7 +196,7 @@ export async function claimOwnership(db: Db, actor: Viewer, publicId: string): P
     if (!(await isActiveUser(tx, actor.userId, { lock: true }))) {
       throw new SharingError('forbidden', 'only an active contributor can claim this account');
     }
-    const unhidden = await setOwner(tx, account, actor.userId);
+    const unhidden = await makeOwner(tx, account, actor.userId);
     await auditChange(tx, actor, false, account.publicId, 'account.ownership_claimed', {
       unhidden,
     });
@@ -312,18 +316,12 @@ async function lockAccountForChange(tx: Tx, actor: Viewer, publicId: string): Pr
   return { account, raw, access, asAdmin: access.relation !== 'owner' && actor.isAdmin === true };
 }
 
-/** Sets owner_user_id, un-hides the account, and aligns every link's role. Returns whether it was hidden. */
-async function setOwner(tx: Tx, account: Locked['account'], userId: string): Promise<boolean> {
-  await tx
-    .update(osrsAccounts)
-    .set({ ownerUserId: userId, status: 'active', hiddenAt: null })
-    .where(eq(osrsAccounts.id, account.id));
-  await tx
-    .update(accountLinks)
-    .set({
-      role: sql`CASE WHEN ${accountLinks.userId} = ${userId} THEN 'owner' ELSE 'contributor' END`,
-    })
-    .where(eq(accountLinks.accountId, account.id));
+/**
+ * Makes `userId` the owner: the setOwner offboarding uses, with an active successor (both callers
+ * have checked that under a row lock), which also un-hides the account. Returns whether it was hidden.
+ */
+async function makeOwner(tx: Tx, account: Locked['account'], userId: string): Promise<boolean> {
+  await setOwner(tx, account.id, { userId, status: 'active' });
   return account.status === 'hidden';
 }
 
