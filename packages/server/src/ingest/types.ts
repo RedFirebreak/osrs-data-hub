@@ -1,7 +1,7 @@
 import type { TokenBucketLimiter } from '@hub/core';
 import type { Db } from '@hub/db';
 import type { Logger } from '../logger';
-import type { HubMetrics } from '../metrics';
+import type { HubMetrics, INGEST_IGNORED_REASONS } from '../metrics';
 
 /** What `handleIngest` needs from its host (the web route handler, or a test). */
 export interface IngestDeps {
@@ -33,7 +33,7 @@ export interface IngestRequest {
 }
 
 /** Why an accepted payload stored nothing (raw_payloads.meta.ignored, metrics.ingestIgnored). */
-export type IgnoredReason = 'no_identity' | 'blocked';
+export type IgnoredReason = (typeof INGEST_IGNORED_REASONS)[number];
 
 /**
  * raw_payloads.meta: what happened to an archived payload. Ids, counts and codes only; never

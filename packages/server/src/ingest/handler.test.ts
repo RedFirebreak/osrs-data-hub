@@ -130,6 +130,28 @@ describe('version gate', () => {
     const [row] = await t.db.select().from(devices).where(eq(devices.id, device.id));
     expect(row?.pluginVersion).toHaveLength(32);
   });
+
+  it('stores the version text without control characters, as pairing does', async () => {
+    const accepted = await h.seedDevice();
+    const res = await h.send(accepted, wire('snapshot-normal', { hash: newHash() }), {
+      version: ' 1.6\u001b[31m-SNAP\u0085SHOT\u0000\u0007\t',
+    });
+    expect(res.status).toBe(200);
+    const [row] = await t.db.select().from(devices).where(eq(devices.id, accepted.id));
+    expect(row?.pluginVersion).toBe('1.6[31m-SNAPSHOT');
+    const [archived] = await archiveRows(accepted.id);
+    expect(archived?.pluginVersion).toBe('1.6[31m-SNAPSHOT');
+
+    // The outdated path stores the same text; nothing but control characters is no version.
+    const outdated = await h.seedDevice();
+    await h.send(outdated, fixtureBody('snapshot-normal'), { version: '1.4\u007f\r\n beta' });
+    await h.send(accepted, fixtureBody('snapshot-normal'), { version: '\u0000\u001f \u009f' });
+    const [flagged] = await t.db.select().from(devices).where(eq(devices.id, outdated.id));
+    expect(flagged?.pluginVersion).toBe('1.4 beta');
+    const [blank] = await t.db.select().from(devices).where(eq(devices.id, accepted.id));
+    expect(blank?.outdatedAt).not.toBeNull();
+    expect(blank?.pluginVersion).toBeNull();
+  });
 });
 
 describe('body limits and parsing', () => {
@@ -168,6 +190,27 @@ describe('body limits and parsing', () => {
       accountId: null,
       receivedAt: new Date(1_790_000_100_000),
     });
+  });
+
+  it('counts an archived unparsable body once: not also as rejected without archive (D-83)', async () => {
+    const m = createHarness(t);
+    const device = await m.seedDevice();
+    const at = 1_790_000_800_000;
+
+    expect((await m.send(device, '{"player":', { at })).status).toBe(400);
+    expect((await m.send(device, '[1,2,3]', { at: at + 1_000 })).status).toBe(400);
+    expect((await m.send(device, '{}', { token: null, at: at + 2_000 })).status).toBe(401);
+
+    // Both bodies are in the archive, still with the parser's error and nothing written over it.
+    const rows = await archiveRows(device.id);
+    expect(rows.map((r) => [r.status, r.meta])).toEqual([
+      [400, { error: 'not_json' }],
+      [400, { error: 'not_object' }],
+    ]);
+    // So the in-memory count holds only the response that left no archive row.
+    const [minute] = m.metrics.ingestUnarchived.series(new Date(at), 1);
+    expect(minute?.byKey).toEqual({ '401': 1 });
+    expect(await counterValue(m.metrics.ingestPayloads, { status: '400' })).toBe(2);
   });
 
   it('archives a body with a literal NUL (replaced by U+FFFD; a text column rejects NUL)', async () => {

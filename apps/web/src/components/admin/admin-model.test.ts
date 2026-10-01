@@ -1,3 +1,4 @@
+import { AUDIT_ACTIONS } from '@hub/server';
 import { describe, expect, it } from 'vitest';
 import {
   adminFailureMessage,
@@ -187,6 +188,20 @@ describe('audit log', () => {
   it('labels known actions and passes unknown ones through', () => {
     expect(auditActionLabel('device.revoked')).toBe('Device revoked');
     expect(auditActionLabel('something.new')).toBe('something.new');
+    // Not a label of its own, so not an Object.prototype member either.
+    expect(auditActionLabel('constructor')).toBe('constructor');
+  });
+
+  it('labels every action the hub writes, and retired ones old rows still hold', () => {
+    for (const action of AUDIT_ACTIONS) {
+      expect(auditActionLabel(action), action).toMatch(/^[A-Z][A-Za-z ]+$/);
+    }
+    expect(auditActionLabel('sharing.grant_added')).toBe('Sharing grant added');
+    expect(auditActionLabel('sharing.grant_removed')).toBe('Sharing grant removed');
+    expect(auditActionLabel('account.contributor_blocked')).toBe('Contributor blocked');
+    expect(auditActionLabel('account.contributor_unblocked')).toBe('Contributor unblocked');
+    expect(auditActionLabel('user.exported')).toBe('User data downloaded');
+    expect(auditActionLabel('sharing.changed')).toBe('Sharing changed');
   });
 
   it('turns meta into key/value text, nested values as JSON, long ones cut', () => {

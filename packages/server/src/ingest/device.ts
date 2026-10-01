@@ -3,8 +3,9 @@ import { sha256Hex, type ShutdownReason } from '@hub/core';
 import { devices, latestState, playSessions, users, type Db } from '@hub/db';
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { notifyState } from '../notify';
+import { lockAccount } from './lock';
 import { gameStateAfterShutdown } from './presence';
-import { lockAccount, setLocalTimeouts } from './store';
+import { setLocalTimeouts } from './store';
 
 /** An authenticated device (unrevoked, owned by an active user). */
 export interface IngestDevice {

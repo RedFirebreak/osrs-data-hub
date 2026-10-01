@@ -5,6 +5,5 @@
  */
 export { authenticateDevice, type IngestDevice } from './device';
 export { handleIngest } from './handler';
-export { createIngestLimiter, MAX_EVENTS_PER_PAYLOAD } from './limits';
-export { ACCOUNT_LOCK_CLASS, lockAccount } from './lock';
+export { createIngestLimiter } from './limits';
 export type { IgnoredReason, IngestDeps, IngestMeta, IngestRequest } from './types';

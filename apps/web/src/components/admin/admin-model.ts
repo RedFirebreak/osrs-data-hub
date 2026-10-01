@@ -337,31 +337,7 @@ export function prettyPayload(body: string): { text: string; json: boolean } {
 /** Entries per "load more" of the audit log. */
 export const AUDIT_PAGE_SIZE = 50;
 
-const AUDIT_ACTION_LABELS: Readonly<Record<string, string>> = {
-  'user.offboarded': 'User offboarded',
-  'user.restored': 'User restored',
-  'user.deleted': 'User deleted',
-  'device.paired': 'Device paired',
-  'device.revoked': 'Device revoked',
-  'account.ownership_claimed': 'Ownership claimed',
-  'account.ownership_transferred': 'Ownership transferred',
-  'account.contributor_removed': 'Contributor removed',
-  'account.purged': 'Account purged',
-  'sharing.changed': 'Sharing changed',
-  'sharing.audience_changed': 'Sharing audience changed',
-  'raw_payload.viewed': 'Raw payload viewed',
-  'hub.decommissioned': 'Decommission switch',
-  'hub.guild_feed_changed': 'Guild feed settings changed',
-  'api_key.created': 'API key created',
-  'api_key.revoked': 'API key revoked',
-  'service_key.created': 'Service key created',
-  'service_key.revoked': 'Service key revoked',
-};
-
-/** A readable label for an audit action; the action itself when this version doesn't know it. */
-export function auditActionLabel(action: string): string {
-  return AUDIT_ACTION_LABELS[action] ?? action;
-}
+export { auditActionLabel } from './audit-labels';
 
 const META_VALUE_MAX = 80;
 

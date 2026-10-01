@@ -40,15 +40,15 @@ import {
   type Tx,
 } from '@hub/db';
 import { and, eq, isNull, ne, sql } from 'drizzle-orm';
+import { SYSTEM_ACTOR } from '../audit';
 import { notifyEvents, notifyState } from '../notify';
-import { takeOverFromOwnerInGrace, type AuditActor } from '../offboarding/accounts';
+import { takeOverFromOwnerInGrace } from '../offboarding/accounts';
 import { chunkKeys, knownChunks, lockChunkCreation, rememberChunks } from './chunks';
 import type { IngestDevice } from './device';
 import type { AccountRef } from './identity';
 import { lockAccount } from './lock';
 import { gameStateAfterShutdown } from './presence';
 
-export { ACCOUNT_LOCK_CLASS, lockAccount } from './lock';
 /**
  * Both local to the transaction and well under the plugin's 10 s read timeout (PLUGIN-4): a lock wait
  * fails with 55P03 and a slow statement with 57014, both answered 503 + Retry-After.
@@ -59,8 +59,6 @@ const STATEMENT_TIMEOUT = '8s';
 const UNKNOWN_NAME = 'Unknown';
 /** Event rows per INSERT: 16 bind parameters each, far below Postgres' 65535 per statement. */
 const EVENT_INSERT_CHUNK = 1000;
-/** Ownership changes ingest makes on its own (D-60) are the system's, not the reporter's choice. */
-const INGEST_ACTOR: AuditActor = { actorUserId: null, actorLabel: 'system' };
 
 export interface StoreInput {
   recv: Date;
@@ -399,7 +397,8 @@ async function updateAccount(
         ),
       );
   } else if (row?.status === 'hidden') {
-    await takeOverFromOwnerInGrace(tx, accountId, userId, INGEST_ACTOR, recv);
+    // An ownership change ingest makes on its own (D-60) is the system's, not the reporter's choice.
+    await takeOverFromOwnerInGrace(tx, accountId, userId, SYSTEM_ACTOR, recv);
   }
   if (identity.name !== undefined) await touchAccountName(tx, accountId, identity.name, recv);
 }
