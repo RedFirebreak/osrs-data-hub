@@ -1,6 +1,6 @@
 # Gotchas
 
-85 traps, grouped into five files, found while building osrs-data-hub. Each is written up
+86 traps, grouped into five files, found while building osrs-data-hub. Each is written up
 once under a stable ID and referenced by ID from everywhere else, so there is exactly one place to edit
 when something changes. Package-agnostic: things that are true of the shared layer (the HA Exporter
 plugin protocol, Next.js, Better Auth, Drizzle, Postgres/TimescaleDB, pg-boss, the Discord API, and the
@@ -26,7 +26,7 @@ defeats the point of them being separate.
 | [database.md](database.md) | `DB`, `TSDB` — Postgres behaviour, drizzle-orm 0.45 and drizzle-kit 0.31 (queries, errors, the migrator), and TimescaleDB 2.30 (hypertables, compression, continuous aggregates, policies, the Docker image) | 27 |
 | [nextjs.md](nextjs.md) | `NEXT` — Next.js 16 (route handlers, server actions, RSC, proxy.ts, instrumentation, basePath, standalone output, the dev and build CLI) | 17 |
 | [plugin.md](plugin.md) | `PLUGIN` — the HA Exporter v1.5 wire protocol as seen from the hub (payload shapes, Gson serialization, the OkHttp transport, status handling, the retry queue, the pairing panel) | 13 |
-| [toolchain.md](toolchain.md) | `PGBOSS`, `PROM`, `TOOL`, `ZOD` — build, lint, test and package tooling (TypeScript, ESLint, Prettier, pnpm, tsup, shadcn, Playwright, Docker base images, Git line endings) and the pg-boss, prom-client and zod libraries | 14 |
+| [toolchain.md](toolchain.md) | `PGBOSS`, `PROM`, `TOOL`, `ZOD` — build, lint, test and package tooling (TypeScript, ESLint, Prettier, pnpm, tsup, shadcn, Playwright, Docker base images, Git line endings) and the pg-boss, prom-client and zod libraries | 15 |
 | [open-questions.md](open-questions.md) | read from docs, not yet observed — no IDs, not in the index | — |
 
 **Source key.** Every entry ends with the source it was settled from:
@@ -133,6 +133,7 @@ The `gotcha` skill walks this, including a trap that fits no existing file.
 | [TOOL-8](toolchain.md#tool-8) | Toolchain | A Playwright run whose `globalSetup` creates the app's database fails with `Timed out waiting 60000ms from config.webServer`, or the server logs `database "…" does not exist` at start although `globalSetup` created it. |
 | [TOOL-9](toolchain.md#tool-9) | Toolchain | On a Windows clone `pnpm format:check` flags nearly every file (`Code style issues found in 548 files`), untouched ones like `apps/web/tsconfig.json` included, while the same content with the CRs stripped passes; or it still fails that way after pulling the commit that adds `.gitattributes`, with `git ls-files --eol` still showing `w/crlf`. |
 | [TOOL-10](toolchain.md#tool-10) | Toolchain | On Windows `pnpm test:e2e` never starts the server: `e2e: next build failed (spawnSync pnpm ENOENT)`, or with `E2E_SKIP_BUILD=1` `Error [ERR_UNSUPPORTED_ESM_URL_SCHEME]: … Received protocol 'e:'`. |
+| [TOOL-11](toolchain.md#tool-11) | Toolchain | On Windows every `docker` command fails with `failed to connect to the docker API at npipe:////./pipe/dockerDesktopLinuxEngine` (or hangs), `pnpm test` reports `Cannot reach the test database`, and Docker Desktop shows a crash dialog on start instead of its dashboard. |
 | [ZOD-1](toolchain.md#zod-1) | zod | Unknown or new fields in a plugin payload vanish after parsing: stored event data lacks keys the plugin sent. |
 
 ## Retired IDs

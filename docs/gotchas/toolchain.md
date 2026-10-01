@@ -17,6 +17,7 @@ Build, lint, test and package tooling (TypeScript, ESLint, Prettier, pnpm, tsup,
 | [TOOL-8](#tool-8) | A Playwright run whose `globalSetup` creates the app's database fails with `Timed out waiting 60000ms from config.webServer`, or the server logs `database "…" does not exist` at start although `globalSetup` created it. |
 | [TOOL-9](#tool-9) | On a Windows clone `pnpm format:check` flags nearly every file (`Code style issues found in 548 files`), untouched ones like `apps/web/tsconfig.json` included, while the same content with the CRs stripped passes; or it still fails that way after pulling the commit that adds `.gitattributes`, with `git ls-files --eol` still showing `w/crlf`. |
 | [TOOL-10](#tool-10) | On Windows `pnpm test:e2e` never starts the server: `e2e: next build failed (spawnSync pnpm ENOENT)`, or with `E2E_SKIP_BUILD=1` `Error [ERR_UNSUPPORTED_ESM_URL_SCHEME]: … Received protocol 'e:'`. |
+| [TOOL-11](#tool-11) | On Windows every `docker` command fails with `failed to connect to the docker API at npipe:////./pipe/dockerDesktopLinuxEngine` (or hangs), `pnpm test` reports `Cannot reach the test database`, and Docker Desktop shows a crash dialog on start instead of its dashboard. |
 | [ZOD-1](#zod-1) | Unknown or new fields in a plugin payload vanish after parsing: stored event data lacks keys the plugin sent. |
 
 ### PGBOSS-1
@@ -185,6 +186,20 @@ Windows path such as `E:\…\mock-discord.mjs` parses as a URL with scheme `e:`.
 Linux CI never sees either.
 
 *Source: `OBSERVED` (e2e screenshots on Windows 11, Node 22.14, 2026-09-30)*
+
+### TOOL-11
+**On Windows every `docker` command fails with `failed to connect to the docker API at npipe:////./pipe/dockerDesktopLinuxEngine` (or hangs), `pnpm test` reports `Cannot reach the test database`, and Docker Desktop shows a crash dialog on start instead of its dashboard.**
+Docker Desktop's backend crashes while starting; `%LOCALAPPDATA%\Docker\log\host\com.docker.backend.exe.log`
+says `backend crashed … initializing Inference manager: listening on unix://…/Docker/run/dockerInference:
+remove …/dockerInference: The file cannot be accessed by the system`. The previous session left its
+socket files (`dockerInference`, `dockerEthernetVfkit`, …: 0 bytes, reparse points) in
+`%LOCALAPPDATA%\Docker\run`, and Windows lets nothing delete them: not Docker, not `Remove-Item -Force`,
+not `del /f`. Quit Docker Desktop, rename the directory (`Rename-Item "$env:LOCALAPPDATA\Docker\run"
+run.stale`; renaming the parent works where deleting the files doesn't), and start Docker Desktop again:
+it recreates `run` and the engine is up within seconds. Then `docker compose -f compose.dev.yaml up -d`.
+The `wsl -l -v` state `docker-desktop  Stopped` is a consequence, not the cause.
+
+*Source: `OBSERVED` (Docker Desktop 4.79.0 on Windows 11, 2026-10-01)*
 
 ### ZOD-1
 **Unknown or new fields in a plugin payload vanish after parsing: stored event data lacks keys the plugin sent.**
