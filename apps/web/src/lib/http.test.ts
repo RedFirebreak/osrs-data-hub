@@ -165,7 +165,13 @@ describe('readJson', () => {
     const bad = new Request('http://x/', { method: 'POST', body: '{nope' });
     await expect(readJson(bad)).rejects.toMatchObject({ status: 400, code: 'invalid_json' });
     const big = new Request('http://x/', { method: 'POST', body: 'x'.repeat(20) });
-    await expect(readJson(big, 10)).rejects.toMatchObject({ status: 413 });
+    await expect(readJson(big, { maxBytes: 10 })).rejects.toMatchObject({ status: 413 });
+    // No body: invalid JSON, unless the route says what an empty body counts as.
+    const none = () => new Request('http://x/', { method: 'POST' });
+    await expect(readJson(none())).rejects.toMatchObject({ status: 400, code: 'invalid_json' });
+    expect(await readJson(none(), { emptyAs: {} })).toEqual({});
+    const blank = new Request('http://x/', { method: 'POST', body: ' \n' });
+    expect(await readJson(blank, { emptyAs: {} })).toEqual({});
   });
 });
 

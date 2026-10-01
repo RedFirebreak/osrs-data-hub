@@ -4,10 +4,11 @@
  */
 import { apiListAccounts } from '@hub/server';
 import { preflight } from '@/lib/api-v1/cors';
-import { parseQuery, v1Ok } from '@/lib/api-v1/respond';
+import { v1Ok } from '@/lib/api-v1/respond';
 import { AccountsQuery } from '@/lib/api-v1/schemas';
 import { wireAccountSummary } from '@/lib/api-v1/wire';
 import { withApiKey } from '@/lib/api-v1/with-api-key';
+import { parseQuery } from '@/lib/query';
 
 export async function GET(request: Request): Promise<Response> {
   return withApiKey(request, async ({ db, principal }) => {

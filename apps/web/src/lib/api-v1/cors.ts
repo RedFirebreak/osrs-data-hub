@@ -7,14 +7,14 @@
  */
 
 /** On every /api/v1 response. */
-export const CORS_HEADERS: Readonly<Record<string, string>> = {
+const CORS_HEADERS: Readonly<Record<string, string>> = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Expose-Headers':
     'ETag, Retry-After, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset',
 };
 
 /** Only on the preflight answer. */
-export const PREFLIGHT_HEADERS: Readonly<Record<string, string>> = {
+const PREFLIGHT_HEADERS: Readonly<Record<string, string>> = {
   'Access-Control-Allow-Methods': 'GET, OPTIONS',
   'Access-Control-Allow-Headers': 'Authorization, If-None-Match, Content-Type',
   'Access-Control-Max-Age': '600',

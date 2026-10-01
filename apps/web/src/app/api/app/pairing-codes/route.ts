@@ -16,22 +16,11 @@ import { getConfig } from '@hub/core';
 import { getDb } from '@hub/db';
 import { createPairingCode } from '@hub/server';
 import { z } from 'zod';
-import {
-  API_MAX_BODY_BYTES,
-  ApiError,
-  assertSameOrigin,
-  handleApi,
-  json,
-  readBodyCapped,
-} from '@/lib/http';
+import { assertSameOrigin, handleApi, json, readJson } from '@/lib/http';
 import { requireApiUser } from '@/lib/session';
+import { labelInput } from '../devices/label';
 
-/** Longest label accepted before normalization (the stored label is cut to 64 characters). */
-const LABEL_INPUT_MAX = 256;
-
-const createSchema = z.strictObject({
-  label: z.string().max(LABEL_INPUT_MAX).nullish(),
-});
+const createSchema = z.strictObject({ label: labelInput.nullish() });
 
 /** What POST answers (201). */
 interface CreatedPairingCodeResponse {
@@ -41,23 +30,12 @@ interface CreatedPairingCodeResponse {
   baseUrl: string;
 }
 
-/** The JSON body, `{}` when there is none (readJson would call an empty body invalid JSON). */
-async function readOptionalJson(request: Request): Promise<unknown> {
-  const text = await readBodyCapped(request, API_MAX_BODY_BYTES);
-  if (text === null) throw new ApiError(413, 'payload_too_large', 'The request body is too large.');
-  if (text.trim() === '') return {};
-  try {
-    return JSON.parse(text) as unknown;
-  } catch {
-    throw new ApiError(400, 'invalid_json', 'The request body is not valid JSON.');
-  }
-}
-
 export async function POST(request: Request): Promise<Response> {
   return handleApi(async () => {
     assertSameOrigin(request);
     const { user } = await requireApiUser(request);
-    const { label } = createSchema.parse(await readOptionalJson(request));
+    // The body is optional: none at all counts as `{}`.
+    const { label } = createSchema.parse(await readJson(request, { emptyAs: {} }));
     const config = getConfig();
     const created = await createPairingCode(getDb().db, {
       userId: user.id,

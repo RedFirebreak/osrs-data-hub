@@ -18,7 +18,6 @@ import {
   EventsQuery,
   GainsQuery,
   HistoryQuery,
-  PUBLIC_ID_PATTERN,
   SnapshotQuery,
   XpMultiQuery,
   XpQuery,
@@ -133,7 +132,6 @@ describe('account ids', () => {
       '',
       'a\u0000b',
     ]) {
-      expect(PUBLIC_ID_PATTERN.test(id), id).toBe(isPublicIdLike(id));
       expect(AccountPath.safeParse({ id }).success, id).toBe(isPublicIdLike(id));
     }
   });

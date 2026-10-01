@@ -16,13 +16,9 @@ import { normalizeDeviceLabel, renameDevice, revokeDevice } from '@hub/server';
 import { z } from 'zod';
 import { ApiError, assertSameOrigin, handleApi, json, readJson } from '@/lib/http';
 import { requireApiUser } from '@/lib/session';
+import { labelInput } from '../label';
 
-/** Longest label accepted before normalization (the stored label is cut to 64 characters). */
-const LABEL_INPUT_MAX = 256;
-
-const renameSchema = z.strictObject({
-  label: z.string().max(LABEL_INPUT_MAX).nullable(),
-});
+const renameSchema = z.strictObject({ label: labelInput.nullable() });
 
 function notFound(): ApiError {
   return new ApiError(404, 'not_found', 'Device not found.');
