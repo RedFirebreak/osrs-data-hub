@@ -5,7 +5,7 @@ export * from './audit';
 export * from './discord';
 export * from './offboarding';
 export * from './jobs';
-export * from './feed';
+export { toFeedEvent, type EventRowLike, type FeedEvent } from './feed';
 export type { PluginResponse } from './plugin/protocol';
 export * from './ingest';
 export * from './pairing';

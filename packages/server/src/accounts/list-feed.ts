@@ -12,8 +12,7 @@ import {
 } from '@hub/core';
 import { events, type DbOrTx } from '@hub/db';
 import { and, desc, inArray, lt, sql, type SQL } from 'drizzle-orm';
-import type { FeedEvent } from '../feed';
-import { EVENT_ROW_COLUMNS } from '../live/load';
+import { EVENT_ROW_COLUMNS, type FeedEvent } from '../feed';
 import { clampLimit } from '../paging';
 import {
   loadVisibleAccount,

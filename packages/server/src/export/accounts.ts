@@ -21,8 +21,7 @@ import { and, asc, desc, eq, gt, min, ne, sql, type SQL } from 'drizzle-orm';
 import type { AccountWithAccess } from '../accounts/load';
 import { loadAccountSections } from '../api/state';
 import { toApiItems } from '../api/types';
-import { toFeedEvent } from '../feed';
-import { EVENT_ROW_COLUMNS } from '../live/load';
+import { EVENT_ROW_COLUMNS, toFeedEvent } from '../feed';
 import { jsonArray, jsonObject, keysetPages, streamed, type Field } from './json';
 import {
   wireEvent,

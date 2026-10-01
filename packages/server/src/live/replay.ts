@@ -6,8 +6,7 @@ import { resolveAccess, type ResolvedAccess, type ToastFilter, type Viewer } fro
 import { events, osrsAccounts, type DbOrTx } from '@hub/db';
 import { and, asc, eq, gt, inArray, lt, lte, max, sql, type SQL } from 'drizzle-orm';
 import { loadAccountAccess } from '../accounts/access';
-import { toFeedEvent } from '../feed';
-import { EVENT_ROW_COLUMNS } from './load';
+import { EVENT_ROW_COLUMNS, toFeedEvent } from '../feed';
 import { toEventMessage, type LiveEventMessage } from './messages';
 
 /** How far back a reconnect or a poll reaches (handoff §11: "replays the last 5 minutes"). */

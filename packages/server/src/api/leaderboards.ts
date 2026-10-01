@@ -8,7 +8,7 @@ import { events, lootRankedEvent, type DbOrTx } from '@hub/db';
 import { and, desc, gte, inArray, lte } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { getGainsLeaderboards, leaderboardStarts, type LeaderboardPeriod } from '../accounts/guild';
-import { EVENT_ROW_COLUMNS } from '../live/load';
+import { EVENT_ROW_COLUMNS } from '../feed';
 import { apiRestriction, apiViewer } from './access';
 import { eventReadableAccounts, toApiEvents, type ApiEvent } from './events';
 import type { ApiPrincipal } from './key-auth';
