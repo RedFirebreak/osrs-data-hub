@@ -1,4 +1,4 @@
-import type { DeviceMessage } from '@hub/server';
+import { MAX_ACTIVE_PAIRING_CODES, type DeviceMessage } from '@hub/server';
 import { describe, expect, it } from 'vitest';
 import {
   INITIAL_WIZARD_STATE,
@@ -32,6 +32,8 @@ import {
 } from './wizard-model';
 
 const T0 = 1_800_000_000_000;
+/** The server's limit, which the page hands to the wizard (three: the tests below count on it). */
+const MAX_ACTIVE = MAX_ACTIVE_PAIRING_CODES;
 
 function code(id: string, expiresAtMs = T0 + 300_000): WizardCode {
   return {
@@ -345,20 +347,20 @@ describe('codesToPoll', () => {
       { type: 'codeCreated', code: code('c2', T0 + 360_000) },
       { type: 'codeCreated', code: code('c3', T0 + 420_000) },
     );
-    expect(codesToPoll(s, T0)).toEqual(['c3', 'c2', 'c1']);
+    expect(codesToPoll(s, T0, MAX_ACTIVE)).toEqual(['c3', 'c2', 'c1']);
     // c1's lifetime is over; the hub has expired it.
-    expect(codesToPoll(s, T0 + 300_000)).toEqual(['c3', 'c2']);
+    expect(codesToPoll(s, T0 + 300_000, MAX_ACTIVE)).toEqual(['c3', 'c2']);
     // A fourth code retires the oldest on the hub (at most 3 active).
     const four = wizardReducer(s, { type: 'codeCreated', code: code('c4', T0 + 480_000) });
-    expect(codesToPoll(four, T0)).toEqual(['c4', 'c3', 'c2']);
+    expect(codesToPoll(four, T0, MAX_ACTIVE)).toEqual(['c4', 'c3', 'c2']);
     // Still polled after going back to step 1 (pairing there moves on to step 3).
-    expect(codesToPoll(wizardReducer(s, { type: 'goto', step: 1 }), T0)).toEqual([
+    expect(codesToPoll(wizardReducer(s, { type: 'goto', step: 1 }), T0, MAX_ACTIVE)).toEqual([
       'c3',
       'c2',
       'c1',
     ]);
     // Nothing before the browser clock runs.
-    expect(codesToPoll(s, null)).toEqual([]);
+    expect(codesToPoll(s, null, MAX_ACTIVE)).toEqual([]);
   });
 
   it('leaves out the shown code once the hub said it expired', () => {
@@ -366,7 +368,7 @@ describe('codesToPoll', () => {
       { type: 'codeCreated', code: code('c2', T0 + 360_000) },
       { type: 'polled', status: polled({ codeId: 'c2', status: 'expired' }), at: T0 },
     );
-    expect(codesToPoll(s, T0)).toEqual(['c1']);
+    expect(codesToPoll(s, T0, MAX_ACTIVE)).toEqual(['c1']);
   });
 
   it('polls the consumed code on step 3 until the first data arrived', () => {
@@ -374,12 +376,14 @@ describe('codesToPoll', () => {
       { type: 'codeCreated', code: code('c2') },
       { type: 'pairing', message: { kind: 'consumed', codeId: 'c1', deviceId: 'd1' }, at: T0 },
     );
-    expect(codesToPoll(paired, T0)).toEqual(['c1']);
-    expect(codesToPoll(paired, null)).toEqual(['c1']);
+    expect(codesToPoll(paired, T0, MAX_ACTIVE)).toEqual(['c1']);
+    expect(codesToPoll(paired, null, MAX_ACTIVE)).toEqual(['c1']);
     const withData = wizardReducer(paired, { type: 'device', message: deviceMessage });
-    expect(codesToPoll(withData, T0)).toEqual([]);
-    expect(codesToPoll(wizardReducer(paired, { type: 'goto', step: 4 }), T0)).toEqual([]);
-    expect(codesToPoll(INITIAL_WIZARD_STATE, T0)).toEqual([]);
+    expect(codesToPoll(withData, T0, MAX_ACTIVE)).toEqual([]);
+    expect(codesToPoll(wizardReducer(paired, { type: 'goto', step: 4 }), T0, MAX_ACTIVE)).toEqual(
+      [],
+    );
+    expect(codesToPoll(INITIAL_WIZARD_STATE, T0, MAX_ACTIVE)).toEqual([]);
   });
 });
 
@@ -577,7 +581,7 @@ describe('resuming after a reload', () => {
     expect(s).toMatchObject({ step: 2, resuming: null, codeRequest: 'idle', codeIds: [ID] });
     expect(s.code?.code).toBe('04817');
     expect(codeMsLeft(s, T0 + 20_000)).toBe(100_000);
-    expect(codesToPoll(s, T0)).toEqual([ID]);
+    expect(codesToPoll(s, T0, MAX_ACTIVE)).toEqual([ID]);
     expect(resumeCodeIdOf(s)).toBe(ID);
     // Its pairing still counts.
     const paired = wizardReducer(s, {
@@ -618,7 +622,7 @@ describe('resuming after a reload', () => {
     if (waiting.kind !== 'resume') throw new Error('not resumed');
     const w = wizardReducer(initialWizardState(ID), { type: 'resumed', ...waiting, at: T0 });
     expect(w).toMatchObject({ step: 3, firstData: null });
-    expect(codesToPoll(w, T0)).toEqual([ID]);
+    expect(codesToPoll(w, T0, MAX_ACTIVE)).toEqual([ID]);
   });
 
   it('asks for a fresh code when the code expired, is about to, or the hub gave no usable answer', () => {

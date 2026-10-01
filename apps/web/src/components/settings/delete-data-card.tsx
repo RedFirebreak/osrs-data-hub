@@ -1,10 +1,11 @@
 'use client';
 /**
  * Settings → "Delete my data" (D-78): what happens, in plain words, and a destructive button that
- * opens a dialog where the user types "delete" to enable the confirm button. The request is
- * POST /api/app/me/delete; on success the browser loads /login?deleted=<graceUntil> in full (the
- * session is gone, so nothing of the signed-in app may stay on screen); on failure the dialog stays
- * open with the reason (inline and as a toast).
+ * opens a dialog where the user types the confirmation word ("delete", handed down by the page
+ * from @hub/server) to enable the confirm button. The request is POST /api/app/me/delete; on
+ * success the browser loads /login?deleted=<graceUntil> in full (the session is gone, so nothing of
+ * the signed-in app may stay on screen); on failure the dialog stays open with the reason (inline
+ * and as a toast).
  */
 import { LoaderCircleIcon, Trash2Icon } from 'lucide-react';
 import { useId, useRef, useState } from 'react';
@@ -26,7 +27,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { sendJson } from '@/lib/api-client';
 import {
-  CONFIRMATION_WORD,
   confirmsDeletion,
   deleteErrorMessage,
   deletedLoginPath,
@@ -40,16 +40,23 @@ export interface DeleteDataCardProps {
   deleteOnLabel: string;
   /** The same moment as ISO, for <time dateTime>. */
   deleteOnIso: string;
+  /** The word to type (SELF_DELETE_CONFIRMATION), as the server compares it. */
+  confirmationWord: string;
 }
 
-export function DeleteDataCard({ undoDays, deleteOnLabel, deleteOnIso }: DeleteDataCardProps) {
+export function DeleteDataCard({
+  undoDays,
+  deleteOnLabel,
+  deleteOnIso,
+  confirmationWord,
+}: DeleteDataCardProps) {
   const id = useId();
   const [open, setOpen] = useState(false);
   const [typed, setTyped] = useState('');
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const confirmed = confirmsDeletion(typed);
+  const confirmed = confirmsDeletion(typed, confirmationWord);
   const deleteOn = <time dateTime={deleteOnIso}>{deleteOnLabel}</time>;
 
   async function submit(): Promise<void> {
@@ -135,7 +142,7 @@ export function DeleteDataCard({ undoDays, deleteOnLabel, deleteOnIso }: DeleteD
               </AlertDialogHeader>
               <div className="flex flex-col gap-2">
                 <Label htmlFor={`${id}-confirm`}>
-                  Type <span className="font-mono font-semibold">{CONFIRMATION_WORD}</span> to
+                  Type <span className="font-mono font-semibold">{confirmationWord}</span> to
                   confirm
                 </Label>
                 <Input

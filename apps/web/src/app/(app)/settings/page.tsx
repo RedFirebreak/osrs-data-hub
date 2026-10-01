@@ -7,6 +7,7 @@ import { getConfig } from '@hub/core';
 import { getDb } from '@hub/db';
 import {
   MAX_TOAST_MIN_LOOT_VALUE,
+  SELF_DELETE_CONFIRMATION,
   SELF_DELETE_UNDO_DAYS,
   getUserSettings,
   supportedTimeZones,
@@ -91,6 +92,7 @@ export default async function SettingsPage() {
           }) ?? deleteOn.toISOString().slice(0, 10)
         }
         deleteOnIso={deleteOn.toISOString()}
+        confirmationWord={SELF_DELETE_CONFIRMATION}
       />
     </div>
   );

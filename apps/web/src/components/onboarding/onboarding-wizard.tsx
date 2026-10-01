@@ -53,6 +53,10 @@ import { WizardProgress } from './wizard-progress';
 export interface OnboardingWizardProps {
   /** PAIRING_CODE_TTL_SECONDS: how long a new code is valid. */
   ttlSeconds: number;
+  /** MAX_ACTIVE_PAIRING_CODES: how many codes the hub keeps active per user (older ones retire). */
+  maxActiveCodes: number;
+  /** DEVICE_LABEL_MAX: the longest device label the hub keeps. */
+  labelMax: number;
   /** MIN_PLUGIN_VERSION, e.g. "1.5". */
   minPluginVersion: string;
   /** APP_URL's origin: the base URL of a code resumed after a reload (the lookup doesn't repeat it). */
@@ -69,6 +73,8 @@ const CODE_FAILURE: FailureOptions = {
 
 export function OnboardingWizard({
   ttlSeconds,
+  maxActiveCodes,
+  labelMax,
   minPluginVersion,
   baseUrl,
   resumeCodeId,
@@ -127,7 +133,7 @@ export function OnboardingWizard({
 
   // The codes that may still be paired, or the consumed one while waiting for the first data. A
   // string key, so the interval restarts only when the set changes (not on every clock tick).
-  const pollKey = codesToPoll(state, now).join(' ');
+  const pollKey = codesToPoll(state, now, maxActiveCodes).join(' ');
   const pollMs = connected ? POLL_INTERVAL_CONNECTED_MS : POLL_INTERVAL_MS;
 
   useEffect(() => {
@@ -237,6 +243,7 @@ export function OnboardingWizard({
               headingRef={headingRef}
               minPluginVersion={minPluginVersion}
               label={label}
+              labelMax={labelMax}
               onLabelChange={setLabel}
               onNext={startPairing}
             />
