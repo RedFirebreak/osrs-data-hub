@@ -30,14 +30,15 @@ import {
   apiErrorDetails,
   apiErrorMessage,
   failureMessage,
+  fieldErrorsFrom,
   type FailureOptions,
 } from '@/lib/api-client';
 import { useApiRequest } from '@/lib/use-api-request';
 import { cn } from '@/lib/utils';
 import {
+  SETTINGS_FIELDS,
   buildPatch,
   changesToastFilter,
-  fieldErrorsFrom,
   formStateFrom,
   groupTimeZones,
   parseMinLootValue,
@@ -135,7 +136,7 @@ export function SettingsForm({
       return;
     }
     if (res.status === 400) {
-      const fieldErrors = fieldErrorsFrom(apiErrorDetails(res.body));
+      const fieldErrors = fieldErrorsFrom(apiErrorDetails(res.body), SETTINGS_FIELDS);
       setErrors(fieldErrors);
       toast.error(
         Object.keys(fieldErrors).length > 0

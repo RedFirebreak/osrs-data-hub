@@ -5,13 +5,13 @@ import {
   type ApiKeyInfo,
 } from '@hub/server';
 import { describe, expect, it } from 'vitest';
-import { failureMessage, refreshesPage } from '@/lib/api-client';
+import { failureMessage, fieldErrorsFrom, refreshesPage } from '@/lib/api-client';
 import {
   EXPIRY_OPTIONS,
   apiKeyPath,
   CREATE_KEY_FAILURE,
+  CREATE_KEY_FIELDS,
   createKeyBody,
-  createKeyFieldErrors,
   createdKeyFrom,
   emptyCreateForm,
   expiryText,
@@ -118,15 +118,19 @@ describe('the create form', () => {
 
   it('maps the server’s field errors to the form', () => {
     expect(
-      createKeyFieldErrors([
-        { path: 'name', message: 'too long' },
-        { path: 'name', message: 'second' },
-        { path: 'accountPublicIds.0', message: 'not an account id' },
-        { path: '', message: 'unknown key' },
-        'junk',
-      ]),
+      fieldErrorsFrom(
+        [
+          { path: 'name', message: 'too long' },
+          { path: 'name', message: 'second' },
+          { path: 'accountPublicIds.0', message: 'not an account id' },
+          { path: 'rateLimitPerMinute', message: 'not a field of a user key' },
+          { path: '', message: 'unknown key' },
+          'junk',
+        ],
+        CREATE_KEY_FIELDS,
+      ),
     ).toEqual({ name: 'too long', accountPublicIds: 'not an account id' });
-    expect(createKeyFieldErrors(undefined)).toEqual({});
+    expect(fieldErrorsFrom(undefined, CREATE_KEY_FIELDS)).toEqual({});
   });
 });
 

@@ -1,10 +1,11 @@
 import type { UserSettings } from '@hub/server';
 import { describe, expect, it } from 'vitest';
+import { fieldErrorsFrom } from '@/lib/api-client';
 import {
+  SETTINGS_FIELDS,
   buildPatch,
   changesToastFilter,
   chosenTypes,
-  fieldErrorsFrom,
   formStateFrom,
   groupTimeZones,
   parseMinLootValue,
@@ -137,18 +138,21 @@ describe('parseMinLootValue', () => {
   });
 });
 
-describe('fieldErrorsFrom', () => {
+describe('SETTINGS_FIELDS', () => {
   it('maps paths to fields, first message wins', () => {
     expect(
-      fieldErrorsFrom([
-        { path: 'toastTypes.1', message: 'Invalid option' },
-        { path: 'toastTypes.2', message: 'second' },
-        { path: 'timezone', message: 'must be an IANA time zone name' },
-        { path: '', message: 'Unrecognized key: "x"' },
-        { nope: true },
-      ]),
+      fieldErrorsFrom(
+        [
+          { path: 'toastTypes.1', message: 'Invalid option' },
+          { path: 'toastTypes.2', message: 'second' },
+          { path: 'timezone', message: 'must be an IANA time zone name' },
+          { path: '', message: 'Unrecognized key: "x"' },
+          { nope: true },
+        ],
+        SETTINGS_FIELDS,
+      ),
     ).toEqual({ toastTypes: 'Invalid option', timezone: 'must be an IANA time zone name' });
-    expect(fieldErrorsFrom(undefined)).toEqual({});
+    expect(fieldErrorsFrom(undefined, SETTINGS_FIELDS)).toEqual({});
   });
 });
 
