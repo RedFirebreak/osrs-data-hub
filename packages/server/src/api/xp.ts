@@ -167,7 +167,7 @@ export async function principalTimezone(
   db: DbOrTx,
   principal: ApiPrincipal,
 ): Promise<string | undefined> {
-  return principal.userId === null
+  return principal.kind === 'service'
     ? undefined
     : (await getUserSettings(db, principal.userId)).timezone;
 }

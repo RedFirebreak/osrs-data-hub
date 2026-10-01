@@ -17,7 +17,8 @@ import {
 } from '@hub/db';
 import { and, asc, eq, isNull, lte, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
-import { isUuid, normalizeDeviceLabel } from '../devices/util';
+import { normalizeDeviceLabel } from '../devices/util';
+import { isUuid } from '../uuid';
 
 /** Most active (unconsumed, unexpired) codes a user can hold (handoff §6.2.1). */
 export const MAX_ACTIVE_PAIRING_CODES = 3;

@@ -1,3 +1,4 @@
+import { DAY_MS } from '@hub/core';
 import { osrsAccounts, pgErrorCode, type Db, type Tx } from '@hub/db';
 import { sql } from 'drizzle-orm';
 import { SYSTEM_ACTOR, audit } from '../audit';
@@ -45,7 +46,7 @@ export async function purgeOrphanedAccounts(
     throw new Error('purgeOrphanedAccounts: graceDays must be a whole number >= 0');
   }
   const now = opts.now ?? new Date();
-  const cutoff = new Date(now.getTime() - opts.graceDays * 86_400_000);
+  const cutoff = new Date(now.getTime() - opts.graceDays * DAY_MS);
   const candidates = await db
     .select({ id: osrsAccounts.id })
     .from(osrsAccounts)

@@ -3,9 +3,8 @@
  * zod first; these checks keep the read models safe on their own (they are exported and callable
  * directly) and throw ApiError('invalid') with a message that names the parameter.
  */
+import { DAY_MS } from '@hub/core';
 import { ApiError } from './errors';
-
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
  * What a public id can look like (D-46: 12 base62 characters; longer ones exist in tests). Anything

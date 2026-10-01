@@ -8,6 +8,7 @@ import {
   XP_BUCKET_MS,
   floorTo,
   generatePublicId,
+  isRecord,
   normalizeName,
   payloadTime,
   planSnapshot,
@@ -463,7 +464,7 @@ async function loadPrevState(tx: Tx, accountId: number): Promise<PrevState | nul
   return {
     ...row,
     // Written by this module from validated sections; the shape checks only guard against edits.
-    skills: isPlainObject(row.skills) ? (row.skills as PrevState['skills']) : null,
+    skills: isRecord(row.skills) ? (row.skills as PrevState['skills']) : null,
     equipment: Array.isArray(row.equipment) ? (row.equipment as ItemData[]) : null,
   };
 }
@@ -726,10 +727,6 @@ function eventRow(
     specialWorld: special,
     data: stripNul(e.data),
   };
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function sleep(ms: number): Promise<void> {

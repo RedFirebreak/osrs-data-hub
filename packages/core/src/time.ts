@@ -1,3 +1,8 @@
+/** Milliseconds per minute, hour and day: the one definition the packages and the web app share. */
+export const MINUTE_MS = 60_000;
+export const HOUR_MS = 60 * MINUTE_MS;
+export const DAY_MS = 24 * HOUR_MS;
+
 export const XP_BUCKET_MS = 5 * 60 * 1000;
 export const LOCATION_BUCKET_MS = 60 * 1000;
 /** Events are clamped to [recv − 15 min, recv]: the plugin queue holds events ≤ 10 min, plus margin. */

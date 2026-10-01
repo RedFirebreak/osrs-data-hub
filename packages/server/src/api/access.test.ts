@@ -203,10 +203,12 @@ describe('the creator’s visibility, evaluated on every request', () => {
     const admin = await seedUser(t.db, { isAdmin: true });
     const hidden = await seedAccount(t.db, { name: 'Hidden 2', owner: owner.id, status: 'hidden' });
     const { principal } = await makeKey(t.db, admin.id, {}, NOW);
-    // Even a principal claiming to be an admin is treated as none.
+    // Even a principal claiming to be an admin is treated as none: the loaders ignore isAdmin under
+    // the key's restriction.
     const claimed = { ...principal, viewer: { ...principal.viewer, isAdmin: true } };
     for (const p of [principal, claimed]) {
       expect(await apiGetAccount(t.db, p, hidden.publicId, NOW)).toBeNull();
+      expect((await loadApiAccounts(t.db, p)).map((e) => e.account.id)).not.toContain(hidden.id);
       const detail = present(await apiGetAccount(t.db, p, zezima.publicId, NOW));
       expect(detail.categories).toEqual(['stats', 'events', 'activity']);
     }

@@ -4,17 +4,17 @@
  *
  * `seq` is taken at INSERT, not at commit, so a lower seq can become visible after a higher one
  * (DB-4). The feed therefore serves only the SETTLED prefix: seqs below the first row inserted less
- * than API_EVENTS_SETTLE_MS ago, using the live replay's settledCeiling. A cursor never passes a row
- * that may still commit, as long as ingest's event-inserting transactions commit within that margin
- * (they insert events last and commit right after).
+ * than API_EVENTS_SETTLE_MS ago (settledCeiling, shared with the live replay). A cursor never passes
+ * a row that may still commit, as long as ingest's event-inserting transactions commit within that
+ * margin (they insert events last and commit right after).
  */
 import type { DbOrTx } from '@hub/db';
 import { events } from '@hub/db';
 import { and, asc, desc, gt, gte, inArray, lte, sql, type SQL } from 'drizzle-orm';
 import type { AccountWithAccess } from '../accounts/load';
-import { toFeedEvent, type EventRowLike, type FeedEvent } from '../feed';
-import { EVENT_ROW_COLUMNS } from '../live/load';
-import { LIVE_POLL_SETTLE_MS, seqFloor, settledCeiling } from '../live/replay';
+import { EVENT_ROW_COLUMNS, toFeedEvent, type EventRowLike, type FeedEvent } from '../feed';
+import { LIVE_POLL_SETTLE_MS } from '../live/replay';
+import { seqFloor, settledCeiling } from '../settled-cursor';
 import { loadApiAccounts, requireApiAccounts } from './access';
 import { ApiError } from './errors';
 import type { ApiPrincipal } from './key-auth';

@@ -6,7 +6,7 @@
  * (D-37, NEXT-3).
  */
 import { WindowLimiter, type Clock, type LimitResult } from '@hub/core';
-import { pairRateKey } from '../pairing/limits';
+import { pairRateKey } from '../rate-key';
 
 /** Requests per minute of a user key (D-72). */
 export const API_RATE_LIMIT = 120;

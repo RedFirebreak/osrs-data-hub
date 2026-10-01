@@ -25,8 +25,8 @@ import { loadAccountAccess } from '../accounts/access';
 import type { AccountWithAccess } from '../accounts/load';
 import { listApiKeys } from '../api/keys';
 import { listDevices } from '../devices/devices';
-import { isUuid } from '../devices/util';
 import { getUserSettings } from '../settings/user-settings';
+import { isUuid } from '../uuid';
 import { keysetPages } from './json';
 
 export type UserRow = NonNullable<Awaited<ReturnType<typeof loadUserRow>>>;

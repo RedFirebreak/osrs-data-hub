@@ -1,7 +1,6 @@
+import { DAY_MS } from '@hub/core';
 import { auditLog, type Db } from '@hub/db';
 import { lt } from 'drizzle-orm';
-
-const DAY_MS = 86_400_000;
 
 /** Deletes audit entries older than retentionDays. */
 export async function pruneAuditLog(
