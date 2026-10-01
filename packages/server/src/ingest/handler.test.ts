@@ -192,6 +192,27 @@ describe('body limits and parsing', () => {
     });
   });
 
+  it('counts an archived unparsable body once: not also as rejected without archive (D-83)', async () => {
+    const m = createHarness(t);
+    const device = await m.seedDevice();
+    const at = 1_790_000_800_000;
+
+    expect((await m.send(device, '{"player":', { at })).status).toBe(400);
+    expect((await m.send(device, '[1,2,3]', { at: at + 1_000 })).status).toBe(400);
+    expect((await m.send(device, '{}', { token: null, at: at + 2_000 })).status).toBe(401);
+
+    // Both bodies are in the archive, still with the parser's error and nothing written over it.
+    const rows = await archiveRows(device.id);
+    expect(rows.map((r) => [r.status, r.meta])).toEqual([
+      [400, { error: 'not_json' }],
+      [400, { error: 'not_object' }],
+    ]);
+    // So the in-memory count holds only the response that left no archive row.
+    const [minute] = m.metrics.ingestUnarchived.series(new Date(at), 1);
+    expect(minute?.byKey).toEqual({ '401': 1 });
+    expect(await counterValue(m.metrics.ingestPayloads, { status: '400' })).toBe(2);
+  });
+
   it('archives a body with a literal NUL (replaced by U+FFFD; a text column rejects NUL)', async () => {
     const device = await h.seedDevice();
     const res = await h.send(device, '{"events":[]}\u0000');
