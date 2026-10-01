@@ -103,6 +103,13 @@ export function configSections(config: HubConfig): ConfigSection[] {
         },
         { name: 'LOG_LEVEL', description: 'Log verbosity', value: text(config.logLevel) },
         {
+          name: 'WORKER_METRICS_PORT',
+          description: "The worker's /metrics port (D-84)",
+          value: text(
+            config.workerMetricsPort === 0 ? 'off (no endpoint)' : config.workerMetricsPort,
+          ),
+        },
+        {
           name: 'OSRS_ICONS_URL',
           description: 'Item, skill and slot icons (D-95)',
           value: text(config.osrsIconsUrl ?? 'off (text only)'),

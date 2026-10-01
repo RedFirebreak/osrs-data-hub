@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { hubNameFrom, parseConfig } from './config';
+import { hubNameFrom, logLevelFromEnv, parseConfig } from './config';
 
 const ENV = { APP_URL: 'https://hub.example.com' };
 
@@ -30,6 +30,18 @@ describe('WORKER_METRICS_PORT (D-84)', () => {
     expect(parseConfig({ ...ENV, WORKER_METRICS_PORT: '9500' }).workerMetricsPort).toBe(9500);
     expect(parseConfig({ ...ENV, WORKER_METRICS_PORT: '0' }).workerMetricsPort).toBe(0);
     expect(() => parseConfig({ ...ENV, WORKER_METRICS_PORT: 'x' })).toThrow('WORKER_METRICS_PORT');
+  });
+});
+
+describe('LOG_LEVEL', () => {
+  it('is read by the logger with the config rule, and an invalid value is left to parseConfig', () => {
+    expect(logLevelFromEnv(undefined)).toBe('info');
+    expect(logLevelFromEnv('debug')).toBe('debug');
+    expect(logLevelFromEnv('silent')).toBe('silent');
+    expect(parseConfig({ ...ENV, LOG_LEVEL: 'debug' }).logLevel).toBe('debug');
+    // The logger starts at the default instead of throwing inside pino; the config names the variable.
+    expect(logLevelFromEnv('verbose')).toBe('info');
+    expect(() => parseConfig({ ...ENV, LOG_LEVEL: 'verbose' })).toThrow('LOG_LEVEL');
   });
 });
 
