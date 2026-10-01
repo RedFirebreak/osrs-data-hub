@@ -3,15 +3,7 @@
  * snake_case mappers are the public API's too (D-77): the web layer builds the /api/v1 responses
  * from them.
  */
-export {
-  EXPORT_BATCH_SIZE,
-  EXPORT_FORMAT,
-  EXPORT_NOTES,
-  EXPORT_VERSION,
-  exportUserData,
-  type ExportOptions,
-  type ExportSummary,
-} from './document';
+export { exportUserData } from './document';
 export {
   wireEvent as wireEventFields,
   wireItem,
