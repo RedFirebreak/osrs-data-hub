@@ -18,10 +18,10 @@ import {
   SendIcon,
 } from 'lucide-react';
 import { useId, useState } from 'react';
+import { CopyButton } from '@/components/common/copy-button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { CopyButton } from './copy-button';
 import { StepHeading } from './step-heading';
 import {
   POLL_INTERVAL_MS,

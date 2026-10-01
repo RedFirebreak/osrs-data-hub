@@ -11,8 +11,8 @@ import { formatGain, formatNumber } from '@hub/core';
 import type { AccountCard as AccountCardData } from '@hub/server';
 import { ArrowRightIcon } from 'lucide-react';
 import Link from 'next/link';
+import { Stat } from '@/components/common/stat';
 import { EventFeed } from '@/components/events/event-feed';
-import { Stat } from '@/components/shell/stat';
 import { Badge } from '@/components/ui/badge';
 import {
   Card,

@@ -10,7 +10,7 @@ import { useLivePresenceMap } from '@/components/live/live-provider';
 import { AccountLink } from '@/components/accounts/account-link';
 import { AccountTypeBadge } from '@/components/accounts/account-type-badge';
 import { OnlineDot } from '@/components/accounts/online-dot';
-import { UserAvatar } from '@/components/account/user-avatar';
+import { UserAvatar } from '@/components/common/user-avatar';
 
 export interface MemberListProps {
   members: readonly GuildMember[];

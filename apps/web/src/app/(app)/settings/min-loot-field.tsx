@@ -6,8 +6,8 @@
  * value does. Each form brings its own quick values and wording.
  */
 import { formatGp } from '@hub/core';
+import { FieldError } from '@/components/common/field-error';
 import { Button } from '@/components/ui/button';
-import { FieldError } from '@/components/ui/field-error';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { parseMinLootValue } from './settings-model';

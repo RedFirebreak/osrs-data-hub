@@ -7,6 +7,7 @@
 import type { OffboardReason, UserStatus } from '@hub/db';
 import { UserRoundCheckIcon, UserRoundXIcon } from 'lucide-react';
 import { toast } from 'sonner';
+import { ConfirmAction } from '@/components/common/confirm-action';
 import {
   adminFailure,
   adminUserActionPath,
@@ -14,7 +15,6 @@ import {
   pluralDays,
   userActions,
 } from './admin-model';
-import { ConfirmAction } from './confirm-action';
 
 export interface UserActionsProps {
   userId: string;

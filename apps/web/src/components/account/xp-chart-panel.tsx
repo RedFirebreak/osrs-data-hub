@@ -21,10 +21,10 @@ import {
   xpQuery,
   type XpRange,
 } from '@/components/charts/ranges';
+import { SkillSelect, defaultSkill } from '@/components/common/skill-select';
 import { Button } from '@/components/ui/button';
 import { formatInZone } from '@/lib/dates';
 import { cn } from '@/lib/utils';
-import { SkillSelect, defaultSkill } from './skill-select';
 
 export interface XpChartPanelProps {
   publicId: string;

@@ -9,7 +9,7 @@
 import { FileJsonIcon, LoaderCircleIcon } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useRef, useState } from 'react';
-import { CopyButton } from '@/components/onboarding/copy-button';
+import { CopyButton } from '@/components/common/copy-button';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,

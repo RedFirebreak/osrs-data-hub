@@ -9,7 +9,7 @@
  */
 import { BanIcon } from 'lucide-react';
 import { toast } from 'sonner';
-import { ConfirmAction } from '@/components/admin/confirm-action';
+import { ConfirmAction } from '@/components/common/confirm-action';
 import { deviceApiPath, deviceFailure } from './device-model';
 
 export interface RevokeDeviceButtonProps {

@@ -1,6 +1,7 @@
 /**
- * The frame of every section on the account page: a card with the section's heading (h2), an
- * optional badge or action, and when the hub last received the data. Server- and client-safe.
+ * The frame of every section on the account and guild pages: a card with the section's heading
+ * (h2), an optional badge or action, and when the hub last received the data. Server- and
+ * client-safe.
  *
  *   <SectionCard title="Inventory" updatedAt={section.updatedAt} now={now}>…</SectionCard>
  *   <NotSharedCard title="Inventory" what="the inventory" />   // visible, never sent (D-4)

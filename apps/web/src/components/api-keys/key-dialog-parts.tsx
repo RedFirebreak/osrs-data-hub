@@ -10,7 +10,9 @@
  */
 import { CATEGORIES, CATEGORY_LABELS, type Category } from '@hub/core';
 import { KeyRoundIcon, LoaderCircleIcon, TriangleAlertIcon } from 'lucide-react';
-import { CopyButton } from '@/components/onboarding/copy-button';
+import { CopyButton } from '@/components/common/copy-button';
+import { FieldError } from '@/components/common/field-error';
+import { NativeSelect } from '@/components/common/native-select';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -23,10 +25,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { FieldError } from '@/components/ui/field-error';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { NativeSelect } from '@/components/ui/native-select';
 import { EXPIRY_OPTIONS } from './api-key-model';
 import type { CreateKeyDialog, CreatedKey } from './use-create-key-dialog';
 

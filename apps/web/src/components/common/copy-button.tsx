@@ -1,9 +1,10 @@
 'use client';
 /**
- * "Copy" button for the pairing code and the hub URL: copies `value` exactly as given (the code as a
- * string with its leading zeros, PLUGIN-6; the URL with its https://, PLUGIN-13), confirms with
- * "Copied" for two seconds and announces the result to screen readers. Falls back to a hidden
- * textarea where the Clipboard API is unavailable (plain http outside localhost).
+ * "Copy" button (the wizard's pairing code and hub URL, a new API key, a raw payload): copies `value`
+ * exactly as given (the code as a string with its leading zeros, PLUGIN-6; the URL with its
+ * https://, PLUGIN-13), confirms with "Copied" for two seconds and announces the result to screen
+ * readers. Falls back to a hidden textarea where the Clipboard API is unavailable (plain http
+ * outside localhost).
  */
 import { CheckIcon, CopyIcon } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';

@@ -8,8 +8,8 @@ import { formatGain } from '@hub/core';
 import type { Leaderboard, LeaderboardPeriod } from '@hub/server';
 import { TrophyIcon } from 'lucide-react';
 import { useState } from 'react';
-import { SkillSelect, defaultSkill } from '@/components/account/skill-select';
 import { AccountLink } from '@/components/accounts/account-link';
+import { SkillSelect, defaultSkill } from '@/components/common/skill-select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 

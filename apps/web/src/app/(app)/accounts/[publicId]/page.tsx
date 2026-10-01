@@ -2,7 +2,7 @@
  * The account page (handoff §12): header (name, type, live presence, owner, previous names), then one
  * card per section. Each section follows the read model's three states (handoff §10, D-4): hidden
  * when the viewer may not see its category, a "Not shared" card when the plugin never sent it, or the
- * data (`dataSection` in components/account/section-card.tsx applies that rule). Sections backed by
+ * data (`dataSection` in components/common/section-card.tsx applies that rule). Sections backed by
  * a history (sessions, gear changes, wealth) and the sharing panel stream in behind skeletons.
  * notFound() when the account doesn't exist or isn't visible to the viewer, so the two can't be told
  * apart.
@@ -40,15 +40,15 @@ import { EventTimeline } from '@/components/account/event-timeline';
 import { InventoryContent } from '@/components/account/inventory-content';
 import { LocationContent } from '@/components/account/location-content';
 import { playtimeByDay } from '@/components/account/playtime';
-import { SectionCard, dataSection } from '@/components/account/section-card';
 import { SkillsTable } from '@/components/account/skills-table';
 import { VitalsContent } from '@/components/account/vitals-content';
 import { XpChartPanel } from '@/components/account/xp-chart-panel';
 import { NotSharedBadge } from '@/components/accounts/not-shared-badge';
 import { WealthChart } from '@/components/charts/wealth-chart';
+import { CardSkeleton } from '@/components/common/card-skeleton';
+import { SectionCard, dataSection } from '@/components/common/section-card';
 import { eventTypeOptions } from '@/components/events/event-types';
 import { AutoRefresh } from '@/components/shell/auto-refresh';
-import { CardSkeleton } from '@/components/shell/card-skeleton';
 import { SharingPanel } from '@/components/sharing/sharing-panel';
 import { Skeleton } from '@/components/ui/skeleton';
 import { requireUser } from '@/lib/session';

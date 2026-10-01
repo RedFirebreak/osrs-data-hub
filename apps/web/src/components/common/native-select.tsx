@@ -1,10 +1,10 @@
 /**
  * The browser's own <select>, styled like Input: for long or grouped lists (time zones) and for
  * small forms where the platform's picker is the better one (a key's expiry). The Radix Select
- * (select.tsx) is the one with custom items. Hand-written (not a shadcn component).
+ * (ui/select.tsx) is the one with custom items.
  */
 import * as React from 'react';
-import { cn } from 'cn';
+import { cn } from '@/lib/utils';
 
 function NativeSelect({ className, ...props }: React.ComponentProps<'select'>) {
   return (

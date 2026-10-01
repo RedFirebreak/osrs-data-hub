@@ -10,6 +10,8 @@ import { LoaderCircleIcon } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useId, useMemo, useState } from 'react';
 import { toast } from 'sonner';
+import { FieldError } from '@/components/common/field-error';
+import { NativeSelect } from '@/components/common/native-select';
 import { useLiveControls } from '@/components/live/live-provider';
 import { useHydrated } from '@/components/time/use-now';
 import { Button } from '@/components/ui/button';
@@ -22,9 +24,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
-import { FieldError } from '@/components/ui/field-error';
 import { Label } from '@/components/ui/label';
-import { NativeSelect } from '@/components/ui/native-select';
 import { Switch } from '@/components/ui/switch';
 import {
   apiErrorDetails,

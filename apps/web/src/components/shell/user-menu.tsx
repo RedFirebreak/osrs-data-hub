@@ -13,7 +13,7 @@ import { useTheme } from 'next-themes';
 import Link from 'next/link';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { UserAvatar } from '@/components/account/user-avatar';
+import { UserAvatar } from '@/components/common/user-avatar';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,

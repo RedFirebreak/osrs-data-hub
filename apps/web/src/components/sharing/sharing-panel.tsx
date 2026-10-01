@@ -28,7 +28,7 @@ import {
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useId, useRef, useState } from 'react';
-import { UserAvatar } from '@/components/account/user-avatar';
+import { UserAvatar } from '@/components/common/user-avatar';
 import { RelativeTime } from '@/components/time/relative-time';
 import {
   AlertDialog,

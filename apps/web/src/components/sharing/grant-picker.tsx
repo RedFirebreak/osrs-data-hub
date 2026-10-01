@@ -8,10 +8,10 @@ import type { ActiveMember, SharingSettings } from '@hub/server';
 import type { Category } from '@hub/core';
 import { LoaderCircleIcon, RotateCwIcon, SearchIcon, UserPlusIcon } from 'lucide-react';
 import { useId, useState } from 'react';
+import { UserAvatar } from '@/components/common/user-avatar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { UserAvatar } from '@/components/account/user-avatar';
 import { grantCandidates } from './sharing-model';
 
 /** Rows the list renders; a longer match list asks for a narrower filter. */
