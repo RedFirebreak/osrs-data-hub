@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { feedEvent } from '@/components/live/test-fixtures';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { EventFeed, lootValue, valueTone } from './event-feed';
-import { eventIconFor } from './event-icon';
+import { EventIcon } from './event-icon';
 
 function render(node: React.ReactNode): string {
   return renderToStaticMarkup(<TooltipProvider>{node}</TooltipProvider>);
@@ -65,8 +65,10 @@ describe('event helpers', () => {
   });
 
   it('falls back to the bell for unknown icon hints', () => {
-    expect(eventIconFor('gift')).not.toBe(eventIconFor('bell'));
-    expect(eventIconFor('nope')).toBe(eventIconFor('bell'));
-    expect(eventIconFor('constructor')).toBe(eventIconFor('bell'));
+    const bell = renderToStaticMarkup(<EventIcon icon="bell" />);
+    expect(bell).toContain('<svg');
+    expect(renderToStaticMarkup(<EventIcon icon="gift" />)).not.toBe(bell);
+    expect(renderToStaticMarkup(<EventIcon icon="nope" />)).toBe(bell);
+    expect(renderToStaticMarkup(<EventIcon icon="constructor" />)).toBe(bell);
   });
 });
