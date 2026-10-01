@@ -10,11 +10,10 @@
  * (parseHistoryRange).
  */
 import { getDb } from '@hub/db';
-import { getLocationHistory } from '@hub/server';
-import { handleApi, json } from '@/lib/http';
+import { getLocationHistory, isPublicIdLike } from '@hub/server';
+import { accountNotFound, handleApi, json } from '@/lib/http';
 import { requireApiUser } from '@/lib/session';
-import { accountNotFound } from '../../history';
-import { isPublicIdShape, parseHistoryRange } from '../../query';
+import { parseHistoryRange } from '../../query';
 
 export async function GET(
   request: Request,
@@ -23,7 +22,7 @@ export async function GET(
   return handleApi(async () => {
     const { viewer } = await requireApiUser(request);
     const { publicId } = await ctx.params;
-    if (!isPublicIdShape(publicId)) throw accountNotFound();
+    if (!isPublicIdLike(publicId)) throw accountNotFound();
     const range = parseHistoryRange(request.url, new Date());
     const points = await getLocationHistory(getDb().db, viewer, publicId, range);
     if (points === null) throw accountNotFound();

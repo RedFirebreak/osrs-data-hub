@@ -117,11 +117,17 @@ function contentLength(headers: Headers): number | null {
 
 /**
  * The request body parsed as JSON, capped at `maxBytes` (default 64 KiB). Throws ApiError 413 when
- * larger and 400 `invalid_json` when it isn't JSON. Validate the result with zod (ZodError → 400).
+ * larger and 400 `invalid_json` when it isn't JSON; a request without a body is not JSON either,
+ * unless `emptyAs` says what it counts as (`{}` for a route whose body is optional). Validate the
+ * result with zod (ZodError → 400).
  */
-export async function readJson(request: Request, maxBytes = API_MAX_BODY_BYTES): Promise<unknown> {
-  const text = await readBodyCapped(request, maxBytes);
+export async function readJson(
+  request: Request,
+  opts: { maxBytes?: number; emptyAs?: unknown } = {},
+): Promise<unknown> {
+  const text = await readBodyCapped(request, opts.maxBytes ?? API_MAX_BODY_BYTES);
   if (text === null) throw new ApiError(413, 'payload_too_large', 'The request body is too large.');
+  if (opts.emptyAs !== undefined && text.trim() === '') return opts.emptyAs;
   try {
     return JSON.parse(text) as unknown;
   } catch {
@@ -185,6 +191,15 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * The one 404 for an account, for the UI's routes and the public API alike: an unknown id, an id
+ * that can't be one, an account the viewer or key can't see and one whose category they can't read
+ * all look exactly alike (D-70), so existence never leaks.
+ */
+export function accountNotFound(): ApiError {
+  return new ApiError(404, 'not_found', 'Account not found.');
+}
+
 const TYPED_ERROR_STATUS = { not_found: 404, forbidden: 403, invalid: 400 } as const;
 
 /**
@@ -217,20 +232,20 @@ export async function handleApi(fn: () => Response | Promise<Response>): Promise
 /** The JSON Response handleApi returns for `err` (exported for handlers that catch themselves). */
 export function errorResponse(err: unknown): Response {
   if (err instanceof ApiError) {
-    return apiErrorJson(err.status, err.code, err.message, err.headers, err.details);
+    return errorJson(err.status, err.code, err.message, err.headers, err.details);
   }
   if (err instanceof SharingError || err instanceof AdminError || err instanceof SelfDeleteError) {
-    return apiErrorJson(TYPED_ERROR_STATUS[err.code], err.code, err.message);
+    return errorJson(TYPED_ERROR_STATUS[err.code], err.code, err.message);
   }
   if (err instanceof ServerApiError) {
     return err.code === 'not_found'
-      ? apiErrorJson(404, 'not_found', err.message)
-      : apiErrorJson(400, 'invalid_request', err.message);
+      ? errorJson(404, 'not_found', err.message)
+      : errorJson(400, 'invalid_request', err.message);
   }
   if (err instanceof ApiKeyError) {
     switch (err.code) {
       case 'invalid':
-        return apiErrorJson(
+        return errorJson(
           400,
           'invalid_request',
           err.message,
@@ -238,9 +253,9 @@ export function errorResponse(err: unknown): Response {
           err.issues.length > 0 ? err.issues : undefined,
         );
       case 'limit':
-        return apiErrorJson(409, 'limit', err.message);
+        return errorJson(409, 'limit', err.message);
       case 'not_found':
-        return apiErrorJson(404, 'not_found', err.message);
+        return errorJson(404, 'not_found', err.message);
     }
   }
   if (err instanceof ZodError) {
@@ -248,19 +263,19 @@ export function errorResponse(err: unknown): Response {
       path: issue.path.map(String).join('.'),
       message: issue.message,
     }));
-    return apiErrorJson(400, 'invalid_request', 'The request is invalid.', undefined, details);
+    return errorJson(400, 'invalid_request', 'The request is invalid.', undefined, details);
   }
   const log = getLogger();
   if (isAuthApiError(err)) {
     const status = typeof err.statusCode === 'number' ? err.statusCode : 500;
     const code = (err.body as { code?: unknown } | undefined)?.code;
-    if (status === 401) return apiErrorJson(401, 'unauthorized', 'Sign in to the hub first.');
+    if (status === 401) return errorJson(401, 'unauthorized', 'Sign in to the hub first.');
     if (status >= 500) {
       // Better Auth has logged the cause itself; it doesn't hand it on.
       log.warn({ authCode: typeof code === 'string' ? code : undefined }, 'api: auth unavailable');
       return unavailable();
     }
-    return apiErrorJson(status, 'invalid_request', 'The request is invalid.');
+    return errorJson(status, 'invalid_request', 'The request is invalid.');
   }
   const pgCode = pgErrorCode(err);
   if (isTransientDbError(err)) {
@@ -269,7 +284,7 @@ export function errorResponse(err: unknown): Response {
   }
   if (isDataDbError(err)) {
     log.warn({ pgCode, error: safeDbErrorMessage(err) }, 'api: request rejected by the database');
-    return apiErrorJson(400, 'invalid_request', 'The request is invalid.');
+    return errorJson(400, 'invalid_request', 'The request is invalid.');
   }
   // DB-3: a query error's message and stack carry every bound parameter; log them only for errors
   // that don't wrap a driver error.
@@ -283,17 +298,18 @@ export function errorResponse(err: unknown): Response {
     },
     'api: unhandled error',
   );
-  return apiErrorJson(500, 'internal_error', 'Something went wrong on the hub.');
+  return errorJson(500, 'internal_error', 'Something went wrong on the hub.');
 }
 
 /** 503 + Retry-After (whole seconds, PLUGIN-5): the client may simply try again. */
 function unavailable(): Response {
-  return apiErrorJson(503, 'unavailable', 'The hub is busy, try again in a moment.', {
+  return errorJson(503, 'unavailable', 'The hub is busy, try again in a moment.', {
     'Retry-After': String(API_RETRY_AFTER_SECONDS),
   });
 }
 
-function apiErrorJson(
+/** An error response `{ error: { code, message } }`, plus `details` when given. */
+export function errorJson(
   status: number,
   code: string,
   message: string,

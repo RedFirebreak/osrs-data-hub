@@ -37,7 +37,7 @@ import {
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { Suspense, cache } from 'react';
-import { isPublicIdShape } from '@/app/api/app/accounts/query';
+import { isPublicIdLike as isPublicIdShape } from '@hub/server';
 import { AccountHeader } from '@/components/account/account-header';
 import { AccountSkeleton } from '@/components/account/account-skeleton';
 import { ActivityContent } from '@/components/account/activity-section';

@@ -40,10 +40,9 @@ import {
   type ApiRateHeaders,
 } from '@hub/server';
 import { connection } from 'next/server';
-import { clientIp, handleApi } from '@/lib/http';
+import { clientIp, errorJson, handleApi } from '@/lib/http';
 import { withCors } from './cors';
 import { apiRouteGroup, measureApiRequest } from './metrics';
-import { v1Error } from './respond';
 
 const g = globalThis as unknown as { __hubApiLimits?: ApiLimits };
 
@@ -87,7 +86,7 @@ export async function withApiKey(
     if (!auth.ok) {
       getMetrics().apiAuthFailures.inc({ reason: auth.reason });
       if (auth.reason !== 'missing') recordAuthFailure(limits, ip);
-      return v1Error(401, 'unauthorized', UNAUTHORIZED_MESSAGE, { 'WWW-Authenticate': 'Bearer' });
+      return errorJson(401, 'unauthorized', UNAUTHORIZED_MESSAGE, { 'WWW-Authenticate': 'Bearer' });
     }
 
     const limit = checkApiRate(limits, auth.principal.keyId, {
@@ -104,7 +103,7 @@ export async function withApiKey(
 function rateLimited(limit: 'key' | 'snapshot' | 'auth_ip', retryAfterSeconds: number): Response {
   getMetrics().apiRateLimited.inc({ limit });
   const seconds = Math.max(1, Math.ceil(retryAfterSeconds));
-  return v1Error(429, 'rate_limited', `Too many requests: retry in ${seconds} s.`, {
+  return errorJson(429, 'rate_limited', `Too many requests: retry in ${seconds} s.`, {
     'Retry-After': String(seconds),
   });
 }

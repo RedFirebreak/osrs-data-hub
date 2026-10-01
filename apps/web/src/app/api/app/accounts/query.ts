@@ -2,74 +2,64 @@
  * Query-string parsing for the account read routes (/api/app/accounts/[publicId]/* and
  * /api/app/feed). Strict for our own API (D-10): a malformed value is a 400 `invalid_request` with
  * field errors (a ZodError, mapped by handleApi), never silently replaced by a default. Parameters
- * the routes don't know are ignored, as query strings usually are.
+ * the routes don't know are ignored, as query strings usually are. The primitives (an ISO instant,
+ * an account id, the range rule) are the public API's (lib/query.ts, @hub/server resolveRange); the
+ * defaults here are the UI's own.
  */
-import { FEED_MAX_LIMIT, MAX_SERIES_SKILLS, type HistoryRange, type Resolution } from '@hub/server';
+import {
+  FEED_MAX_LIMIT,
+  MAX_SERIES_SKILLS,
+  ApiError as ServerApiError,
+  XP_RESOLUTIONS,
+  resolveRange,
+  type HistoryRange,
+  type Resolution,
+} from '@hub/server';
 import { z } from 'zod';
-
-const DAY_MS = 24 * 60 * 60 * 1000;
+import { accountId, isoInstant, queryOf } from '@/lib/query';
 
 /** The window a history route covers when the request leaves `from` out: the 30 days before `to`. */
 export const DEFAULT_HISTORY_DAYS = 30;
-
-/** ISO-8601 with an offset or Z ("2026-09-29T10:00:00Z", "…+02:00"); a date alone is refused. */
-const isoInstant = z.iso.datetime({ offset: true }).transform((s) => new Date(s));
 
 const rangeShape = {
   from: isoInstant.optional(),
   to: isoInstant.optional(),
 };
 
-/** Completes an optional from/to pair: to defaults to now, from to `defaultDays` before `to`. */
+/**
+ * Completes an optional from/to pair by the API's rule (resolveRange): `to` defaults to now, `from`
+ * to `defaultDays` before `to`, and `from` may not be after `to`. Its refusal becomes a field error
+ * on `from`, like every other malformed value here.
+ */
 function completeRange(
   v: { from?: Date | undefined; to?: Date | undefined },
   now: Date,
   defaultDays: number,
+  ctx: z.RefinementCtx,
 ): HistoryRange {
-  const to = v.to ?? now;
-  const from = v.from ?? new Date(to.getTime() - defaultDays * DAY_MS);
-  return { from, to };
-}
-
-const fromNotAfterTo = {
-  message: '`from` must not be after `to`',
-  path: ['from'],
-};
-
-const PUBLIC_ID_PATTERN = /^[A-Za-z0-9]{1,64}$/;
-
-/**
- * Whether `publicId` can be an account's public id at all (D-46: base62; up to 64 characters, the
- * read models' own cap). Anything else matches no account, so pages and routes answer it like an
- * unknown id (404) without a query: a NUL character (`%00` in the path, decoded by Next) would
- * otherwise reach Postgres, which refuses it in any text parameter (22021 invalid byte sequence),
- * turning a not-found into a 400 or an error page.
- */
-export function isPublicIdShape(publicId: unknown): publicId is string {
-  return typeof publicId === 'string' && PUBLIC_ID_PATTERN.test(publicId);
-}
-
-/** The query parameters as an object (a repeated key keeps its last value). */
-function paramsOf(url: string | URL): Record<string, string> {
-  return Object.fromEntries(new URL(url).searchParams);
+  try {
+    return resolveRange(v, now, defaultDays);
+  } catch (err) {
+    if (!(err instanceof ServerApiError)) throw err;
+    ctx.addIssue({ code: 'custom', path: ['from'], message: err.message });
+    return z.NEVER;
+  }
 }
 
 /**
- * `?from=ISO&to=ISO` of the history route (locations). Both optional:
- * `to` defaults to `now`, `from` to DEFAULT_HISTORY_DAYS before `to`. Throws a ZodError (→ 400) for
- * a value that isn't an ISO instant, or `from` after `to`.
+ * `?from=ISO&to=ISO` of the history route (locations). Both optional: `to` defaults to `now`, `from`
+ * to DEFAULT_HISTORY_DAYS before `to`. Throws a ZodError (→ 400) for a value that isn't an ISO
+ * instant, or `from` after `to`.
  */
 export function parseHistoryRange(
   url: string | URL,
   now: Date,
   defaultDays = DEFAULT_HISTORY_DAYS,
 ): HistoryRange {
-  const p = paramsOf(url);
   return z
     .object(rangeShape)
-    .transform((v) => completeRange(v, now, defaultDays))
-    .refine((r) => r.from.getTime() <= r.to.getTime(), fromNotAfterTo)
-    .parse({ from: p.from, to: p.to });
+    .transform((v, ctx) => completeRange(v, now, defaultDays, ctx))
+    .parse(queryOf(url));
 }
 
 /** A skill name as the plugin sends it ("Attack", "Overall"); unknown names are left out later. */
@@ -91,7 +81,6 @@ export interface XpQuery extends HistoryRange {
  * like parseHistoryRange; resolution defaults to 'auto'. Throws a ZodError (→ 400) otherwise.
  */
 export function parseXpQuery(url: string | URL, now: Date): XpQuery {
-  const p = paramsOf(url);
   return z
     .object({
       skills: z
@@ -105,16 +94,15 @@ export function parseXpQuery(url: string | URL, now: Date): XpQuery {
             .max(MAX_SERIES_SKILLS, `at most ${MAX_SERIES_SKILLS} skills`)
             .transform((names) => [...new Set(names)]),
         ),
-      resolution: z.enum(['auto', '5m', '1h', '1d']).default('auto'),
+      resolution: z.enum(XP_RESOLUTIONS).default('auto'),
       ...rangeShape,
     })
-    .transform(({ skills, resolution, from, to }) => ({
+    .transform(({ skills, resolution, from, to }, ctx) => ({
       skills,
       resolution,
-      ...completeRange({ from, to }, now, DEFAULT_HISTORY_DAYS),
+      ...completeRange({ from, to }, now, DEFAULT_HISTORY_DAYS, ctx),
     }))
-    .refine((q) => q.from.getTime() <= q.to.getTime(), fromNotAfterTo)
-    .parse({ skills: p.skills, resolution: p.resolution, from: p.from, to: p.to });
+    .parse(queryOf(url));
 }
 
 /** Stored event types: lower_snake for known ones, unknown plugin types as sent (camelCase). */
@@ -136,10 +124,9 @@ export interface FeedQuery {
  * value; an account id that matches nothing is not an error (the feed is just empty).
  */
 export function parseFeedQuery(url: string | URL): FeedQuery {
-  const p = paramsOf(url);
   const q = z
     .object({
-      account: z.string().regex(PUBLIC_ID_PATTERN, 'not an account id').optional(),
+      account: accountId.optional(),
       types: z
         .string()
         .optional()
@@ -158,7 +145,7 @@ export function parseFeedQuery(url: string | URL): FeedQuery {
         .pipe(z.number().int().min(1).max(FEED_MAX_LIMIT))
         .optional(),
     })
-    .parse({ account: p.account, types: p.types, before: p.before, limit: p.limit });
+    .parse(queryOf(url));
   const out: FeedQuery = {};
   if (q.account !== undefined) out.accountPublicId = q.account;
   if (q.types !== undefined) out.types = [...new Set(q.types)];

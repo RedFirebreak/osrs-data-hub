@@ -33,14 +33,9 @@ import {
   decodeEventsCursor,
 } from '@hub/server';
 import { z } from 'zod';
+import { accountId as accountIdItem, isoInstant as instant } from '@/lib/query';
 
 // ─── Parameters ────────────────────────────────────────────────────────────────────────────────
-
-/** What a public account id looks like (D-46: base62; the read models accept up to 64 characters). */
-export const PUBLIC_ID_PATTERN = /^[0-9A-Za-z]{1,64}$/;
-
-/** An account's public id in a path or list parameter. */
-const accountIdItem = z.string().regex(PUBLIC_ID_PATTERN, 'not an account id');
 
 /** The `{id}` path parameter. A value that can't be an id is answered 404 like an unknown one (D-70). */
 export const AccountPath = z.object({
@@ -49,11 +44,6 @@ export const AccountPath = z.object({
     example: '4fT9kQ2mXa7B',
   }),
 });
-
-/** ISO-8601 date-time with `Z` or an offset ("2026-09-29T10:00:00Z"); a date alone is refused. */
-const instant = z.iso
-  .datetime({ offset: true, error: 'must be an ISO-8601 date-time with Z or an offset' })
-  .transform((s) => new Date(s));
 
 /**
  * A comma-separated list (`skills=attack,defence`): entries trimmed, duplicates dropped (first kept),

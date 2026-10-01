@@ -44,7 +44,7 @@ column goes through `stripNul` (packages/core/src/json.ts); a remaining data err
 `text` can't hold NUL either: any text *parameter* carrying one is refused (`22021`), including a
 `WHERE public_id = $1` lookup. Next decodes `%00` in a path segment into a NUL before the route or
 page sees `params`, so `/accounts/abc%00def` turned a not-found into a 400 or an error page. Fix: check
-an id's shape before querying (apps/web `isPublicIdShape`) and answer anything else like an unknown
+an id's shape before querying (@hub/server `isPublicIdLike`) and answer anything else like an unknown
 id.
 
 *Source: `OBSERVED` (research sandbox, timescale/timescaledb:2.30.1-pg17, 2026-09-28; apps/web account

@@ -20,11 +20,10 @@ import { getDb } from '@hub/db';
 import { getRawPayload } from '@hub/server';
 import { z } from 'zod';
 import { ApiError, assertSameOrigin, handleApi, json } from '@/lib/http';
+import { isoInstant, parseQuery } from '@/lib/query';
 import { requireApiAdmin } from '../../guard';
 
-const querySchema = z.object({
-  receivedAt: z.iso.datetime({ offset: true }).transform((s) => new Date(s)),
-});
+const querySchema = z.object({ receivedAt: isoInstant });
 
 export async function GET(
   request: Request,
@@ -34,9 +33,7 @@ export async function GET(
     assertSameOrigin(request);
     const { user } = await requireApiAdmin(request);
     const { id } = await ctx.params;
-    const { receivedAt } = querySchema.parse({
-      receivedAt: new URL(request.url).searchParams.get('receivedAt') ?? undefined,
-    });
+    const { receivedAt } = parseQuery(request, querySchema);
     const body = await getRawPayload(getDb().db, { id, receivedAt, actorUserId: user.id });
     if (body === null) throw new ApiError(404, 'not_found', 'Payload not found.');
     return json(200, { payload: { id, receivedAt: receivedAt.toISOString(), body } });

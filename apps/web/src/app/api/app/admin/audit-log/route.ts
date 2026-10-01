@@ -11,6 +11,7 @@ import { listAuditLog } from '@hub/server';
 import { z } from 'zod';
 import { AUDIT_PAGE_SIZE } from '@/components/admin/admin-model';
 import { handleApi, json } from '@/lib/http';
+import { parseQuery } from '@/lib/query';
 import { requireApiAdmin } from '../guard';
 
 const AUDIT_LOG_MAX_LIMIT = 200;
@@ -31,11 +32,7 @@ const querySchema = z.object({
 export async function GET(request: Request): Promise<Response> {
   return handleApi(async () => {
     await requireApiAdmin(request);
-    const params = new URL(request.url).searchParams;
-    const query = querySchema.parse({
-      before: params.get('before') ?? undefined,
-      limit: params.get('limit') ?? undefined,
-    });
+    const query = parseQuery(request, querySchema);
     const limit = query.limit ?? AUDIT_PAGE_SIZE;
     const entries = await listAuditLog(getDb().db, { limit, before: query.before });
     const last = entries.at(-1);
