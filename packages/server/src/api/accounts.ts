@@ -2,44 +2,17 @@
  * GET /accounts and GET /accounts/{id} of the public API (handoff §13): the accounts a key may see,
  * and one account's current state by category.
  */
-import { CATEGORIES, accountTypeLabel, floorTo, normalizeName, type Category } from '@hub/core';
+import { CATEGORIES, normalizeName, type Category } from '@hub/core';
 import type { DbOrTx } from '@hub/db';
-import { loadPresence, toPresence, type AccountWithAccess } from '../accounts/load';
-import { apiAccountHash, loadApiAccount, loadApiAccounts, loadApiOwners } from './access';
-import type { ApiPrincipal } from './keys';
+import { loadPresence, toPresence } from '../accounts/load';
+import { accountIdentity, loadApiAccount, loadApiAccounts, loadApiOwners } from './access';
+import type { ApiPrincipal } from './key-auth';
 import { listParam } from './params';
-import {
-  itemsOf,
-  loadLatestRows,
-  locationOf,
-  presenceOf,
-  skillsOf,
-  vitalsFrom,
-  vitalsUpdatedAt,
-  type ApiEquipment,
-  type ApiInventory,
-  type ApiLocation,
-  type ApiPresence,
-  type ApiSkills,
-  type ApiVitals,
-  type LatestRow,
-} from './state';
-import type { ApiOwner, ApiSection } from './types';
-
-const DAY_MS = 24 * 60 * 60 * 1000;
+import { loadAccountSections, type ApiStateSections } from './state';
+import type { ApiAccountIdentity } from './types';
 
 /** One account in GET /accounts. */
-export interface ApiAccountSummary {
-  id: string;
-  name: string;
-  /** The plugin's salted accountHash; only for service keys, omitted otherwise (D-91). */
-  accountHash?: string;
-  /** IRONMAN varbit: 0 normal, 1 IM, 2 UIM, 3 HCIM, 4 GIM, 5 HCGIM, 6 UGIM; null when never sent. */
-  type: number | null;
-  /** "Normal", "Ironman", … ("Unknown" for null). */
-  typeLabel: string;
-  /** The account's owner as the guild page shows them; null without an active owner (D-90). */
-  owner: ApiOwner | null;
+export interface ApiAccountSummary extends ApiAccountIdentity {
   /** In game now; null when the key can't read the account's `activity`. */
   online: boolean | null;
   /** Last known world; null without `activity` (or when never sent). */
@@ -92,14 +65,8 @@ export async function apiListAccounts(
     const row = activity ? presence.get(account.id) : undefined;
     const online = activity ? (row ? toPresence(row, now).online : false) : null;
     if (params.online !== undefined && online !== params.online) continue;
-    const accountHash = apiAccountHash(principal, entry);
     out.push({
-      id: account.publicId,
-      name: account.name,
-      ...(accountHash !== undefined ? { accountHash } : {}),
-      type: account.accountType,
-      typeLabel: accountTypeLabel(account.accountType),
-      owner: owners.get(account.id) ?? null,
+      ...accountIdentity(principal, entry, owners),
       online,
       world: row?.world ?? null,
       lastSeen: activity ? (row?.lastSeen ?? account.lastSeen).toISOString() : null,
@@ -109,43 +76,22 @@ export async function apiListAccounts(
 }
 
 /**
- * One account's current state (GET /accounts/{id}). Each section follows ApiSection: present with
- * `shared: true` and its data, present with `shared: false` when the plugin never sent it, and
- * OMITTED (the key doesn't hold the category on this account) — see ApiSection.
+ * One account's current state (GET /accounts/{id}). Each section (ApiStateSections) follows
+ * ApiSection: present with `shared: true` and its data, present with `shared: false` when the plugin
+ * never sent it, and OMITTED (the key doesn't hold the category on this account) — see ApiSection.
  */
-export interface ApiAccountDetail {
-  id: string;
-  name: string;
-  /** The plugin's salted accountHash; only for service keys, omitted otherwise (D-91). */
-  accountHash?: string;
-  type: number | null;
-  typeLabel: string;
-  /** The account's owner as the guild page shows them; null without an active owner (D-90). */
-  owner: ApiOwner | null;
+export interface ApiAccountDetail extends ApiAccountIdentity, ApiStateSections {
   /** When the hub first saw the account. */
   firstSeen: string;
   /** What this key may read on this account: its categories ∩ what the owner shares with its creator. */
   categories: Category[];
-  /** `activity`; `updatedAt` = when the hub last heard from the account. */
-  presence?: ApiSection<ApiPresence>;
-  /** `activity`. */
-  vitals?: ApiSection<ApiVitals>;
-  /** `stats`. */
-  skills?: ApiSection<ApiSkills>;
-  /** `location_live`; its `updatedAt` is exact (a live position is presence by nature). */
-  location?: ApiSection<ApiLocation>;
-  /** `equipment`. */
-  equipment?: ApiSection<ApiEquipment>;
-  /** `inventory`. */
-  inventory?: ApiSection<ApiInventory>;
 }
 
 /**
  * The current state of one account by category, or null when the key may not see it (unknown, out
  * of scope, none of the key's categories shared with its creator: the web answers all with the same
- * 404, D-70). Sections of categories the key lacks are omitted. Without `activity`, the `updatedAt`
- * of skills, equipment and inventory is cut to the UTC day: the plugin sends them with every periodic
- * update, so the exact time would be the last-seen time the owner didn't share (D-50).
+ * 404, D-70). Sections of categories the key lacks are omitted, and without `activity` the
+ * `updatedAt` of skills, equipment and inventory carries only the UTC day (D-50): see accountSections.
  */
 export async function apiGetAccount(
   db: DbOrTx,
@@ -155,64 +101,15 @@ export async function apiGetAccount(
 ): Promise<ApiAccountDetail | null> {
   const entry = await loadApiAccount(db, principal, id);
   if (!entry) return null;
-  const can = (c: Category) => entry.access.categories.has(c);
-  const rows = await loadLatestRows(db, [entry.account.id], {
-    skills: can('stats'),
-    equipment: can('equipment'),
-    inventory: can('inventory'),
-  });
-  const owners = await loadApiOwners(db, [entry]);
-  return accountDetail(entry, rows.get(entry.account.id), now, {
-    owner: owners.get(entry.account.id) ?? null,
-    accountHash: apiAccountHash(principal, entry),
-  });
-}
-
-function accountDetail(
-  entry: AccountWithAccess,
-  row: LatestRow | undefined,
-  now: Date,
-  identity: { owner: ApiOwner | null; accountHash: string | undefined },
-): ApiAccountDetail {
   const { account, access } = entry;
-  const can = (c: Category) => access.categories.has(c);
-  // See apiGetAccount: without activity, only the day of sections sent with every update (D-50).
-  const stamp = (at: Date | null) => (at === null || can('activity') ? at : floorTo(at, DAY_MS));
-  const out: ApiAccountDetail = {
-    id: account.publicId,
-    name: account.name,
-    ...(identity.accountHash !== undefined ? { accountHash: identity.accountHash } : {}),
-    type: account.accountType,
-    typeLabel: accountTypeLabel(account.accountType),
-    owner: identity.owner,
+  const sections = await loadAccountSections(db, account.id, access.categories, now);
+  const owners = await loadApiOwners(db, [entry]);
+  return {
+    ...accountIdentity(principal, entry, owners),
     firstSeen: account.firstSeen.toISOString(),
-    categories: CATEGORIES.filter(can),
+    categories: CATEGORIES.filter((c) => access.categories.has(c)),
+    ...sections,
   };
-  if (can('activity')) {
-    out.presence = section(row?.lastSeen ?? null, row ? presenceOf(row, now) : null);
-    out.vitals = section(row ? vitalsUpdatedAt(row) : null, row ? vitalsFrom(row) : null);
-  }
-  if (can('stats')) {
-    out.skills = section(stamp(row?.skillsUpdatedAt ?? null), row ? skillsOf(row) : null);
-  }
-  if (can('location_live')) {
-    out.location = section(row?.locationUpdatedAt ?? null, row ? locationOf(row, now) : null);
-  }
-  if (can('equipment')) {
-    const at = row?.equipmentUpdatedAt ?? null;
-    out.equipment = section(stamp(at), row ? itemsOf(row.equipment, at) : null);
-  }
-  if (can('inventory')) {
-    const at = row?.inventoryUpdatedAt ?? null;
-    out.inventory = section(stamp(at), row ? itemsOf(row.inventory, at) : null);
-  }
-  return out;
-}
-
-/** A shared section when there is data and a time, else "not shared". */
-function section<T extends object>(updatedAt: Date | null, data: T | null): ApiSection<T> {
-  if (updatedAt === null || data === null) return { shared: false, updatedAt: null };
-  return { ...data, shared: true, updatedAt: updatedAt.toISOString() };
 }
 
 function byName(a: string, b: string): number {

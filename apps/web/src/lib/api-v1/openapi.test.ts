@@ -8,8 +8,8 @@ import { parseConfig, setConfigForTests } from '@hub/core';
 import {
   API_RATE_LIMIT,
   EVENTS_MAX_LIMIT,
-  MAX_XP_ACCOUNTS,
-  MAX_XP_ACCOUNTS_SERVICE,
+  MAX_BULK_ACCOUNTS as MAX_XP_ACCOUNTS,
+  MAX_BULK_ACCOUNTS_SERVICE as MAX_XP_ACCOUNTS_SERVICE,
 } from '@hub/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GET, OPTIONS } from '@/app/api/v1/openapi.json/route';

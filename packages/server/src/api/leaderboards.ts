@@ -7,16 +7,11 @@
 import { events, lootRankedEvent, type DbOrTx } from '@hub/db';
 import { and, desc, gte, inArray, lte } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
-import {
-  LEADERBOARD_SIZE,
-  getGainsLeaderboards,
-  leaderboardStarts,
-  type LeaderboardPeriod,
-} from '../accounts/guild';
+import { getGainsLeaderboards, leaderboardStarts, type LeaderboardPeriod } from '../accounts/guild';
 import { EVENT_ROW_COLUMNS } from '../live/load';
 import { apiRestriction, apiViewer } from './access';
 import { eventReadableAccounts, toApiEvents, type ApiEvent } from './events';
-import type { ApiPrincipal } from './keys';
+import type { ApiPrincipal } from './key-auth';
 import { enumParam, intParam } from './params';
 import { canonicalSkills } from './skills';
 import type { ApiAccountRef } from './types';
@@ -35,7 +30,7 @@ export interface ApiLeaderboardEntry {
 
 export interface ApiLeaderboard {
   skill: string;
-  /** Highest gain first, at most 10; only accounts that gained XP in the period. */
+  /** Highest gain first, at most LEADERBOARD_SIZE (10); only accounts that gained XP in the period. */
   entries: ApiLeaderboardEntry[];
 }
 
@@ -81,7 +76,7 @@ export async function apiLeaderboardGains(
     to: now.toISOString(),
     leaderboards: selected.map((board) => ({
       skill: board.skill,
-      entries: board.entries.slice(0, LEADERBOARD_SIZE).map((e, i) => ({
+      entries: board.entries.map((e, i) => ({
         rank: i + 1,
         account: { id: e.publicId, name: e.name },
         gain: e.gain,

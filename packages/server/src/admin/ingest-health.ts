@@ -11,13 +11,17 @@
 import { compareVersions, parsePluginVersion } from '@hub/core';
 import { devices, users, type Db } from '@hub/db';
 import { eq, inArray, isNull, sql } from 'drizzle-orm';
+import { RECENT_REJECTION_MINUTES } from '../metrics';
 import type { RecentMinuteCounts } from '../recent-counts';
 
 const MINUTE_MS = 60_000;
 const HOUR_MS = 60 * MINUTE_MS;
 const DAY_MS = 24 * HOUR_MS;
-/** Minutes in the per-minute series (the current, partial minute is the last one). */
-export const HEALTH_MINUTES = 60;
+/**
+ * Minutes in the per-minute series (the current, partial minute is the last one): as many as the
+ * process keeps its unarchived responses for, so the `rejected` counts cover the whole series.
+ */
+export const HEALTH_MINUTES = RECENT_REJECTION_MINUTES;
 const NOISY_DEVICES = 10;
 const TOP_SKIPPED_SECTIONS = 10;
 

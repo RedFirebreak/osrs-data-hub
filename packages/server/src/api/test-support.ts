@@ -3,7 +3,8 @@
  */
 import { CATEGORIES, type Category } from '@hub/core';
 import type { Db } from '@hub/db';
-import { authenticateApiKey, createApiKey, type ApiKeyInfo, type ApiPrincipal } from './keys';
+import { authenticateApiKey, type ApiPrincipal } from './key-auth';
+import { createApiKey, type ApiKeyInfo } from './keys';
 
 export interface TestKey {
   key: string;

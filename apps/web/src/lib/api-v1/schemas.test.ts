@@ -6,8 +6,8 @@
 import {
   EVENTS_MAX_LIMIT,
   MAX_LIST_PARAM,
-  MAX_XP_ACCOUNTS,
-  MAX_XP_ACCOUNTS_SERVICE,
+  MAX_BULK_ACCOUNTS as MAX_XP_ACCOUNTS,
+  MAX_BULK_ACCOUNTS_SERVICE as MAX_XP_ACCOUNTS_SERVICE,
   encodeEventsCursor,
   isPublicIdLike,
 } from '@hub/server';
