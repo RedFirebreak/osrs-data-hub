@@ -12,7 +12,7 @@ import {
   type UserStatus,
 } from '@hub/db';
 import { and, asc, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
-import { audit } from '../audit';
+import { SYSTEM_ACTOR, audit } from '../audit';
 import { getMetrics, type HubMetrics } from '../metrics';
 import {
   auditTransfer,
@@ -246,7 +246,8 @@ async function unhideOwnAccounts(
 /** Attribution: an explicit label wins; the system otherwise, unless a user acted. */
 function auditActor(opts: { actorUserId?: string | null; actorLabel?: string }): AuditActor {
   const actorUserId = opts.actorUserId ?? null;
-  return { actorUserId, actorLabel: opts.actorLabel ?? (actorUserId ? null : 'system') };
+  const fallback = actorUserId ? null : SYSTEM_ACTOR.actorLabel;
+  return { actorUserId, actorLabel: opts.actorLabel ?? fallback };
 }
 
 interface GraceState {

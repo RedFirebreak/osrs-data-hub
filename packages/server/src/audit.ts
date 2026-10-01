@@ -32,6 +32,12 @@ export const AUDIT_ACTIONS = [
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
+/**
+ * The actor of what the hub does by itself (grace expiry, the orphan purge, an ownership move made
+ * by ingest or offboarding): no user, labelled 'system'.
+ */
+export const SYSTEM_ACTOR = { actorUserId: null, actorLabel: 'system' } as const;
+
 export interface AuditEntry {
   actorUserId?: string | null;
   /** 'system' | 'worker' | a display-name snapshot. */
