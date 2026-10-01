@@ -289,6 +289,8 @@ const g = globalThis as unknown as { __hubLiveListener?: LiveListener };
  */
 export function ensureLiveListener(): LiveListener {
   if (!g.__hubLiveListener) {
+    // From the environment, as getDb() reads it (not getConfig()): the LISTEN connection and the
+    // pool then always name the same database, and instrumentation checks this variable before us.
     const connectionString = process.env.DATABASE_URL;
     if (!connectionString) throw new Error('DATABASE_URL is not set');
     g.__hubLiveListener = startLiveListener({
