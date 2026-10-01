@@ -11,8 +11,8 @@ import { GUILD_FEED_EVENTS, getGuildOverview, getUserSettings } from '@hub/serve
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
 import { EventTimeline } from '@/components/account/event-timeline';
-import { eventTypeOptions } from '@/components/account/event-types';
 import { SectionCard } from '@/components/account/section-card';
+import { eventTypeOptions } from '@/components/events/event-types';
 import { Leaderboards } from '@/components/guild/leaderboards';
 import { MemberList } from '@/components/guild/member-list';
 import { AutoRefresh } from '@/components/shell/auto-refresh';
