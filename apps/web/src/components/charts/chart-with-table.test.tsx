@@ -1,9 +1,11 @@
 /**
  * The two per-day charts as their markup: the chart element's label and the "Show as table"
- * alternative under it (the chart itself is client-only, so it is stubbed with its label).
+ * alternative under it, newest day first (the chart itself is client-only, so it is stubbed with its
+ * label).
  */
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
+import { ChartWithTable } from './chart-with-table';
 import { PlaytimeChart } from './playtime-chart';
 import { WealthChart } from './wealth-chart';
 
@@ -24,8 +26,30 @@ const row = (day: string, ...values: string[]) =>
   values.map((v) => `<td class="py-1 text-right">${v}</td>`).join('') +
   '</tr>';
 
+describe('ChartWithTable', () => {
+  it('lists the days newest first, whatever order the rows come in', () => {
+    const html = renderToStaticMarkup(
+      <ChartWithTable
+        option={() => ({})}
+        label="Things per day"
+        columns={['Day', 'Things']}
+        rows={[
+          { day: '2026-09-28', values: ['2'] },
+          { day: '2026-09-30', values: ['4'] },
+          { day: '2025-12-31', values: ['1'] },
+          { day: '2026-09-29', values: ['3'] },
+        ]}
+      />,
+    );
+    expect(html).toContain(
+      `<tbody>${row('2026-09-30', '4')}${row('2026-09-29', '3')}${row('2026-09-28', '2')}` +
+        `${row('2025-12-31', '1')}</tbody>`,
+    );
+  });
+});
+
 describe('PlaytimeChart', () => {
-  it('labels the chart with the total and lists the days oldest first', () => {
+  it('labels the chart with the total and lists the days newest first', () => {
     const html = renderToStaticMarkup(
       <PlaytimeChart
         className="mt-1"
@@ -40,7 +64,7 @@ describe('PlaytimeChart', () => {
         '<div role="img" aria-label="Playtime per day over the last 2 days, 1h 30m in total"></div>' +
         DETAILS +
         headings('Day', 'Played') +
-        `<tbody>${row('2026-09-28', '1h 30m')}${row('2026-09-29', '—')}</tbody>` +
+        `<tbody>${row('2026-09-29', '—')}${row('2026-09-28', '1h 30m')}</tbody>` +
         '</table></details></div>',
     );
   });

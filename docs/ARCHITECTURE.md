@@ -348,6 +348,9 @@ Rules every page and route follows:
   [API.md](API.md).
 - **Navigation.** The header shows the full navigation from the `lg` breakpoint (1024 px); narrower
   screens get the menu button, so six labelled items never wrap.
+- **Tables.** Rows that carry a date are listed newest first. A chart keeps time running left to
+  right; its "Show as table" alternative is sorted by `ChartWithTable` itself, whatever order the rows
+  come in, so every per-day chart follows the rule.
 
 The web app's Vitest project covers every route handler and page-level access rule against a real
 database; Playwright covers the wizard end to end (`pnpm test:e2e`, D-13) and takes screenshots of every
