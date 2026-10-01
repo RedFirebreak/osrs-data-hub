@@ -141,6 +141,9 @@ const EnvSchema = z.object({
   OSRS_ICONS_URL: iconsUrl,
 });
 
+/** Every environment variable the config reads (the admin Configuration page lists them all). */
+export const CONFIG_ENV_NAMES: readonly string[] = Object.keys(EnvSchema.shape);
+
 /**
  * Env → the config the code reads. A variable gets its field name here and nowhere else: HubConfig
  * is this function's return type, so a new variable is one line in EnvSchema and one line here.
