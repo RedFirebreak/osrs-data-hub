@@ -209,4 +209,6 @@ never merged and needs a look. Two repository settings carry this:
 - **Allow auto-merge** is on (Settings → General). Without it Renovate merges on its own next run
   instead, hours later.
 
-Merging is not releasing: an update reaches a deployment with the next release (OPERATIONS §10).
+Merging is not releasing: an update reaches a deployment with the next release. That one comes by
+itself: twice a week the Cut release workflow publishes a patch when a merged update changed what the
+images are built from (D-99, OPERATIONS §10).

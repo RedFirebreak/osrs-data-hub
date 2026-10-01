@@ -3,10 +3,14 @@ name: Cut release
 # The release button (D-87): Actions → Cut release → Run workflow (on main) → patch, minor or major.
 # It computes the next version from the latest `v*` tag, creates the tag on main's head and a GitHub
 # Release with generated notes (the PRs merged since the previous tag), then publishes both images
-# through release.yml. Nothing is automatic on merge: one release per feature, when you say so.
+# through release.yml. Nothing is released on merge: one release per feature, when you say so.
 #
 # Guards: refuses to run from any branch but main, a head that is already tagged, or a head whose CI
 # run on main did not succeed. A tag pushed by hand still works and needs none of this.
+#
+# The schedule (D-99) is the same button pressed twice a week for the updates Renovate merges on its
+# own (D-97): a patch release when Renovate merged something the images are built from since the
+# latest tag, and nothing at all otherwise. It takes whatever else is on main with it.
 on:
   workflow_dispatch:
     inputs:
@@ -16,6 +20,12 @@ on:
         required: true
         default: patch
         options: [patch, minor, major]
+  schedule:
+    # Wednesday 15:00 and Sunday 09:00, Amsterdam time.
+    - cron: '0 15 * * 3'
+      timezone: Europe/Amsterdam
+    - cron: '0 9 * * 0'
+      timezone: Europe/Amsterdam
 
 # One release at a time; a second click queues.
 concurrency:
@@ -27,14 +37,18 @@ permissions:
 
 jobs:
   tag:
-    name: Tag the next ${{ inputs.bump }} version
+    name: Tag the next ${{ inputs.bump || 'patch' }} version
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       contents: write # push the tag, create the release
       actions: read # look up the CI run for this commit
+      pull-requests: read # look up the merged PRs labelled `breaking`
     outputs:
       tag: ${{ steps.next.outputs.tag }}
+    env:
+      # A scheduled run has no inputs and only ever cuts a patch.
+      BUMP: ${{ inputs.bump || 'patch' }}
     steps:
       - name: Only from main
         if: github.ref != 'refs/heads/main'
@@ -46,7 +60,56 @@ jobs:
         with:
           fetch-depth: 0 # all tags, to find the latest version
 
+      # Scheduled runs only (D-99). Every "no" is a quiet skip with the reason in the run summary, not
+      # a failure: the next run looks again. The steps below run unless this one said `release=false`.
+      - name: Is a scheduled release due
+        id: due
+        if: github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # A merged PR with this label holds scheduled releases back until a person has released it:
+          # a change a deployment has to act on must not go out as a patch (OPERATIONS §10).
+          BREAKING_LABEL: breaking
+        run: |
+          set -eu
+          skip() {
+            echo "Nothing released: $1" | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "release=false" >>"$GITHUB_OUTPUT"
+            exit 0
+          }
+
+          latest=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n1)
+          [ -n "$latest" ] || skip "there is no release yet; cut the first one by hand."
+          [ -z "$(git tag --points-at HEAD 'v*')" ] || skip "main's head is already released as $latest."
+
+          # Renovate's commits since the latest tag, minus the paths no image is built from: workflow
+          # pins, the Compose files' database and monitoring images, docs and dashboards.
+          bumps=$(git log "$latest..HEAD" --author='renovate\[bot\]' --format='- %s' -- . \
+                    ':(exclude).github' ':(exclude)docs' ':(exclude)ops' \
+                    ':(exclude)compose*.yaml' ':(exclude)*.md')
+          [ -n "$bumps" ] || skip "Renovate merged nothing the images are built from since $latest."
+
+          held=$(gh pr list --repo "$GITHUB_REPOSITORY" --state merged --base main \
+                   --label "$BREAKING_LABEL" --limit 100 --json number,mergeCommit \
+                   --jq '.[] | "\(.number) \(.mergeCommit.oid)"' |
+                 while read -r number sha; do
+                   if git merge-base --is-ancestor "$sha" HEAD &&
+                      ! git merge-base --is-ancestor "$sha" "$latest"; then
+                     printf '#%s ' "$number"
+                   fi
+                 done)
+          [ -z "$held" ] || skip "${held}is labelled '$BREAKING_LABEL' and not released yet. Cut that release with the button (minor or major)."
+
+          ok=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --branch main \
+                 --commit "$GITHUB_SHA" --json conclusion \
+                 --jq '[.[] | select(.conclusion == "success")] | length')
+          [ "${ok:-0}" -ge 1 ] || skip "CI has not succeeded on $GITHUB_SHA."
+
+          printf 'Releasing a patch after %s for:\n%s\n' "$latest" "$bumps" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "release=true" >>"$GITHUB_OUTPUT"
+
       - name: CI passed on this commit
+        if: steps.due.outputs.release != 'false'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -59,6 +122,7 @@ jobs:
 
       - name: Next version
         id: next
+        if: steps.due.outputs.release != 'false'
         run: |
           set -eu
           if [ -n "$(git tag --points-at HEAD 'v*')" ]; then
@@ -68,28 +132,31 @@ jobs:
           latest=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n1)
           latest=${latest:-v0.0.0}
           IFS=. read -r major minor patch <<<"${latest#v}"
-          case "${{ inputs.bump }}" in
+          case "$BUMP" in
             major) major=$((major + 1)); minor=0; patch=0 ;;
             minor) minor=$((minor + 1)); patch=0 ;;
             patch) patch=$((patch + 1)) ;;
           esac
           tag="v$major.$minor.$patch"
-          echo "Latest $latest, ${{ inputs.bump }} bump: $tag"
+          echo "Latest $latest, $BUMP bump: $tag"
           echo "tag=$tag" >>"$GITHUB_OUTPUT"
           echo "previous=$latest" >>"$GITHUB_OUTPUT"
 
       # The tag is annotated so `git describe` and the Releases page show who cut it and when. Pushed
       # with the workflow token, so it does not trigger release.yml itself: the publish job below does.
       - name: Create and push the tag
+        if: steps.due.outputs.release != 'false'
         env:
           TAG: ${{ steps.next.outputs.tag }}
+          CUT_BY: ${{ github.event_name == 'schedule' && 'the schedule' || github.actor }}
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git tag -a "$TAG" -m "$TAG (${{ inputs.bump }} release cut by ${{ github.actor }})"
+          git tag -a "$TAG" -m "$TAG ($BUMP release cut by $CUT_BY)"
           git push origin "refs/tags/$TAG"
 
       - name: GitHub Release with generated notes
+        if: steps.due.outputs.release != 'false'
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.next.outputs.tag }}
@@ -102,6 +169,8 @@ jobs:
   publish:
     name: Publish
     needs: tag
+    # No tag when a scheduled run found nothing to release.
+    if: needs.tag.outputs.tag != ''
     uses: ./.github/workflows/release.yml
     permissions:
       contents: read

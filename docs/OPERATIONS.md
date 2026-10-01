@@ -263,12 +263,23 @@ below changes the cluster too, so call it out in the PR.
 A release is a git tag `v<major>.<minor>.<patch>` on `main`; the Release workflow builds the two images
 for it and publishes them to GHCR as `<major>.<minor>.<patch>` and `<major>.<minor>` (D-87). Nothing is
 released on merge: cut one when a feature or fix is ready, one version per PR or a few PRs together.
+Dependency updates are the exception, they release themselves on a schedule.
 
 - **The button.** GitHub → Actions → **Cut release** → Run workflow, branch `main`, choose `patch`,
   `minor` or `major`. It computes the next version from the latest tag, tags `main`'s head, creates a
   GitHub Release whose notes list the PRs merged since the previous tag, and publishes both images. It
   refuses to run from another branch, on a commit that is already tagged, or on a commit whose CI run
   on `main` has not succeeded yet (wait for it, or fix it).
+- **The schedule.** The same workflow runs by itself on Wednesday at 15:00 and Sunday at 09:00
+  (Amsterdam time) for the updates Renovate merges on its own (D-99). It cuts a `patch` when Renovate
+  merged something the images are built from since the latest tag: a dependency, the lockfile, the
+  Dockerfile; not a workflow pin, a Compose image, docs or `ops/`. It releases `main`'s head, so a
+  feature or fix that was merged but not released yet goes out with it, as a patch. In every other
+  case it releases nothing and the run's summary says why: no such update, a head that is already
+  released, no green CI run on the head, or a held release (next item).
+- **The `breaking` label.** Put it on a PR that needs a `major` (see *Which bump*). While a merged PR
+  with that label is in no release, the schedule releases nothing; cut the release with the button and
+  it carries on.
 - **By hand,** the same thing without the guards: create a Release in the GitHub UI with a new tag, or
   `gh release create v0.2.0 --generate-notes`, or `git tag v0.2.0 && git push origin v0.2.0`. A tag
   pushed by a person triggers the Release workflow directly.
@@ -277,6 +288,9 @@ released on merge: cut one when a feature or fix is ready, one version per PR or
   step, an image contract in §9. Say so in the release notes; that is what the cluster's Renovate PR
   links to.
 - **Dry run.** Actions → **Release** → Run workflow on any branch builds both images without pushing.
+- **Old versions stay.** Nothing prunes the GHCR packages. They are public, so their storage and pulls
+  are free, and a deployment pinned to an older version, or rolling back to one, must still be able to
+  pull it.
 
 The cluster picks a new version up through its Renovate (§9); Compose deployments pull whatever tag
 their `compose.yaml` names, or build locally as before.
