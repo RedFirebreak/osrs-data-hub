@@ -193,7 +193,7 @@ hub is the second layer:
 | `events` | loot, level-ups, deaths, collection log, diaries, combat tasks, superiors | guild |
 | `activity` | online status, world, sessions and playtime, HP, prayer, spellbook | guild |
 | `location_live` | current coordinates | guild (D-82) |
-| `location_history` | the 30-day trail | guild (D-96) |
+| `location_history` | the trail of past positions (kept `LOCATION_RETENTION_DAYS`) | guild (D-96) |
 | `equipment` | current gear and its change log | guild (D-96) |
 | `inventory` | current inventory and wealth history | guild (D-96) |
 

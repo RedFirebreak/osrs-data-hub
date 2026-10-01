@@ -49,7 +49,8 @@ export const CATEGORY_LABELS: Readonly<Record<Category, { label: string; covers:
     covers: 'online status, world, sessions and playtime, HP, prayer, spellbook',
   },
   location_live: { label: 'Live location', covers: 'current coordinates (for the live map)' },
-  location_history: { label: 'Location history', covers: 'the 30-day trail' },
+  // No number of days: how long the trail is kept is LOCATION_RETENTION_DAYS (the privacy page says).
+  location_history: { label: 'Location history', covers: 'the trail of past positions' },
   equipment: { label: 'Equipment', covers: 'current gear and its change log' },
   inventory: { label: 'Inventory', covers: 'current inventory and wealth history' },
 };
