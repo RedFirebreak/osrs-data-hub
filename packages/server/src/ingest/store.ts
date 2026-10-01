@@ -49,7 +49,6 @@ import type { AccountRef } from './identity';
 import { lockAccount } from './lock';
 import { gameStateAfterShutdown } from './presence';
 
-export { ACCOUNT_LOCK_CLASS, lockAccount } from './lock';
 /**
  * Both local to the transaction and well under the plugin's 10 s read timeout (PLUGIN-4): a lock wait
  * fails with 55P03 and a slow statement with 57014, both answered 503 + Retry-After.

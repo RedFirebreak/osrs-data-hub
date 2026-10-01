@@ -32,7 +32,7 @@ import {
 import { and, eq, sql } from 'drizzle-orm';
 import { loadAccountAccess } from '../accounts/access';
 import { audit, type AuditAction } from '../audit';
-import { lockAccount as takeAccountLock } from '../ingest/store';
+import { lockAccount as takeAccountLock } from '../ingest/lock';
 import { setOwner, type OwnershipTransfer } from '../offboarding/accounts';
 import { SharingError } from './errors';
 
