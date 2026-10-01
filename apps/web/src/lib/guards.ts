@@ -1,12 +1,7 @@
 /**
- * Small type guards for values that arrive as `unknown` (JSON bodies, live messages, URL parameters).
- * No React, no browser APIs.
+ * Small guards for values that arrive as plain strings (URL parameters, ids in JSON bodies). No
+ * React, no browser APIs. The object guards (isRecord, isPlainObject) are @hub/core's.
  */
-
-/** A plain object (not null, not an array). */
-export function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

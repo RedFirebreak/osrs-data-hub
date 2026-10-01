@@ -1,10 +1,9 @@
+import { HOUR_MS } from '@hub/core';
 import { describe, expect, it } from 'vitest';
 import { playtimeByDay } from './playtime';
 
-const HOUR = 60 * 60 * 1000;
-
 function session(start: string, hours: number) {
-  return { startedAt: start, durationMs: hours * HOUR };
+  return { startedAt: start, durationMs: hours * HOUR_MS };
 }
 
 describe('playtimeByDay', () => {
@@ -14,9 +13,9 @@ describe('playtimeByDay', () => {
       { now: new Date('2026-09-29T12:00:00.000Z'), days: 3, timezone: 'UTC' },
     );
     expect(days).toEqual([
-      { day: '2026-09-27', ms: HOUR },
+      { day: '2026-09-27', ms: HOUR_MS },
       { day: '2026-09-28', ms: 0 },
-      { day: '2026-09-29', ms: 2 * HOUR },
+      { day: '2026-09-29', ms: 2 * HOUR_MS },
     ]);
   });
 
@@ -28,8 +27,8 @@ describe('playtimeByDay', () => {
       timezone: 'Europe/Amsterdam',
     });
     expect(days).toEqual([
-      { day: '2026-09-28', ms: HOUR },
-      { day: '2026-09-29', ms: 3 * HOUR },
+      { day: '2026-09-28', ms: HOUR_MS },
+      { day: '2026-09-29', ms: 3 * HOUR_MS },
     ]);
   });
 
@@ -41,7 +40,7 @@ describe('playtimeByDay', () => {
       timezone: 'Europe/Amsterdam',
     });
     expect(days).toEqual([
-      { day: '2026-10-25', ms: 25 * HOUR },
+      { day: '2026-10-25', ms: 25 * HOUR_MS },
       { day: '2026-10-26', ms: 0 },
     ]);
   });

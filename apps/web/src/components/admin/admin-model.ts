@@ -6,13 +6,12 @@
  * Only `import type` from @hub/server and @hub/db: the admin client components import this module,
  * and a value import would pull the server packages into the browser bundle (NEXT-12).
  */
+import { DAY_MS } from '@hub/core';
 import type { OffboardReason, UserStatus } from '@hub/db';
 import type { DeviceStatus, IngestMeta } from '@hub/server';
 import { AUDIT_PAGE_SIZE } from '@/lib/admin-rules';
 import type { FailureOptions } from '@/lib/api-client';
 import { isUuidLike } from '@/lib/guards';
-
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 // --- Navigation --------------------------------------------------------------------------------
 

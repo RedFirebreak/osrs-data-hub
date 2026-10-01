@@ -10,7 +10,7 @@
  *   hub's own `error.message` is shown for the statuses where it is written for the user. A feature
  *   keeps its own wording through FailureOptions.
  */
-import { isRecord } from './guards';
+import { isRecord } from '@hub/core';
 
 /** Shown when the request got no answer (offline, DNS, the hub is down). */
 export const UNREACHABLE_MESSAGE = "Couldn't reach the hub. Check your connection and try again.";

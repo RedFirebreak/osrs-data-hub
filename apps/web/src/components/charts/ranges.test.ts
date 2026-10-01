@@ -1,9 +1,8 @@
+import { DAY_MS } from '@hub/core';
 import { describe, expect, it } from 'vitest';
 import { XP_RANGES, rangeWindow, xpQuery } from './ranges';
 
 const NOW = new Date('2026-09-29T12:00:00.000Z');
-const HOUR = 60 * 60 * 1000;
-const DAY = 24 * HOUR;
 
 describe('rangeWindow', () => {
   it('maps each preset to a window ending now', () => {
@@ -15,11 +14,11 @@ describe('rangeWindow', () => {
       }),
     );
     expect(spans).toEqual({
-      '24h': DAY,
-      '7d': 7 * DAY,
-      '30d': 30 * DAY,
-      '90d': 90 * DAY,
-      '1y': 365 * DAY,
+      '24h': DAY_MS,
+      '7d': 7 * DAY_MS,
+      '30d': 30 * DAY_MS,
+      '90d': 90 * DAY_MS,
+      '1y': 365 * DAY_MS,
     });
   });
 
@@ -35,7 +34,7 @@ describe('rangeWindow', () => {
   it("'all' without a usable first-seen time goes ten years back", () => {
     for (const firstSeen of [undefined, null, 'not a date']) {
       const w = rangeWindow('all', NOW, firstSeen);
-      expect(NOW.getTime() - w.from.getTime()).toBe(10 * 365 * DAY);
+      expect(NOW.getTime() - w.from.getTime()).toBe(10 * 365 * DAY_MS);
     }
   });
 

@@ -3,6 +3,7 @@
  * Relative times ("3 min ago") use <RelativeTime>; these are for the fixed parts (a session's start,
  * "on the hub since"). Server- and client-safe.
  */
+import { DAY_MS } from '@hub/core';
 
 /** "29 Sep 2026, 14:05"-style text of `at` in `timezone` (UTC for an unknown zone); null if invalid. */
 export function formatInZone(
@@ -60,7 +61,7 @@ export function dayOnlyLabel(
   if (!Number.isFinite(date.getTime()) || !Number.isFinite(current.getTime())) return null;
   const day = localDate(date, timezone);
   const today = localDate(current, timezone);
-  const daysAgo = Math.round((Date.parse(today) - Date.parse(day)) / (24 * 60 * 60 * 1000));
+  const daysAgo = Math.round((Date.parse(today) - Date.parse(day)) / DAY_MS);
   if (daysAgo === 0) return { day, text: 'today' };
   if (daysAgo === 1) return { day, text: 'yesterday' };
   const options: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short', timeZone: 'UTC' };

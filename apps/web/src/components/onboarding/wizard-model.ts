@@ -20,8 +20,9 @@
  *
  * Only `import type` from @hub/server: this module is bundled for the browser (NEXT-12).
  */
+import { isRecord } from '@hub/core';
 import type { DeviceFirstData, DeviceMessage, PairingMessage } from '@hub/server';
-import { isRecord, isUuidLike } from '@/lib/guards';
+import { isUuidLike } from '@/lib/guards';
 
 export type WizardStep = 1 | 2 | 3 | 4;
 

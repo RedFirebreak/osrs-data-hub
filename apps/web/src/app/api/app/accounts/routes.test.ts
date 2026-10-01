@@ -3,7 +3,7 @@
  * Auth (401), visibility and category gating (404, existence never leaks), query validation (400)
  * and the happy paths over seeded rows.
  */
-import { CATEGORIES } from '@hub/core';
+import { CATEGORIES, HOUR_MS } from '@hub/core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { withTestDb, type WebTestContext } from '@/lib/test-utils';
 import { GET as getLocations } from './[publicId]/locations/route';
@@ -37,8 +37,6 @@ async function signedIn(opts: Parameters<WebTestContext['seedUser']>[0] = {}) {
   const userId = await ctx.seedUser(opts);
   return { userId, cookie: await ctx.signIn(userId) };
 }
-
-const HOUR = 60 * 60 * 1000;
 
 describe('GET /api/app/accounts/[publicId]/xp', () => {
   let owner: { userId: string; cookie: string };
@@ -163,7 +161,7 @@ describe('GET /api/app/accounts/[publicId]/locations', () => {
       y: 3218,
       world: 302,
     });
-    await seed.location(account.id, new Date(now - 20 * 24 * HOUR), { x: 3100, y: 3100 });
+    await seed.location(account.id, new Date(now - 20 * 24 * HOUR_MS), { x: 3100, y: 3100 });
   });
 
   it('401 without a session', async () => {
@@ -175,7 +173,7 @@ describe('GET /api/app/accounts/[publicId]/locations', () => {
     expect(res.status).toBe(200);
     expect(res.headers.get('cache-control')).toBe('no-store');
     const body = (await res.json()) as { from: string; to: string; points: unknown[] };
-    expect(Date.parse(body.to) - Date.parse(body.from)).toBe(30 * 24 * HOUR);
+    expect(Date.parse(body.to) - Date.parse(body.from)).toBe(30 * 24 * HOUR_MS);
     expect(body.points).toMatchObject([
       { x: 3100, y: 3100 },
       { x: 3222, y: 3218, plane: 0, world: 302, onBoat: false },
@@ -184,7 +182,7 @@ describe('GET /api/app/accounts/[publicId]/locations', () => {
     const narrow = await call(
       getLocations,
       account.publicId,
-      `?from=${new Date(now - HOUR).toISOString()}`,
+      `?from=${new Date(now - HOUR_MS).toISOString()}`,
       owner.cookie,
     );
     expect(((await narrow.json()) as { points: unknown[] }).points).toHaveLength(1);

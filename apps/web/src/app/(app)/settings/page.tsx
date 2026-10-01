@@ -3,7 +3,7 @@
  * /api/app/settings), what decides which data reaches the hub at all (the plugin, D-4), downloading
  * your data (GET /api/app/export, D-79) and deleting it (POST /api/app/me/delete, D-78).
  */
-import { getConfig } from '@hub/core';
+import { DAY_MS, getConfig } from '@hub/core';
 import { getDb } from '@hub/db';
 import {
   MAX_TOAST_MIN_LOOT_VALUE,
@@ -27,8 +27,6 @@ import { requireUser } from '@/lib/session';
 export function generateMetadata(): Metadata {
   return { title: `Settings · ${getConfig().hubName}` };
 }
-
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 export default async function SettingsPage() {
   const { user } = await requireUser();

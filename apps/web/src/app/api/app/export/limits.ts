@@ -3,9 +3,9 @@
  * single web process (D-5), on globalThis: route handlers and RSC are separate module instances in
  * Next, and a module-level limiter would exist once per instance (NEXT-3, D-37).
  */
-import { WindowLimiter } from '@hub/core';
+import { MINUTE_MS, WindowLimiter } from '@hub/core';
 
-export const EXPORT_WINDOW_MS = 10 * 60 * 1000;
+export const EXPORT_WINDOW_MS = 10 * MINUTE_MS;
 
 const g = globalThis as unknown as { __hubExportLimiter?: WindowLimiter };
 

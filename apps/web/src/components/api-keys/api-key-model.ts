@@ -6,7 +6,7 @@
  * Only `import type` from @hub/server: the page's client components import this module (NEXT-12).
  * The server's limits (name length, active keys) reach the client as props from the page.
  */
-import { CATEGORIES, relativeTime, type Category } from '@hub/core';
+import { CATEGORIES, DAY_MS, HOUR_MS, relativeTime, type Category } from '@hub/core';
 import type { ApiKeyInfo, ApiKeyStatus } from '@hub/server';
 import type { FailureOptions } from '@/lib/api-client';
 
@@ -35,8 +35,6 @@ export function scopeText(
   return count === 1 ? '1 account' : `${count} accounts`;
 }
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-
 /**
  * When a key expires, relative to `now`: "Never", "in 3 days", "in 5 h", "today" (under an hour),
  * or "Expired 2 d ago" once past (relativeTime).
@@ -53,7 +51,7 @@ export function expiryText(expiresAt: string | null, now: string | Date): string
     const days = Math.round(left / DAY_MS);
     return days === 1 ? 'in 1 day' : `in ${days} days`;
   }
-  const hours = Math.floor(left / (60 * 60 * 1000));
+  const hours = Math.floor(left / HOUR_MS);
   return hours >= 1 ? `in ${hours} h` : 'within the hour';
 }
 

@@ -14,7 +14,7 @@
  * Live: presence follows the LiveProvider (AccountPresence), new events are prepended to the timeline,
  * and the server-rendered numbers refresh every minute (AutoRefresh).
  */
-import { formatGp, formatNumber, getConfig, itemsValue } from '@hub/core';
+import { DAY_MS, formatGp, formatNumber, getConfig, itemsValue } from '@hub/core';
 import type { Viewer } from '@hub/core';
 import { getDb } from '@hub/db';
 import {
@@ -25,13 +25,13 @@ import {
   getSharingSettings,
   getUserSettings,
   getWealthHistory,
+  isPublicIdLike,
   loadVisibleAccount,
   type AccountPage,
 } from '@hub/server';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { Suspense, cache } from 'react';
-import { isPublicIdLike as isPublicIdShape } from '@hub/server';
 import { AccountHeader } from '@/components/account-page/account-header';
 import { AccountSkeleton } from '@/components/account-page/account-skeleton';
 import { ActivityContent } from '@/components/account-page/activity-section';
@@ -54,7 +54,6 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { requireUser } from '@/lib/session';
 import { cn } from '@/lib/utils';
 
-const DAY_MS = 24 * 60 * 60 * 1000;
 /** Days of play sessions behind the playtime chart and the sessions list. */
 const ACTIVITY_DAYS = 30;
 /** Days of gear changes and wealth shown. */
@@ -67,7 +66,7 @@ const HISTORY_DAYS = 90;
 const loadVisible = cache(async (publicId: string) => {
   const { viewer } = await requireUser();
   // An id that can't be one (`%00` decodes to a NUL, which Postgres refuses) is just not found.
-  return isPublicIdShape(publicId) ? loadVisibleAccount(getDb().db, viewer, publicId) : null;
+  return isPublicIdLike(publicId) ? loadVisibleAccount(getDb().db, viewer, publicId) : null;
 });
 
 /** The page's data (inside the Suspense boundary). */

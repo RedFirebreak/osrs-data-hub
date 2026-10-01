@@ -8,7 +8,7 @@
  * rounded tops, hairline grid, one y-axis, text in text colours (never the series colour), a
  * crosshair tooltip on lines and an axis-shadow tooltip on bars, and a legend only for 2+ series.
  */
-import { formatDuration, formatGp, formatNumber } from '@hub/core';
+import { DAY_MS, HOUR_MS, formatDuration, formatGp, formatNumber } from '@hub/core';
 import type { BarSeriesOption, LineSeriesOption } from 'echarts/charts';
 import type {
   GridComponentOption,
@@ -431,7 +431,7 @@ export function playtimeOption(days: readonly PlaytimeDay[], theme: ChartTheme):
     series: [
       barSeries({
         name: 'Playtime',
-        data: days.map((d) => Math.round((d.ms / 3_600_000) * 100) / 100),
+        data: days.map((d) => Math.round((d.ms / HOUR_MS) * 100) / 100),
         itemStyle: { color, borderRadius: [4, 4, 0, 0] },
       }),
     ],
@@ -447,7 +447,6 @@ export interface WealthPoint {
 
 export const WEALTH_SERIES = { last: 'End of day', max: 'Daily high' } as const;
 
-const DAY_MS = 24 * 60 * 60 * 1000;
 /** Most days the wealth chart spans (a longer history keeps its newest days). */
 const MAX_WEALTH_DAYS = 400;
 
