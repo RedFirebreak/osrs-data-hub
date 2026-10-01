@@ -12,7 +12,7 @@
 import { CATEGORY_LABELS } from '@hub/core';
 import type { ApiKeyInfo, ApiKeyStatus } from '@hub/server';
 import { AccountLink } from '@/components/accounts/account-link';
-import { RelativeTime } from '@/components/events/relative-time';
+import { RelativeTime } from '@/components/time/relative-time';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
 import { formatInZone } from '@/lib/dates';

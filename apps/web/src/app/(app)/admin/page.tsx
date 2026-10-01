@@ -15,7 +15,7 @@ import { AdminRoleBadge, UserStatusBadge } from '@/components/admin/badges';
 import { DateTime } from '@/components/admin/date-time';
 import { UserActions } from '@/components/admin/user-actions';
 import { UserAvatar } from '@/components/account/user-avatar';
-import { RelativeTime } from '@/components/events/relative-time';
+import { RelativeTime } from '@/components/time/relative-time';
 import { Badge } from '@/components/ui/badge';
 import {
   Table,

@@ -29,7 +29,7 @@ import {
 import { useRouter } from 'next/navigation';
 import { useId, useRef, useState } from 'react';
 import { UserAvatar } from '@/components/account/user-avatar';
-import { RelativeTime } from '@/components/events/relative-time';
+import { RelativeTime } from '@/components/time/relative-time';
 import {
   AlertDialog,
   AlertDialogAction,

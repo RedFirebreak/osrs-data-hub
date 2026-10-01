@@ -11,7 +11,7 @@ import { useRouter } from 'next/navigation';
 import { useId, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { useLiveControls } from '@/components/live/live-provider';
-import { useHydrated } from '@/components/live/use-now';
+import { useHydrated } from '@/components/time/use-now';
 import { Button } from '@/components/ui/button';
 import {
   Card,

@@ -4,7 +4,7 @@
  * server doesn't know the admin's time zone; utcDateText, which doesn't depend on Intl data), in the
  * browser's locale and zone right after. Use RelativeTime for "3 min ago".
  */
-import { toMillis, useHydrated } from '@/components/live/use-now';
+import { toMillis, useHydrated } from '@/components/time/use-now';
 import { utcDateText } from './admin-model';
 
 export function DateTime({

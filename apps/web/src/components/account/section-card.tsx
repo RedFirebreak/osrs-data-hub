@@ -15,8 +15,8 @@
  *   })
  */
 import type { Section } from '@hub/server';
-import { RelativeTime } from '@/components/events/relative-time';
 import { NotSharedBadge } from '@/components/accounts/not-shared-badge';
+import { RelativeTime } from '@/components/time/relative-time';
 import {
   Card,
   CardAction,

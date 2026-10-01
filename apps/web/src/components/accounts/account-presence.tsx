@@ -12,9 +12,9 @@
  *   <AccountPresence publicId={card.publicId} presence={card.presence} now={now} />
  */
 import type { Presence, Section } from '@hub/server';
-import { RelativeTime } from '@/components/events/relative-time';
 import { useLivePresence } from '@/components/live/live-provider';
 import { liveIsNewer } from '@/components/live/live-state';
+import { RelativeTime } from '@/components/time/relative-time';
 import { cn } from '@/lib/utils';
 import { NotSharedBadge } from './not-shared-badge';
 import { OnlineDot } from './online-dot';
