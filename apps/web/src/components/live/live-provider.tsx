@@ -16,13 +16,14 @@
  *   requireUser() sends the browser to /login.
  *
  * Reading it:
- *   const { connected, state, lastEvent, presence, subscribe, reconnect } = useLive();
+ *   const { state, connected } = useLiveStatus();
+ *   const { subscribe, reconnect } = useLiveControls();
  *   useLiveSubscription('pairing', (msg) => { … });   // any message type; handler may change freely
  *   const p = useLivePresence(publicId);              // LivePresence | undefined
  * Outside a LiveProvider every hook returns an idle value (nothing connected, subscribe is a no-op),
  * so shared components can use them on public pages too.
  */
-import type { FeedEvent, LiveEventMessage, PresenceMessage } from '@hub/server';
+import type { LiveEventMessage, PresenceMessage } from '@hub/server';
 import { useRouter } from 'next/navigation';
 import {
   createContext,
@@ -65,24 +66,18 @@ interface LiveControls {
 interface LiveStatus {
   /** 'offline' only outside a LiveProvider. */
   state: LiveConnectionState | 'offline';
-  /** The newest event received (toasted or not), or null. */
-  lastEvent: FeedEvent | null;
-}
-
-export interface LiveContextValue extends LiveControls, LiveStatus {
   /** The stream is open (messages arrive at once; otherwise the 10 s polling fallback runs). */
   connected: boolean;
-  /** Presence by account public id, from 'presence' messages since the page loaded. */
-  presence: ReadonlyMap<string, LivePresence>;
 }
 
 const EMPTY_PRESENCE: ReadonlyMap<string, LivePresence> = new Map();
 const IDLE_CONTROLS: LiveControls = { subscribe: () => () => {}, reconnect: () => {} };
-const IDLE_STATUS: LiveStatus = { state: 'offline', lastEvent: null };
 
-// Three contexts, so a component that only needs presence doesn't re-render for every event.
+// Three contexts, so a component that only needs one of them doesn't re-render when another changes
+// (presence changes often, the connection state rarely, the controls never).
 const ControlsContext = createContext<LiveControls>(IDLE_CONTROLS);
-const StatusContext = createContext<LiveStatus>(IDLE_STATUS);
+const StateContext = createContext<LiveStatus['state']>('offline');
+/** Presence by account public id, from 'presence' messages since the page loaded. */
 const PresenceContext = createContext<ReadonlyMap<string, LivePresence>>(EMPTY_PRESENCE);
 
 /** How often a 'resync' may reopen the stream (a failing replay also sends 'resync'). */
@@ -92,14 +87,11 @@ const EXPIRY_MARGIN_MS = 100;
 
 export interface LiveProviderProps {
   children: React.ReactNode;
-  /** Show toasts for events flagged `toast` (default true). */
-  toasts?: boolean;
 }
 
-export function LiveProvider({ children, toasts = true }: LiveProviderProps) {
+export function LiveProvider({ children }: LiveProviderProps) {
   const router = useRouter();
   const [state, setState] = useState<LiveConnectionState>('connecting');
-  const [lastEvent, setLastEvent] = useState<FeedEvent | null>(null);
   const [presence, setPresence] = useState<ReadonlyMap<string, LivePresence>>(EMPTY_PRESENCE);
   const handlers = useRef(new Map<LiveMessageType, Set<(data: unknown) => void>>());
   const connection = useRef<LiveConnection | null>(null);
@@ -126,8 +118,7 @@ export function LiveProvider({ children, toasts = true }: LiveProviderProps) {
     switch (type) {
       case 'event': {
         const msg = data as LiveEventMessage;
-        setLastEvent(msg.event);
-        if (msg.toast && toasts) showEventToast(msg.event, Date.now(), icons);
+        if (msg.toast) showEventToast(msg.event, Date.now(), icons);
         break;
       }
       case 'presence': {
@@ -196,23 +187,14 @@ export function LiveProvider({ children, toasts = true }: LiveProviderProps) {
   const reconnect = useCallback(() => connection.current?.reconnect(), []);
 
   const controls = useMemo<LiveControls>(() => ({ subscribe, reconnect }), [subscribe, reconnect]);
-  const status = useMemo<LiveStatus>(() => ({ state, lastEvent }), [state, lastEvent]);
 
   return (
     <ControlsContext value={controls}>
-      <StatusContext value={status}>
+      <StateContext value={state}>
         <PresenceContext value={presence}>{children}</PresenceContext>
-      </StatusContext>
+      </StateContext>
     </ControlsContext>
   );
-}
-
-/** Everything at once (re-renders on every live change; prefer the narrower hooks below). */
-export function useLive(): LiveContextValue {
-  const controls = useContext(ControlsContext);
-  const status = useContext(StatusContext);
-  const presence = useContext(PresenceContext);
-  return { ...controls, ...status, connected: status.state === 'open', presence };
 }
 
 /** subscribe + reconnect only (stable; never re-renders). */
@@ -220,10 +202,10 @@ export function useLiveControls(): LiveControls {
   return useContext(ControlsContext);
 }
 
-/** Connection state and the newest event. */
-export function useLiveStatus(): LiveStatus & { connected: boolean } {
-  const status = useContext(StatusContext);
-  return { ...status, connected: status.state === 'open' };
+/** The connection state (re-renders only when it changes). */
+export function useLiveStatus(): LiveStatus {
+  const state = useContext(StateContext);
+  return { state, connected: state === 'open' };
 }
 
 /** The whole presence map (by public id). */
