@@ -198,6 +198,9 @@ describe('NOTIFY (D-32)', () => {
   });
 
   it('a shutdown without identity announces each account whose session it closed', async () => {
+    // The previous test leaves its last notification behind: without this, waitFor(1) below returns
+    // at once and the snapshot's own notification can land after the reset.
+    received.length = 0;
     const device = await h.seedDevice();
     const hash = newHash();
     const snapshot = wire('snapshot-normal', { hash });
