@@ -1,4 +1,4 @@
-import { LOOT_EVENT_TYPES } from './events/types';
+import { isLootEvent } from './events/types';
 import { TOAST_MAX_AGE_MS } from './time';
 
 export interface ToastFilter {
@@ -16,9 +16,6 @@ export const DEFAULT_TOAST_FILTER: ToastFilter = {
   minLootValue: 0,
   ownAccountsOnly: false,
 };
-
-/** Stored event types that minLootValue applies to. */
-const LOOT_TYPES: ReadonlySet<string> = new Set(LOOT_EVENT_TYPES);
 
 /**
  * Whether to show a toast for an event the viewer is already allowed to see (permission is checked
@@ -40,7 +37,7 @@ export function shouldToast(
   const ageMs = ctx.now.getTime() - event.occurredAt.getTime();
   if (!(ageMs < TOAST_MAX_AGE_MS)) return false;
   if (filter.types !== null && !filter.types.includes(event.type)) return false;
-  if (LOOT_TYPES.has(event.type) && (event.valueGp ?? 0) < filter.minLootValue) return false;
+  if (isLootEvent(event.type) && (event.valueGp ?? 0) < filter.minLootValue) return false;
   if (filter.ownAccountsOnly && !ctx.isOwnAccount) return false;
   return true;
 }

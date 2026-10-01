@@ -21,6 +21,7 @@ export * from './events/types';
 export * from './events/normalize';
 export * from './events/combat-task';
 export * from './events/values';
+export * from './events/stored';
 export * from './events/describe';
 export * from './ingest/types';
 export * from './ingest/plan';
