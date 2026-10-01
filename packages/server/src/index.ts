@@ -6,6 +6,7 @@ export * from './discord';
 export * from './offboarding';
 export * from './jobs';
 export * from './feed';
+export type { PluginResponse } from './plugin/protocol';
 export * from './ingest';
 export * from './pairing';
 export * from './devices';

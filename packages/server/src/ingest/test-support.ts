@@ -9,7 +9,7 @@ import type { TestDatabase } from '@hub/db/testing';
 import { fixtureJson, type FixtureName } from '@hub/fixtures';
 import { eq } from 'drizzle-orm';
 import pino from 'pino';
-import type { PluginResponse } from '../feed';
+import type { PluginResponse } from '../plugin/protocol';
 import { silentLogger, type Logger } from '../logger';
 import { createTestMetrics, type HubMetrics } from '../metrics';
 import { handleIngest } from './handler';

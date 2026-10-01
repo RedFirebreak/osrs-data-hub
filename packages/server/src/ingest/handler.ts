@@ -9,12 +9,11 @@ import {
   meetsMinimumVersion,
   normalizeEvents,
   parsePayload,
-  stripNul,
   type NormalizeResult,
   type ParsedPayload,
 } from '@hub/core';
 import { isDataDbError, isTransientDbError, pgErrorCode, safeDbErrorMessage } from '@hub/db';
-import type { PluginResponse } from '../feed';
+import { storedVersionText, type PluginResponse } from '../plugin/protocol';
 import { archivePayload, finishArchive, type ArchiveRef } from './archive';
 import {
   authenticateDevice,
@@ -27,7 +26,6 @@ import { findAccountByName, identityClaim, type AccountRef } from './identity';
 import {
   INGEST_MIN_RETRY_AFTER_SECONDS,
   MAX_EVENTS_PER_PAYLOAD,
-  MAX_VERSION_TEXT,
   eventTypeLabel,
   versionLabel,
 } from './limits';
@@ -48,7 +46,7 @@ interface IngestRun {
   recv: Date;
   /** performance.now() at the start (recv may come from a test clock). */
   startedAt: number;
-  /** X-Osrs-Exporter-Version as stored on the device and archive. */
+  /** X-Osrs-Exporter-Version as stored on the device and archive (storedVersionText). */
   versionText: string | null;
   device: IngestDevice | null;
   archive: ArchiveRef | null;
@@ -180,16 +178,6 @@ async function processPayload(
     throw err;
   }
   return recordStored(run, outcome);
-}
-
-/**
- * The header as stored in devices.plugin_version and raw_payloads.plugin_version: trimmed, NUL-free
- * (a text column rejects NUL, DB-1), at most 32 characters; null when missing or blank.
- */
-function storedVersionText(header: string | null): string | null {
-  if (header === null) return null;
-  const text = stripNul(header.trim()).slice(0, MAX_VERSION_TEXT);
-  return text === '' ? null : text;
 }
 
 /**

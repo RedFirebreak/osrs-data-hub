@@ -130,6 +130,28 @@ describe('version gate', () => {
     const [row] = await t.db.select().from(devices).where(eq(devices.id, device.id));
     expect(row?.pluginVersion).toHaveLength(32);
   });
+
+  it('stores the version text without control characters, as pairing does', async () => {
+    const accepted = await h.seedDevice();
+    const res = await h.send(accepted, wire('snapshot-normal', { hash: newHash() }), {
+      version: ' 1.6\u001b[31m-SNAP\u0085SHOT\u0000\u0007\t',
+    });
+    expect(res.status).toBe(200);
+    const [row] = await t.db.select().from(devices).where(eq(devices.id, accepted.id));
+    expect(row?.pluginVersion).toBe('1.6[31m-SNAPSHOT');
+    const [archived] = await archiveRows(accepted.id);
+    expect(archived?.pluginVersion).toBe('1.6[31m-SNAPSHOT');
+
+    // The outdated path stores the same text; nothing but control characters is no version.
+    const outdated = await h.seedDevice();
+    await h.send(outdated, fixtureBody('snapshot-normal'), { version: '1.4\u007f\r\n beta' });
+    await h.send(accepted, fixtureBody('snapshot-normal'), { version: '\u0000\u001f \u009f' });
+    const [flagged] = await t.db.select().from(devices).where(eq(devices.id, outdated.id));
+    expect(flagged?.pluginVersion).toBe('1.4 beta');
+    const [blank] = await t.db.select().from(devices).where(eq(devices.id, accepted.id));
+    expect(blank?.outdatedAt).not.toBeNull();
+    expect(blank?.pluginVersion).toBeNull();
+  });
 });
 
 describe('body limits and parsing', () => {

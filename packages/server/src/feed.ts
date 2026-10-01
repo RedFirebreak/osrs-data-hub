@@ -77,10 +77,3 @@ export function toFeedEvent(
     icon: d.icon,
   };
 }
-
-/** Plugin endpoint response (route handlers turn it into a Response). */
-export interface PluginResponse {
-  status: number;
-  body: Record<string, unknown>;
-  headers?: Record<string, string>;
-}

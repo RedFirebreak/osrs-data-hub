@@ -23,9 +23,6 @@ export const INGEST_MIN_RETRY_AFTER_SECONDS = 3;
  */
 export const MAX_EVENTS_PER_PAYLOAD = 200;
 
-/** plugin_version is stored truncated to this many characters. */
-export const MAX_VERSION_TEXT = 32;
-
 /**
  * The per-device token bucket for snapshot-only payloads. One instance per process; the host keeps
  * it on globalThis (D-37). `clock` is for tests.

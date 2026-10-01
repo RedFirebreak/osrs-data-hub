@@ -20,7 +20,7 @@ import { getSessions } from './accounts/history';
 import { listFeed } from './accounts/list-feed';
 import { listAuditLog } from './admin/audit-log';
 import { listDevices } from './devices/devices';
-import type { FeedEvent, PluginResponse } from './feed';
+import type { FeedEvent } from './feed';
 import { handleIngest } from './ingest/handler';
 import { createIngestLimiter } from './ingest/limits';
 import { captureLogger, counterValue, type Wire } from './ingest/test-support';
@@ -34,6 +34,7 @@ import { offboardUser, restoreUser } from './offboarding/offboard';
 import { createPairingCode, getDeviceFirstData, getPairingCodeStatus } from './pairing/codes';
 import { createPairLimits } from './pairing/limits';
 import { handlePair, PAIR_MESSAGES, type PairDeps } from './pairing/pair';
+import type { PluginResponse } from './plugin/protocol';
 import { isDecommissioned, setDecommissioned } from './settings/decommission';
 
 const SECOND = 1_000;
