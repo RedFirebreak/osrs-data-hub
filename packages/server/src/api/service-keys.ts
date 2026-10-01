@@ -12,7 +12,7 @@ import { sha256Hex, type Viewer } from '@hub/core';
 import { apiKeys, users, type Db, type DbOrTx } from '@hub/db';
 import { desc, eq } from 'drizzle-orm';
 import { z } from 'zod';
-import { AdminError } from '../admin/errors';
+import { assertAdmin } from '../admin/errors';
 import { audit } from '../audit';
 import { formatKey, newKeySecret } from './key-format';
 import {
@@ -44,13 +44,6 @@ export type CreateServiceKeyInput = z.input<typeof CreateServiceKeySchema>;
 export interface ServiceKeyInfo extends ApiKeyInfo {
   /** The admin who created it; null once that user was deleted. */
   createdBy: { id: string; name: string } | null;
-}
-
-/** Only an active admin may act (the route checks too; this is the second lock). */
-function assertAdmin(actor: Viewer): void {
-  if (actor.isAdmin !== true || actor.status !== 'active') {
-    throw new AdminError('forbidden', 'admins only');
-  }
 }
 
 /**
