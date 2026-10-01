@@ -1,14 +1,10 @@
 import { z } from 'zod';
+import { isPlainObject } from '../guards';
+import { INT32_MAX, INT32_MIN, SMALLINT_MAX, SMALLINT_MIN } from '../ints';
 import { stripNul } from '../json';
 import { OVERALL } from '../skills';
 import type { ParseResult, PlayerSnapshot, RawEvent, SkillValue } from './types';
 
-/** Java int, and the Postgres `integer` columns (x, y, world, tick_delay, item ids). */
-const INT32_MIN = -2_147_483_648;
-const INT32_MAX = 2_147_483_647;
-/** Postgres `smallint` columns: hp/prayer, spellbook id, plane, skill level. */
-const SMALLINT_MIN = -32_768;
-const SMALLINT_MAX = 32_767;
 /** Cap on listed sections/reasons, so a hostile body can't bloat raw_payloads.meta. */
 const MAX_LISTED = 64;
 /**
@@ -363,12 +359,6 @@ function nestedTooDeep(value: unknown): boolean {
     for (const child of Object.values(v)) stack.push([child, depth + 1]);
   }
   return false;
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  if (typeof value !== 'object' || value === null) return false;
-  const proto: unknown = Object.getPrototypeOf(value);
-  return proto === Object.prototype || proto === null;
 }
 
 /** The first zod issue as "path: message" (zod messages don't echo the input value). */
