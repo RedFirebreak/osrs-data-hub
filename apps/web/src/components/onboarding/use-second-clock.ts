@@ -2,7 +2,7 @@
 /**
  * A one-second clock for the pairing wizard's countdowns (code expiry, the "I pressed Submit" wait).
  * One interval for the page, running only while some component asks for it with `active`; the
- * coarser 30 s clock for relative times is components/live/use-now.ts.
+ * coarser 30 s clock for relative times is components/time/use-now.ts.
  *
  * Hydration-safe: null during server rendering and hydration, the browser's time afterwards.
  */

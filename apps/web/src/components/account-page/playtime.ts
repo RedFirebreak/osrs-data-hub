@@ -3,11 +3,10 @@
  * it uses @hub/server's DST-safe startOfLocalDay, so import it from server components, never from a
  * 'use client' module (NEXT-12).
  */
-import type { PlaytimeDay } from '@/components/charts/options';
+import { HOUR_MS } from '@hub/core';
 import { startOfLocalDay, type PlaySession } from '@hub/server';
-import { localDate } from './dates';
-
-const HOUR_MS = 60 * 60 * 1000;
+import type { PlaytimeDay } from '@/components/charts/options';
+import { localDate } from '@/lib/dates';
 
 /**
  * Milliseconds played on each of the last `days` local days (today included, oldest first) in

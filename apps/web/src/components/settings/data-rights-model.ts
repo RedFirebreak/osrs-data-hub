@@ -5,12 +5,12 @@
  */
 import { failureMessage } from '@/lib/api-client';
 
-/** The word to type, as the server compares it (SELF_DELETE_CONFIRMATION, trimmed, any case). */
-export const CONFIRMATION_WORD = 'delete';
-
-/** Whether the typed text confirms the deletion; the server checks the same rule again. */
-export function confirmsDeletion(typed: string): boolean {
-  return typed.trim().toLowerCase() === CONFIRMATION_WORD;
+/**
+ * Whether the typed text confirms the deletion: `word` (the server's SELF_DELETE_CONFIRMATION, which
+ * the page hands down) trimmed and in any case. The server checks the same rule again.
+ */
+export function confirmsDeletion(typed: string, word: string): boolean {
+  return typed.trim().toLowerCase() === word;
 }
 
 /** The login page that says when the data will be deleted (see the login page's deleted notice). */

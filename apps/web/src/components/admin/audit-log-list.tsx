@@ -7,7 +7,7 @@
 import type { AuditLogRow } from '@hub/server';
 import { LoaderCircleIcon, ScrollTextIcon } from 'lucide-react';
 import { useState } from 'react';
-import { RelativeTime } from '@/components/events/relative-time';
+import { RelativeTime } from '@/components/time/relative-time';
 import { Button } from '@/components/ui/button';
 import {
   Table,

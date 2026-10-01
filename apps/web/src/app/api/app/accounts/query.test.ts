@@ -1,16 +1,16 @@
+import { DAY_MS } from '@hub/core';
 import { ZodError } from 'zod';
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_HISTORY_DAYS, parseFeedQuery, parseHistoryRange, parseXpQuery } from './query';
 
 const NOW = new Date('2026-09-29T12:00:00.000Z');
-const DAY = 24 * 60 * 60 * 1000;
 const url = (q: string) => `http://hub.test/api/x${q}`;
 
 describe('parseHistoryRange', () => {
   it('defaults to the 30 days before now', () => {
     const r = parseHistoryRange(url(''), NOW);
     expect(r.to).toEqual(NOW);
-    expect(NOW.getTime() - r.from.getTime()).toBe(DEFAULT_HISTORY_DAYS * DAY);
+    expect(NOW.getTime() - r.from.getTime()).toBe(DEFAULT_HISTORY_DAYS * DAY_MS);
   });
 
   it('takes ISO instants with Z or an offset; from defaults relative to to', () => {

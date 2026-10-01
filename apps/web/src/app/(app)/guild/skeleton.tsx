@@ -1,5 +1,5 @@
 /** The guild page's content while it loads (also the route's loading state). */
-import { CardSkeleton } from '@/components/shell/card-skeleton';
+import { CardSkeleton } from '@/components/common/card-skeleton';
 
 const ROW = 'h-8 w-full';
 

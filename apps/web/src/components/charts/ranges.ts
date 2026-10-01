@@ -1,7 +1,8 @@
 /**
  * The XP chart's range picker: preset ranges → the `from`/`to` window the XP route is asked for.
- * Pure and client-safe (no imports), unit-tested.
+ * Pure and client-safe (only @hub/core's time constants), unit-tested.
  */
+import { DAY_MS } from '@hub/core';
 
 export const XP_RANGES = ['24h', '7d', '30d', '90d', '1y', 'all'] as const;
 export type XpRange = (typeof XP_RANGES)[number];
@@ -14,9 +15,6 @@ export const XP_RANGE_LABELS: Readonly<Record<XpRange, string>> = {
   '1y': '1 year',
   all: 'All time',
 };
-
-const HOUR_MS = 60 * 60 * 1000;
-const DAY_MS = 24 * HOUR_MS;
 
 const RANGE_MS: Readonly<Record<Exclude<XpRange, 'all'>, number>> = {
   '24h': DAY_MS,

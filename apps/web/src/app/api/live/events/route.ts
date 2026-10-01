@@ -23,14 +23,14 @@ import {
   settledLiveCursor,
 } from '@hub/server';
 import { handleApi, json } from '@/lib/http';
-import { parseSeq } from '@/lib/query';
+import { parseSeqCursor } from '@/lib/query';
 import { requireApiUser } from '@/lib/session';
 
 export async function GET(request: Request): Promise<Response> {
   return handleApi(async () => {
     const { user, viewer } = await requireApiUser(request);
     const db = getDb().db;
-    const after = parseSeq(new URL(request.url).searchParams.get('after'));
+    const after = parseSeqCursor(new URL(request.url).searchParams.get('after'));
     if (after === null) {
       return json(200, { events: [], cursor: await settledLiveCursor(db) });
     }

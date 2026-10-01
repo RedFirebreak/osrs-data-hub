@@ -6,7 +6,7 @@
 import { formatGp, itemsValue, type ItemData } from '@hub/core';
 import type { EquipmentChange } from '@hub/server';
 import { ArrowRightIcon } from 'lucide-react';
-import { DATE_TIME_OPTIONS, formatInZone } from './dates';
+import { DATE_TIME_OPTIONS, formatInZone } from '@/lib/dates';
 import { ItemTile } from './item-tile';
 import {
   EQUIPMENT_GRID,

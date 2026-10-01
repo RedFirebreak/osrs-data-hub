@@ -8,9 +8,9 @@ import type { AccountHeader as Header, Presence, Section } from '@hub/server';
 import { EyeOffIcon, UserRoundIcon } from 'lucide-react';
 import { AccountPresence } from '@/components/accounts/account-presence';
 import { AccountTypeBadge } from '@/components/accounts/account-type-badge';
+import { UserAvatar } from '@/components/common/user-avatar';
 import { Badge } from '@/components/ui/badge';
-import { formatInZone } from './dates';
-import { UserAvatar } from './user-avatar';
+import { formatInZone } from '@/lib/dates';
 
 /** Previous names listed before "and N more". */
 const NAMES_SHOWN = 5;

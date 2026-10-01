@@ -6,8 +6,8 @@
  */
 import { BanIcon } from 'lucide-react';
 import { toast } from 'sonner';
+import { ConfirmAction } from '@/components/common/confirm-action';
 import { adminDevicePath, adminFailure } from './admin-model';
-import { ConfirmAction } from './confirm-action';
 
 export interface AdminRevokeDeviceButtonProps {
   deviceId: string;

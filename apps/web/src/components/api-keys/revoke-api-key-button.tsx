@@ -8,7 +8,7 @@
  */
 import { BanIcon } from 'lucide-react';
 import { toast } from 'sonner';
-import { ConfirmAction } from '@/components/admin/confirm-action';
+import { ConfirmAction } from '@/components/common/confirm-action';
 import { REVOKE_KEY_FAILURE, apiKeyPath } from './api-key-model';
 
 export interface RevokeApiKeyButtonProps {

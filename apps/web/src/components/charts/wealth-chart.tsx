@@ -1,7 +1,8 @@
 'use client';
 /**
  * Carried wealth per day (inventory + equipment, GE value): the day's end value and its high, drawn
- * by the lazy EChart, with the numbers in a table below (newest day first) for screen readers.
+ * by the lazy EChart, with the numbers in a table below (newest day first: ChartWithTable's rule)
+ * for screen readers.
  */
 import { formatGp } from '@hub/core';
 import { useCallback } from 'react';
@@ -24,7 +25,7 @@ export function WealthChart({ days, className }: WealthChartProps) {
         newest ? `, ${formatGp(newest.lastValue)} gp at the end of ${newest.day}` : ''
       }`}
       columns={['Day (UTC)', WEALTH_SERIES.last, WEALTH_SERIES.max]}
-      rows={[...days].reverse().map((d) => ({
+      rows={days.map((d) => ({
         day: d.day,
         values: [formatGp(d.lastValue), formatGp(d.maxValue)],
       }))}

@@ -6,7 +6,7 @@
  */
 import { RotateCwIcon, TriangleAlertIcon } from 'lucide-react';
 import Link from 'next/link';
-import { StatusPage } from '@/components/shell/status-page';
+import { StatusPage } from '@/components/common/status-page';
 import { Button } from '@/components/ui/button';
 
 export default function ErrorPage({

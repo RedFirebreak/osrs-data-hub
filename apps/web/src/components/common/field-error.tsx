@@ -1,6 +1,6 @@
 /**
  * The error text under a form field: nothing without a message. Give it the id the field's
- * `aria-describedby` names. Hand-written (not a shadcn component).
+ * `aria-describedby` names.
  */
 function FieldError({ id, message }: { id: string; message: string | undefined }) {
   if (!message) return null;

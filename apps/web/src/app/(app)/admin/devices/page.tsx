@@ -22,7 +22,7 @@ import { AdminRevokeDeviceButton } from '@/components/admin/revoke-device-button
 import { AccountLink } from '@/components/accounts/account-link';
 import { deviceName } from '@/components/devices/device-model';
 import { DeviceStatusBadge, OutdatedBadge } from '@/components/devices/device-status-badge';
-import { RelativeTime } from '@/components/events/relative-time';
+import { RelativeTime } from '@/components/time/relative-time';
 import {
   Table,
   TableBody,

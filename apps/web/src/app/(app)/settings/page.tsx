@@ -3,10 +3,11 @@
  * /api/app/settings), what decides which data reaches the hub at all (the plugin, D-4), downloading
  * your data (GET /api/app/export, D-79) and deleting it (POST /api/app/me/delete, D-78).
  */
-import { getConfig } from '@hub/core';
+import { DAY_MS, getConfig } from '@hub/core';
 import { getDb } from '@hub/db';
 import {
   MAX_TOAST_MIN_LOOT_VALUE,
+  SELF_DELETE_CONFIRMATION,
   SELF_DELETE_UNDO_DAYS,
   getUserSettings,
   supportedTimeZones,
@@ -14,20 +15,18 @@ import {
 import { ArrowRightIcon } from 'lucide-react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { formatInZone } from '@/components/account/dates';
 import { eventTypeOptions } from '@/components/events/event-types';
 import { DeleteDataCard } from '@/components/settings/delete-data-card';
 import { ExportDataCard } from '@/components/settings/export-data-card';
+import { SettingsForm } from '@/components/settings/settings-form';
 import { PageHeader } from '@/components/shell/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { formatInZone } from '@/lib/dates';
 import { requireUser } from '@/lib/session';
-import { SettingsForm } from './settings-form';
 
 export function generateMetadata(): Metadata {
   return { title: `Settings · ${getConfig().hubName}` };
 }
-
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 export default async function SettingsPage() {
   const { user } = await requireUser();
@@ -91,6 +90,7 @@ export default async function SettingsPage() {
           }) ?? deleteOn.toISOString().slice(0, 10)
         }
         deleteOnIso={deleteOn.toISOString()}
+        confirmationWord={SELF_DELETE_CONFIRMATION}
       />
     </div>
   );

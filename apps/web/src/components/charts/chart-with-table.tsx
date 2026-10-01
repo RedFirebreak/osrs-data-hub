@@ -12,8 +12,9 @@
  *     rows={days.map((d) => ({ day: d.day, values: [formatDuration(d.ms / 1000)] }))}
  *   />
  *
- * `option` is a function of the resolved theme; pass a memoized one (see echart.tsx). The rows are
- * listed in the order given.
+ * `option` is a function of the resolved theme; pass a memoized one (see echart.tsx). The table
+ * lists the newest day first, whatever order the rows come in (a chart's own order is oldest first,
+ * left to right): tables default to newest first, so a chart built on this gets that for free.
  */
 import { LazyEChart } from './lazy-echart';
 import type { ChartOption, ChartTheme } from './options';
@@ -31,8 +32,14 @@ export interface ChartWithTableProps {
   label: string;
   /** Column headings: the day column first, then one per value. */
   columns: readonly string[];
+  /** One row per day, in any order: the table sorts them newest first. */
   rows: readonly ChartTableRow[];
   className?: string;
+}
+
+/** The rows by day, newest first (YYYY-MM-DD sorts as text). */
+function newestFirst(rows: readonly ChartTableRow[]): ChartTableRow[] {
+  return [...rows].sort((a, b) => (a.day < b.day ? 1 : a.day > b.day ? -1 : 0));
 }
 
 export function ChartWithTable({ option, label, columns, rows, className }: ChartWithTableProps) {
@@ -58,7 +65,7 @@ export function ChartWithTable({ option, label, columns, rows, className }: Char
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => (
+            {newestFirst(rows).map((row) => (
               <tr key={row.day} className="border-t">
                 <td className="py-1">
                   <time dateTime={row.day}>{row.day}</time>

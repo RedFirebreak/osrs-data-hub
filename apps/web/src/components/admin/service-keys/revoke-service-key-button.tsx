@@ -6,7 +6,7 @@
 import { BanIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { adminFailure, adminServiceKeyPath } from '@/components/admin/admin-model';
-import { ConfirmAction } from '@/components/admin/confirm-action';
+import { ConfirmAction } from '@/components/common/confirm-action';
 
 export interface RevokeServiceKeyButtonProps {
   keyId: string;

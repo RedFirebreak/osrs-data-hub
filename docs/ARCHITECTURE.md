@@ -281,6 +281,27 @@ behind one client-only wrapper (`components/charts/echart.tsx`, `next/dynamic` w
 reads the theme's CSS variables. Dark mode follows the OS, with System / Light / Dark in the account
 menu (`next-themes`). Every page works at phone width.
 
+**Where the code lives** (under `apps/web/src`). `app/` holds what Next.js looks for there (pages,
+layouts, loading and error files, route handlers), the routes' own helpers and their tests; anything a
+second feature imports lives under `components/` or `lib/`, not beside a `page.tsx`.
+`components/` has a folder per feature (`account-page/`, `admin/`, `api-keys/`, `devices/`, `guild/`,
+`onboarding/`, `settings/`, `sharing/`) and the shared ones:
+
+| Folder | What belongs there |
+|---|---|
+| `components/shell/` | The app frame only: header, navigation, user menu, theme provider, live status, auto-refresh, page header, hub mark. |
+| `components/common/` | Hand-written building blocks any page uses: `SectionCard`, `CardSkeleton`, `Stat`, `StatusPage`, `ConfirmAction`, `CopyButton`, `UserAvatar`, `SkillSelect`, `FieldError`, `NativeSelect`. |
+| `components/accounts/` | The account widgets used everywhere (link, card, presence, badges). Not `account-page/`, which holds the account page's own sections. |
+| `components/time/` | Clock-dependent display: the shared `useNow` clock and `RelativeTime`. |
+| `components/events/`, `charts/`, `icons/`, `live/` | Shared by subject: event feed and timeline, the chart wrapper and option builders, game icons, the live stream client. |
+| `components/ui/` | shadcn-generated files and nothing else; ESLint skips the folder, so hand-written code there would go unchecked. |
+| `lib/` | Helpers without React: the API client, guards, dates, focus, sessions, the public API's plumbing. |
+
+A rule or limit that both a route handler and a component need lives in `lib/` (`lib/admin-rules.ts`),
+never in a component's model file: route handlers import nothing from `components/`. A limit defined
+in `@hub/server` (name and label lengths, active keys and pairing codes, the delete confirmation word)
+reaches a client component as a prop from its server component page, never as a copy of the number.
+
 **Game icons (D-95).** Items, skills and empty equipment slots show the game's own icons, from the
 central [osrs-icons](https://github.com/RedFirebreak/osrs-icons) CDN at `OSRS_ICONS_URL` (default
 `https://icons.scapekeeper.com`; empty = icons off, names only). The (app) layout reads the base URL at
@@ -348,6 +369,9 @@ Rules every page and route follows:
   [API.md](API.md).
 - **Navigation.** The header shows the full navigation from the `lg` breakpoint (1024 px); narrower
   screens get the menu button, so six labelled items never wrap.
+- **Tables.** Rows that carry a date are listed newest first. A chart keeps time running left to
+  right; its "Show as table" alternative is sorted by `ChartWithTable` itself, whatever order the rows
+  come in, so every per-day chart follows the rule.
 
 The web app's Vitest project covers every route handler and page-level access rule against a real
 database; Playwright covers the wizard end to end (`pnpm test:e2e`, D-13) and takes screenshots of every

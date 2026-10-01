@@ -7,7 +7,7 @@
  * time, e.g. `new Date().toISOString()` from the page) so the server HTML and hydration agree.
  */
 import { relativeTime } from '@hub/core';
-import { toMillis, useHydrated, useNow } from '@/components/live/use-now';
+import { toMillis, useHydrated, useNow } from './use-now';
 
 export interface RelativeTimeProps {
   /** The moment to describe. */

@@ -3,7 +3,7 @@
  * it in a <Suspense> after its visibility check, not as the segment's loading.tsx, so an unknown or
  * invisible account still answers 404 (NEXT-14).
  */
-import { CardSkeleton } from '@/components/shell/card-skeleton';
+import { CardSkeleton } from '@/components/common/card-skeleton';
 import { Skeleton } from '@/components/ui/skeleton';
 
 export function AccountSkeleton() {

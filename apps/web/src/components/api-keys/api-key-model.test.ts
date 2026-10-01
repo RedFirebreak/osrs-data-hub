@@ -1,3 +1,4 @@
+import { DAY_MS } from '@hub/core';
 import {
   API_KEY_MAX_EXPIRY_DAYS,
   API_KEY_NAME_MAX,
@@ -23,7 +24,6 @@ import {
 } from './api-key-model';
 
 const NOW = '2026-09-29T12:00:00.000Z';
-const DAY = 24 * 60 * 60 * 1000;
 const at = (ms: number) => new Date(Date.parse(NOW) + ms).toISOString();
 
 describe('display texts', () => {
@@ -45,12 +45,12 @@ describe('display texts', () => {
 
   it('says when a key expires', () => {
     expect(expiryText(null, NOW)).toBe('Never');
-    expect(expiryText(at(30 * DAY), NOW)).toBe('in 30 days');
-    expect(expiryText(at(30 * DAY - 5_000), NOW)).toBe('in 30 days');
-    expect(expiryText(at(DAY + 1000), NOW)).toBe('in 1 day');
+    expect(expiryText(at(30 * DAY_MS), NOW)).toBe('in 30 days');
+    expect(expiryText(at(30 * DAY_MS - 5_000), NOW)).toBe('in 30 days');
+    expect(expiryText(at(DAY_MS + 1000), NOW)).toBe('in 1 day');
     expect(expiryText(at(5 * 60 * 60 * 1000), NOW)).toBe('in 5 h');
     expect(expiryText(at(10 * 60 * 1000), NOW)).toBe('within the hour');
-    expect(expiryText(at(-2 * DAY), NOW)).toBe('Expired 2 d ago');
+    expect(expiryText(at(-2 * DAY_MS), NOW)).toBe('Expired 2 d ago');
   });
 
   it('builds the key path', () => {

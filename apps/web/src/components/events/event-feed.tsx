@@ -14,13 +14,13 @@
 import { formatGp, isLootEvent } from '@hub/core';
 import type { FeedEvent } from '@hub/server';
 import Link from 'next/link';
-import { stackTone } from '@/components/account/items';
+import { stackTone } from '@/components/account-page/items';
 import { accountHref } from '@/components/accounts/account-link';
 import { SpecialWorldBadge } from '@/components/accounts/special-world-badge';
+import { RelativeTime } from '@/components/time/relative-time';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { EventIconBadge } from './event-icon';
-import { RelativeTime } from './relative-time';
 
 /**
  * The loot value to badge, or null (no value, zero, or not a loot event: a death's valueGp is the

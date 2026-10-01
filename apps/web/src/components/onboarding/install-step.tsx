@@ -9,12 +9,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { StepHeading } from './step-heading';
-import { DEVICE_LABEL_MAX_LENGTH } from './wizard-model';
 
 export interface InstallStepProps {
   /** MIN_PLUGIN_VERSION, e.g. "1.5". */
   minPluginVersion: string;
   label: string;
+  /** Longest label the hub keeps (DEVICE_LABEL_MAX). */
+  labelMax: number;
   onLabelChange(label: string): void;
   onNext(): void;
   headingRef?: React.Ref<HTMLHeadingElement>;
@@ -23,6 +24,7 @@ export interface InstallStepProps {
 export function InstallStep({
   minPluginVersion,
   label,
+  labelMax,
   onLabelChange,
   onNext,
   headingRef,
@@ -83,7 +85,7 @@ export function InstallStep({
           value={label}
           onChange={(e) => onLabelChange(e.target.value)}
           placeholder="e.g. Desktop PC"
-          maxLength={DEVICE_LABEL_MAX_LENGTH}
+          maxLength={labelMax}
           autoComplete="off"
           aria-describedby={`${id}-label-help`}
           className="sm:max-w-80"

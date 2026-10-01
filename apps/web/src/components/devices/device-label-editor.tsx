@@ -2,15 +2,15 @@
 /**
  * A device's name with inline rename (handoff §6.3): the name as the card's h3 with a "Rename"
  * button; editing shows an input (Enter saves, Escape cancels) that PATCHes
- * /api/app/devices/[id]. The label the server stored (trimmed, ≤ 64 characters, empty → no label) is
- * shown at once, and the page is refreshed. Focus returns to the Rename button afterwards, and to
- * the input when saving failed (the input is disabled while saving, which drops the focus).
+ * /api/app/devices/[id]. The label the server stored (trimmed, cut to `labelMax` characters, empty →
+ * no label) is shown at once, and the page is refreshed. Focus returns to the Rename button
+ * afterwards, and to the input when saving failed (the input is disabled while saving, which drops
+ * the focus).
  */
 import { CheckIcon, LoaderCircleIcon, PencilIcon, XIcon } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useId, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { DEVICE_LABEL_MAX_LENGTH } from '@/components/onboarding/wizard-model';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useApiRequest } from '@/lib/use-api-request';
@@ -20,10 +20,17 @@ import { UNNAMED_DEVICE, deviceApiPath, deviceFailure, deviceName } from './devi
 export interface DeviceLabelEditorProps {
   deviceId: string;
   label: string | null;
+  /** Longest label the hub keeps (DEVICE_LABEL_MAX). */
+  labelMax: number;
   className?: string;
 }
 
-export function DeviceLabelEditor({ deviceId, label, className }: DeviceLabelEditorProps) {
+export function DeviceLabelEditor({
+  deviceId,
+  label,
+  labelMax,
+  className,
+}: DeviceLabelEditorProps) {
   const router = useRouter();
   const id = useId();
   const [editing, setEditing] = useState(false);
@@ -136,7 +143,7 @@ export function DeviceLabelEditor({ deviceId, label, className }: DeviceLabelEdi
               stopEditing();
             }
           }}
-          maxLength={DEVICE_LABEL_MAX_LENGTH}
+          maxLength={labelMax}
           placeholder={UNNAMED_DEVICE}
           autoComplete="off"
           disabled={saving}

@@ -14,14 +14,12 @@ import {
   accountNames,
   accountShareGrants,
   accountSharing,
-  equipmentChanges,
   events,
   latestState,
   locationSamples,
   osrsAccounts,
   playSessions,
   skills,
-  wealthDaily,
   xpSamples,
   type AccountStatus,
   type Db,
@@ -198,14 +196,6 @@ export function accountSeeder(db: Db) {
         endReason: values.endReason ?? null,
         worlds: values.worlds ?? [],
       });
-    },
-
-    async equipmentChange(accountId: number, changedAt: Date, equipment: unknown[]): Promise<void> {
-      await db.insert(equipmentChanges).values({ accountId, changedAt, equipment });
-    },
-
-    async wealth(accountId: number, day: string, lastValue: number, maxValue: number) {
-      await db.insert(wealthDaily).values({ accountId, day, lastValue, maxValue });
     },
 
     async location(

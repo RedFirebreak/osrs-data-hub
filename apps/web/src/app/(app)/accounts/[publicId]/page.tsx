@@ -2,7 +2,7 @@
  * The account page (handoff §12): header (name, type, live presence, owner, previous names), then one
  * card per section. Each section follows the read model's three states (handoff §10, D-4): hidden
  * when the viewer may not see its category, a "Not shared" card when the plugin never sent it, or the
- * data (`dataSection` in components/account/section-card.tsx applies that rule). Sections backed by
+ * data (`dataSection` in components/common/section-card.tsx applies that rule). Sections backed by
  * a history (sessions, gear changes, wealth) and the sharing panel stream in behind skeletons.
  * notFound() when the account doesn't exist or isn't visible to the viewer, so the two can't be told
  * apart.
@@ -14,7 +14,7 @@
  * Live: presence follows the LiveProvider (AccountPresence), new events are prepended to the timeline,
  * and the server-rendered numbers refresh every minute (AutoRefresh).
  */
-import { formatGp, formatNumber, getConfig, itemsValue } from '@hub/core';
+import { DAY_MS, formatGp, formatNumber, getConfig, itemsValue } from '@hub/core';
 import type { Viewer } from '@hub/core';
 import { getDb } from '@hub/db';
 import {
@@ -25,36 +25,35 @@ import {
   getSharingSettings,
   getUserSettings,
   getWealthHistory,
+  isPublicIdLike,
   loadVisibleAccount,
   type AccountPage,
 } from '@hub/server';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { Suspense, cache } from 'react';
-import { isPublicIdLike as isPublicIdShape } from '@hub/server';
-import { AccountHeader } from '@/components/account/account-header';
-import { AccountSkeleton } from '@/components/account/account-skeleton';
-import { ActivityContent } from '@/components/account/activity-section';
-import { EquipmentGrid, EquipmentLog } from '@/components/account/equipment-content';
-import { EventTimeline } from '@/components/account/event-timeline';
-import { InventoryContent } from '@/components/account/inventory-content';
-import { LocationContent } from '@/components/account/location-content';
-import { playtimeByDay } from '@/components/account/playtime';
-import { SectionCard, dataSection } from '@/components/account/section-card';
-import { SkillsTable } from '@/components/account/skills-table';
-import { VitalsContent } from '@/components/account/vitals-content';
-import { XpChartPanel } from '@/components/account/xp-chart-panel';
+import { AccountHeader } from '@/components/account-page/account-header';
+import { AccountSkeleton } from '@/components/account-page/account-skeleton';
+import { ActivityContent } from '@/components/account-page/activity-section';
+import { EquipmentGrid, EquipmentLog } from '@/components/account-page/equipment-content';
+import { InventoryContent } from '@/components/account-page/inventory-content';
+import { LocationContent } from '@/components/account-page/location-content';
+import { playtimeByDay } from '@/components/account-page/playtime';
+import { SkillsTable } from '@/components/account-page/skills-table';
+import { VitalsContent } from '@/components/account-page/vitals-content';
+import { XpChartPanel } from '@/components/account-page/xp-chart-panel';
 import { NotSharedBadge } from '@/components/accounts/not-shared-badge';
 import { WealthChart } from '@/components/charts/wealth-chart';
+import { CardSkeleton } from '@/components/common/card-skeleton';
+import { SectionCard, dataSection } from '@/components/common/section-card';
+import { EventTimeline } from '@/components/events/event-timeline';
 import { eventTypeOptions } from '@/components/events/event-types';
 import { AutoRefresh } from '@/components/shell/auto-refresh';
-import { CardSkeleton } from '@/components/shell/card-skeleton';
 import { SharingPanel } from '@/components/sharing/sharing-panel';
 import { Skeleton } from '@/components/ui/skeleton';
 import { requireUser } from '@/lib/session';
 import { cn } from '@/lib/utils';
 
-const DAY_MS = 24 * 60 * 60 * 1000;
 /** Days of play sessions behind the playtime chart and the sessions list. */
 const ACTIVITY_DAYS = 30;
 /** Days of gear changes and wealth shown. */
@@ -67,7 +66,7 @@ const HISTORY_DAYS = 90;
 const loadVisible = cache(async (publicId: string) => {
   const { viewer } = await requireUser();
   // An id that can't be one (`%00` decodes to a NUL, which Postgres refuses) is just not found.
-  return isPublicIdShape(publicId) ? loadVisibleAccount(getDb().db, viewer, publicId) : null;
+  return isPublicIdLike(publicId) ? loadVisibleAccount(getDb().db, viewer, publicId) : null;
 });
 
 /** The page's data (inside the Suspense boundary). */

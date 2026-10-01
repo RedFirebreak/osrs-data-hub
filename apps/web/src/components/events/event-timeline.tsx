@@ -14,11 +14,11 @@ import type { FeedEvent } from '@hub/server';
 import { LoaderCircleIcon } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { EventFeed } from '@/components/events/event-feed';
-import type { EventTypeOption } from '@/components/events/event-types';
 import { useLiveSubscription } from '@/components/live/live-provider';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { EventFeed } from './event-feed';
+import type { EventTypeOption } from './event-types';
 import {
   feedUrl,
   matchesFilter,

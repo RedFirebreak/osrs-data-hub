@@ -1,6 +1,7 @@
 /**
- * The frame of every section on the account page: a card with the section's heading (h2), an
- * optional badge or action, and when the hub last received the data. Server- and client-safe.
+ * The frame of every section on the account and guild pages: a card with the section's heading
+ * (h2), an optional badge or action, and when the hub last received the data. Server- and
+ * client-safe.
  *
  *   <SectionCard title="Inventory" updatedAt={section.updatedAt} now={now}>…</SectionCard>
  *   <NotSharedCard title="Inventory" what="the inventory" />   // visible, never sent (D-4)
@@ -15,8 +16,8 @@
  *   })
  */
 import type { Section } from '@hub/server';
-import { RelativeTime } from '@/components/events/relative-time';
 import { NotSharedBadge } from '@/components/accounts/not-shared-badge';
+import { RelativeTime } from '@/components/time/relative-time';
 import {
   Card,
   CardAction,
@@ -25,8 +26,8 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import { dayOnlyLabel } from '@/lib/dates';
 import { cn } from '@/lib/utils';
-import { dayOnlyLabel } from './dates';
 
 export interface SectionCardProps {
   title: string;
