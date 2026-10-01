@@ -24,7 +24,7 @@ import { and, eq, gt, isNull, sql } from 'drizzle-orm';
 import { audit } from '../audit';
 import type { PluginResponse } from '../feed';
 import type { Logger } from '../logger';
-import type { HubMetrics } from '../metrics';
+import type { HubMetrics, PairResult } from '../metrics';
 import { notifyPairing } from '../notify';
 import { pairRateKey, type PairLimits } from './limits';
 
@@ -75,21 +75,8 @@ export interface PairRequest {
   body: string | null;
 }
 
-/** pairAttempts{result} label values. */
-type PairResult =
-  | 'decommissioned'
-  | 'locked_out'
-  | 'rate_limited_global'
-  | 'rate_limited_ip'
-  | 'malformed'
-  | 'outdated'
-  | 'invalid'
-  | 'inactive'
-  | 'paired'
-  | 'unavailable'
-  | 'error';
-
 interface Outcome {
+  /** The pairAttempts{result} label. */
   result: PairResult;
   response: PluginResponse;
 }

@@ -50,7 +50,7 @@ scrape already at 1. Prometheus' `increase()` and `rate()` measure change betwee
 series with no earlier sample has no change to measure: `increase(x[1h])` is 0 however recently it
 appeared. The first failure after every process restart (or ever) therefore never fires an
 `increase(...) > 0` alert. Fix: create every series of a fixed label set at 0 when the registry is built:
-`counter.inc(labels, 0)` and `histogram.zero(labels)` for each known combination (`initSeries` in
+`counter.inc(labels, 0)` and `histogram.zero(labels)` for each known combination (`fixedCounter` and `initSeries` in
 packages/server/src/metrics.ts). Label values that are only known at run time (an HTTP status) can't be
 pre-created; don't alert on their first appearance.
 

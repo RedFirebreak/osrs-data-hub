@@ -27,7 +27,7 @@ import {
   type MembershipVerdict,
 } from '../discord';
 import type { Logger } from '../logger';
-import type { HubMetrics } from '../metrics';
+import type { DiscordVerifyBreakerRule, HubMetrics } from '../metrics';
 import { offboardUser } from '../offboarding';
 
 export interface ReverifyDeps {
@@ -186,9 +186,9 @@ async function breakerTripped(
 ): Promise<boolean> {
   const departures = batch.departures.length;
   const { recent, active } = await windowCounts(deps.db, batch.now, batch.intervalHours);
-  const rules = [
-    ...(breakerTrips(batch.answered, departures) ? ['batch'] : []),
-    ...(windowBreakerTrips(recent, departures, active) ? ['window'] : []),
+  const rules: DiscordVerifyBreakerRule[] = [
+    ...(breakerTrips(batch.answered, departures) ? (['batch'] as const) : []),
+    ...(windowBreakerTrips(recent, departures, active) ? (['window'] as const) : []),
   ];
   if (rules.length === 0) return false;
   for (const rule of rules) deps.metrics.discordVerifyBreakerTrips.inc({ rule });

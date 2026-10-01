@@ -6,7 +6,7 @@ interface Readable {
 
 /**
  * A counter's non-zero values keyed by one label; `{}` when nothing was recorded (known label values
- * start at 0, see initSeries).
+ * start at 0, see fixedCounter in metrics.ts).
  */
 export async function countsBy(metric: Readable, label: string): Promise<Record<string, number>> {
   const { values } = await metric.get();
