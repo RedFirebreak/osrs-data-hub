@@ -311,6 +311,8 @@ describe('integrations page', () => {
     const empty = await render(() => IntegrationsPage());
     expect(empty).toContain('No integration keys yet');
     expect(empty).toContain('Create integration key');
+    // What a key can learn beyond shared account data (D-100).
+    expect(empty).toContain('whether a Discord account is a member of the hub and an admin');
 
     const actor = { userId: adminId, status: 'active' as const, isAdmin: true };
     const live = await createServiceKey(ctx.t.db, {

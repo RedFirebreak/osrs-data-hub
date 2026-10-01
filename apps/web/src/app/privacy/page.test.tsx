@@ -55,6 +55,13 @@ describe('privacy page', () => {
     expect(text).toMatch(/audit log/i);
   });
 
+  it('says that connected services can ask whether a Discord account is a member and an admin (D-100)', async () => {
+    const text = await render();
+    expect(text).toMatch(
+      /Services an admin connects to the hub, such as the guild's live map, can ask whether a Discord account is a member of the hub and an admin\./,
+    );
+  });
+
   it('does not promise that everything comes back after returning to the guild', async () => {
     const text = await render();
     expect(text).not.toContain('everything is restored');

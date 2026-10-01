@@ -7,6 +7,7 @@
 import { parseConfig, setConfigForTests } from '@hub/core';
 import {
   API_RATE_LIMIT,
+  DISCORD_ID_PATTERN,
   EVENTS_MAX_LIMIT,
   MAX_BULK_ACCOUNTS as MAX_XP_ACCOUNTS,
   MAX_BULK_ACCOUNTS_SERVICE as MAX_XP_ACCOUNTS_SERVICE,
@@ -112,9 +113,31 @@ describe('the OpenAPI document', () => {
     expect(accounts).toMatchObject({ required: true });
     expect(accounts?.description).toContain(String(MAX_XP_ACCOUNTS));
     expect(accounts?.description).toContain(String(MAX_XP_ACCOUNTS_SERVICE));
+    expect(params('/members/{discord_id}')).toEqual([
+      expect.objectContaining({
+        name: 'discord_id',
+        in: 'path',
+        required: true,
+        schema: { type: 'string', pattern: DISCORD_ID_PATTERN.source },
+      }),
+    ]);
     expect(params('/locations').map((q) => q.name)).toEqual(['accounts', 'from', 'to']);
     expect(params('/snapshot').map((q) => q.name)).toEqual(['since']);
     expect((doc().info as Json).description).toContain(`${API_RATE_LIMIT} requests`);
+  });
+
+  it('documents /members/{discord_id} as service keys only: 200, 400, and the unknown-path 404', () => {
+    const d = doc();
+    const op = (d.paths as Record<string, { get: Json }>)['/members/{discord_id}']?.get;
+    const responses = op?.responses as Json;
+    expect(Object.keys(responses).sort()).toEqual(['200', '400', '401', '404', '429', '503']);
+    expect(responses['404']).toEqual({ $ref: '#/components/responses/NoSuchEndpoint' });
+    expect(op?.description).toContain('Service keys only');
+    // Account endpoints keep the account 404.
+    const account = (d.paths as Record<string, { get: Json }>)['/accounts/{id}']?.get;
+    expect((account?.responses as Json)['404']).toEqual({
+      $ref: '#/components/responses/NotFound',
+    });
   });
 
   it('resolves every $ref and round-trips through JSON', () => {

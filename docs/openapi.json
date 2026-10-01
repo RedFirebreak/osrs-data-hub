@@ -4,7 +4,7 @@
     "title": "osrs-data-hub API",
     "version": "1",
     "summary": "The public, read-only API of osrs-data-hub.",
-    "description": "Read-only JSON API of this hub: OSRS account data sent by the HA Exporter RuneLite plugin, for Home Assistant, a Discord bot, a live map or your own scripts. Pull only: poll `/snapshot` and the `/events` cursor feed; there are no webhooks.\n\n## Authentication\nCreate a key on the hub's **API keys** page and send it on every request:\n\n    Authorization: Bearer ohub_<prefix>_<secret>\n\nA key is shown once. It reads only the categories chosen for it (stats, events, activity, live location, location history, equipment, inventory), only its account scope (every account its creator can see, or an explicit list), and only what its creator may see **right now**: the owners' sharing settings are evaluated on every request. A missing, malformed, unknown, revoked or expired key, or one whose creator left the guild, gets the same `401 unauthorized`. Cookies are never read.\n\n**Service keys** (Admin → Integrations) are for the guild's own integrations, such as its live map. A service key belongs to no user: it reads what the guild audience sees, i.e. the accounts and categories whose sharing audience is *guild* (never *private* or *selected*), it survives every offboarding, and it has its own rate limit (600 requests per minute unless the admin set another). Only service keys see `account_hash`, and they may name 50 accounts per bulk request instead of 10. `/me` tells the kinds apart (`key.kind`, `user` null).\n\n## Owner identity\nAccounts carry `owner` (`{ name, discord_id }`): the account's owner as the hub's guild page shows them to every member, or null when the account has no active owner. Contributors are never exposed.\n\n## Conventions\n- Success: `{ \"data\": …, \"meta\": { \"generated_at\": …, … } }`. Lists carry `meta.count`.\n- Errors: `{ \"error\": { \"code\": \"…\", \"message\": \"…\" } }`, plus `details` (field errors) on a 400.\n- Every key the hub defines is snake_case. Keys that are data (skill names such as `Attack`, equipment slots, item and account names) and an event's `data` object are passed through as they are.\n- Timestamps are ISO-8601 UTC; ids are opaque public ids (strings).\n- Query lists are comma-separated (`skills=attack,defence`); dates are ISO-8601 date-times with `Z` or an offset; unknown query parameters are ignored.\n- v1 only changes additively: new fields and endpoints may appear, so ignore keys you don't know.\n\n## Not found versus not shared\nAnything outside the key's reach answers **404 `not_found`** with exactly the body of an id that doesn't exist: an unknown account, one outside the key's scope, and one whose category the key can't read all look alike, so the API never reveals what exists. On `/accounts/{id}` and `/snapshot`, a section of a category the key can't read on that account is **omitted**; a section the key may read but the player's plugin never sent is `{ \"shared\": false, \"updated_at\": null }` (`/accounts/{id}`) or `null` (`/snapshot`). The plugin is the first privacy layer: the hub stores only what arrives.\n\n## Staleness\nA live location older than 2 minutes has `stale: true`: the player may be elsewhere now.\n\n## The events cursor\n`/events` is a cursor feed: start with `cursor=now` (or without a cursor for the newest events), then always pass the previous `meta.next_cursor`. Cursors are opaque strings and only move forward. The feed serves events stored at least 10 s ago, so a cursor never skips one that is still being committed: expect an event 10–15 s after it happened.\n\nWith `from`/`to`, `/events` reads a time range instead: the events that occurred in it, newest first, a page at a time until `meta.next_cursor` is null.\n\n## Rate limits\nPer key: 120 requests per sliding 60 s for a user key (a service key: 600, or the limit its admin set; `/me` reports it), and 1 request per 1 s on `/snapshot` for every key. Every authenticated response carries `X-RateLimit-Limit`, `X-RateLimit-Remaining` and `X-RateLimit-Reset` (seconds until the window frees a request: a delta, not a timestamp). Over a limit: `429 rate_limited` with an integer `Retry-After` in seconds. Failed authentications are limited to 30 per 60 s per client IP; past that, every request from that IP gets 429 until the window passes.\n\n## CORS\nEvery response, errors included, has `Access-Control-Allow-Origin: *` and exposes `ETag`, `Retry-After` and the `X-RateLimit-*` headers, so browser apps can call the API directly. No credentials: send the key in the Authorization header.\n\n## Caching\nResponses are `Cache-Control: no-store`, except `/snapshot` (`private, no-cache` with a weak ETag; `If-None-Match` → 304) and this document (`public, max-age=300`).\n\n## Errors\n400 `invalid_request` (a malformed parameter; `details` names it), 401 `unauthorized`, 404 `not_found`, 429 `rate_limited` (+ `Retry-After`), 503 `unavailable` (the hub is busy or its database is unreachable; retry after `Retry-After`), 500 `internal_error`."
+    "description": "Read-only JSON API of this hub: OSRS account data sent by the HA Exporter RuneLite plugin, for Home Assistant, a Discord bot, a live map or your own scripts. Pull only: poll `/snapshot` and the `/events` cursor feed; there are no webhooks.\n\n## Authentication\nCreate a key on the hub's **API keys** page and send it on every request:\n\n    Authorization: Bearer ohub_<prefix>_<secret>\n\nA key is shown once. It reads only the categories chosen for it (stats, events, activity, live location, location history, equipment, inventory), only its account scope (every account its creator can see, or an explicit list), and only what its creator may see **right now**: the owners' sharing settings are evaluated on every request. A missing, malformed, unknown, revoked or expired key, or one whose creator left the guild, gets the same `401 unauthorized`. Cookies are never read.\n\n**Service keys** (Admin → Integrations) are for the guild's own integrations, such as its live map. A service key belongs to no user: it reads what the guild audience sees, i.e. the accounts and categories whose sharing audience is *guild* (never *private* or *selected*), it survives every offboarding, and it has its own rate limit (600 requests per minute unless the admin set another). Only service keys see `account_hash`, and they may name 50 accounts per bulk request instead of 10. Only they can ask `/members/{discord_id}` whether a Discord account is a member of the hub and an admin; for a user key that endpoint doesn't exist (404). `/me` tells the kinds apart (`key.kind`, `user` null).\n\n## Owner identity\nAccounts carry `owner` (`{ name, discord_id }`): the account's owner as the hub's guild page shows them to every member, or null when the account has no active owner. Contributors are never exposed.\n\n## Conventions\n- Success: `{ \"data\": …, \"meta\": { \"generated_at\": …, … } }`. Lists carry `meta.count`.\n- Errors: `{ \"error\": { \"code\": \"…\", \"message\": \"…\" } }`, plus `details` (field errors) on a 400.\n- Every key the hub defines is snake_case. Keys that are data (skill names such as `Attack`, equipment slots, item and account names) and an event's `data` object are passed through as they are.\n- Timestamps are ISO-8601 UTC; ids are opaque public ids (strings).\n- Query lists are comma-separated (`skills=attack,defence`); dates are ISO-8601 date-times with `Z` or an offset; unknown query parameters are ignored.\n- v1 only changes additively: new fields and endpoints may appear, so ignore keys you don't know.\n\n## Not found versus not shared\nAnything outside the key's reach answers **404 `not_found`** with exactly the body of an id that doesn't exist: an unknown account, one outside the key's scope, and one whose category the key can't read all look alike, so the API never reveals what exists. On `/accounts/{id}` and `/snapshot`, a section of a category the key can't read on that account is **omitted**; a section the key may read but the player's plugin never sent is `{ \"shared\": false, \"updated_at\": null }` (`/accounts/{id}`) or `null` (`/snapshot`). The plugin is the first privacy layer: the hub stores only what arrives.\n\n## Staleness\nA live location older than 2 minutes has `stale: true`: the player may be elsewhere now.\n\n## The events cursor\n`/events` is a cursor feed: start with `cursor=now` (or without a cursor for the newest events), then always pass the previous `meta.next_cursor`. Cursors are opaque strings and only move forward. The feed serves events stored at least 10 s ago, so a cursor never skips one that is still being committed: expect an event 10–15 s after it happened.\n\nWith `from`/`to`, `/events` reads a time range instead: the events that occurred in it, newest first, a page at a time until `meta.next_cursor` is null.\n\n## Rate limits\nPer key: 120 requests per sliding 60 s for a user key (a service key: 600, or the limit its admin set; `/me` reports it), and 1 request per 1 s on `/snapshot` for every key. Every authenticated response carries `X-RateLimit-Limit`, `X-RateLimit-Remaining` and `X-RateLimit-Reset` (seconds until the window frees a request: a delta, not a timestamp). Over a limit: `429 rate_limited` with an integer `Retry-After` in seconds. Failed authentications are limited to 30 per 60 s per client IP; past that, every request from that IP gets 429 until the window passes.\n\n## CORS\nEvery response, errors included, has `Access-Control-Allow-Origin: *` and exposes `ETag`, `Retry-After` and the `X-RateLimit-*` headers, so browser apps can call the API directly. No credentials: send the key in the Authorization header.\n\n## Caching\nResponses are `Cache-Control: no-store`, except `/snapshot` (`private, no-cache` with a weak ETag; `If-None-Match` → 304) and this document (`public, max-age=300`).\n\n## Errors\n400 `invalid_request` (a malformed parameter; `details` names it), 401 `unauthorized`, 404 `not_found`, 429 `rate_limited` (+ `Retry-After`), 503 `unavailable` (the hub is busy or its database is unreachable; retry after `Retry-After`), 500 `internal_error`."
   },
   "servers": [
     {
@@ -45,6 +45,10 @@
     {
       "name": "Leaderboards",
       "description": "Gains leaderboards (`stats`) and the loot leaderboard (`events`)."
+    },
+    {
+      "name": "Members",
+      "description": "Whether one Discord account is a member of the hub (service keys only)."
     },
     {
       "name": "Meta",
@@ -1346,6 +1350,72 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/members/{discord_id}": {
+      "get": {
+        "operationId": "getMember",
+        "tags": [
+          "Members"
+        ],
+        "summary": "Is this Discord account a member?",
+        "description": "**Service keys only.** For a guild service that signs people in with Discord itself and lets the hub decide who may come in: one Discord user id in, one verdict out. No category is needed.\n\nA service key always gets a 200. `member` is true when a hub user with that Discord id exists and is active, with their display `name` and `is_admin`, the hub’s admin flag (for the service’s own admin pages; it widens nothing the key reads). Otherwise `member` and `is_admin` are false and `name` is null: an id the hub doesn’t know and a user who left the guild or was removed look exactly alike.\n\nAn id that isn’t 15 to 22 digits is a 400, never a 404. For a user key the endpoint doesn’t exist: it gets the 404 of an unknown path, which is also what a hub from before this endpoint answers any key. There is no list and no lookup by name.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "discord_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]{15,22}$"
+            },
+            "description": "A Discord user id (a snowflake): 15 to 22 digits.",
+            "example": "100000000000000042"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK: `{ data, meta }`.",
+            "headers": {
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/X-RateLimit-Remaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/X-RateLimit-Reset"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NoSuchEndpoint"
           },
           "429": {
             "$ref": "#/components/responses/TooManyRequests"
@@ -3546,6 +3616,58 @@
           "meta"
         ]
       },
+      "MemberResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "object",
+            "properties": {
+              "discord_id": {
+                "type": "string",
+                "description": "The Discord user id that was asked about."
+              },
+              "member": {
+                "type": "boolean",
+                "description": "True when a hub user with this Discord id exists and is active. False for an id the hub doesn’t know and for a user who left the guild or was removed: the two are indistinguishable."
+              },
+              "is_admin": {
+                "type": "boolean",
+                "description": "The member’s admin flag on the hub, for a service’s own admin pages; it widens nothing a key can read. Always false when `member` is false."
+              },
+              "name": {
+                "description": "The member’s display name on the hub; null when `member` is false.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "discord_id",
+              "member",
+              "is_admin",
+              "name"
+            ]
+          },
+          "meta": {
+            "type": "object",
+            "properties": {
+              "generated_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "When the hub built this response."
+              }
+            },
+            "required": [
+              "generated_at"
+            ]
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ]
+      },
       "Error": {
         "type": "object",
         "properties": {
@@ -3677,6 +3799,27 @@
       },
       "NotFound": {
         "description": "`not_found`: the account doesn’t exist or isn’t readable with this key (the two are indistinguishable).",
+        "headers": {
+          "X-RateLimit-Limit": {
+            "$ref": "#/components/headers/X-RateLimit-Limit"
+          },
+          "X-RateLimit-Remaining": {
+            "$ref": "#/components/headers/X-RateLimit-Remaining"
+          },
+          "X-RateLimit-Reset": {
+            "$ref": "#/components/headers/X-RateLimit-Reset"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "NoSuchEndpoint": {
+        "description": "`not_found`: the key is a user key. The endpoint exists for service keys only and answers a user key exactly like an unknown path.",
         "headers": {
           "X-RateLimit-Limit": {
             "$ref": "#/components/headers/X-RateLimit-Limit"

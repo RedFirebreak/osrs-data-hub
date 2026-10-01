@@ -15,6 +15,7 @@
 import { CATEGORIES, KNOWN_EVENT_TYPES } from '@hub/core';
 import { API_KEY_KINDS, SESSION_END_REASONS } from '@hub/db';
 import {
+  DISCORD_ID_PATTERN,
   EVENTS_DEFAULT_LIMIT,
   EVENTS_MAX_LIMIT,
   GAINS_PERIODS,
@@ -43,6 +44,18 @@ export const AccountPath = z.object({
   id: accountIdItem.meta({
     description: "The account's public id (opaque, base62), as `id` in `/accounts`.",
     example: '4fT9kQ2mXa7B',
+  }),
+});
+
+/**
+ * The `{discord_id}` path parameter of /members/{discord_id} (D-100). A value that can't be a
+ * Discord user id is a 400 for a service key, never a 404: the read model checks it with the same
+ * pattern, after it has answered a user key.
+ */
+export const MemberPath = z.object({
+  discord_id: z.string().regex(DISCORD_ID_PATTERN, 'not a Discord user id').meta({
+    description: 'A Discord user id (a snowflake): 15 to 22 digits.',
+    example: '100000000000000042',
   }),
 });
 
@@ -408,6 +421,22 @@ const MeData = z.object({
   visible_accounts: int.min(0).meta({ description: 'Accounts the key can see right now.' }),
 });
 
+// GET /members/{discord_id}
+const MemberData = z.object({
+  discord_id: z.string().meta({ description: 'The Discord user id that was asked about.' }),
+  member: z.boolean().meta({
+    description:
+      'True when a hub user with this Discord id exists and is active. False for an id the hub doesn’t know and for a user who left the guild or was removed: the two are indistinguishable.',
+  }),
+  is_admin: z.boolean().meta({
+    description:
+      'The member’s admin flag on the hub, for a service’s own admin pages; it widens nothing a key can read. Always false when `member` is false.',
+  }),
+  name: z.string().nullable().meta({
+    description: 'The member’s display name on the hub; null when `member` is false.',
+  }),
+});
+
 // GET /accounts
 export const AccountSummary = z.object({
   ...accountHead,
@@ -679,6 +708,7 @@ function envelope<D extends z.ZodType, M extends z.ZodType>(data: D, meta: M) {
 }
 
 export const MeResponse = envelope(MeData, Meta);
+export const MemberResponse = envelope(MemberData, Meta);
 export const AccountsResponse = envelope(AccountsData, ListMeta);
 export const AccountResponse = envelope(AccountDetail, Meta);
 export const SnapshotResponse = envelope(SnapshotData, SnapshotMeta);
@@ -709,6 +739,7 @@ export const ErrorResponse = z.object({
 });
 
 export type WireMe = z.infer<typeof MeData>;
+export type WireMember = z.infer<typeof MemberData>;
 export type WireAccountSummary = z.infer<typeof AccountSummary>;
 export type WireAccountDetail = z.infer<typeof AccountDetail>;
 export type WireSnapshotAccount = z.infer<typeof SnapshotAccount>;

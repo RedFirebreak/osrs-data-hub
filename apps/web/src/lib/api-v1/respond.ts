@@ -1,9 +1,10 @@
 /**
  * Responses and path parsing shared by the /api/v1 route handlers (D-71): the `{ data, meta }`
- * envelope and the `{id}` path parameter, with the one 404 for an account (lib/http.ts). Query
- * strings are parsed with parseQuery (lib/query.ts) and the schemas in schemas.ts.
+ * envelope and the `{id}` path parameter, with the one 404 for an account (lib/http.ts) and the one
+ * for a path that is no endpoint. Query strings are parsed with parseQuery (lib/query.ts) and the
+ * schemas in schemas.ts.
  */
-import { accountNotFound, json } from '@/lib/http';
+import { ApiError, accountNotFound, json } from '@/lib/http';
 import { AccountPath, type WireMetaExtra } from './schemas';
 
 /**
@@ -22,6 +23,14 @@ export async function accountIdFrom(params: Promise<{ id: string }>): Promise<st
   const parsed = AccountPath.safeParse(await params);
   if (!parsed.success) throw accountNotFound();
   return parsed.data.id;
+}
+
+/**
+ * The one 404 for a path that is no endpoint of API v1: what the catch-all route answers, and what
+ * an endpoint answers a key it doesn't exist for (/members/{discord_id} and a user key, D-100).
+ */
+export function endpointNotFound(): ApiError {
+  return new ApiError(404, 'not_found', 'There is no such endpoint in API v1.');
 }
 
 /** 200 with `map(value)` as `data`, or the account 404 when the read model answered null. */

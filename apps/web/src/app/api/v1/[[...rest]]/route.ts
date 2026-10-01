@@ -6,12 +6,14 @@
 import { connection } from 'next/server';
 import { preflight, withCors } from '@/lib/api-v1/cors';
 import { measureApiRequest } from '@/lib/api-v1/metrics';
+import { endpointNotFound } from '@/lib/api-v1/respond';
 import { errorJson } from '@/lib/http';
 
 async function notFound(): Promise<Response> {
   await connection();
   const done = measureApiRequest('unknown');
-  return done(withCors(errorJson(404, 'not_found', 'There is no such endpoint in API v1.')));
+  const { status, code, message } = endpointNotFound();
+  return done(withCors(errorJson(status, code, message)));
 }
 
 export const GET = notFound;

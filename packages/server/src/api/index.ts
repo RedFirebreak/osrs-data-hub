@@ -75,6 +75,7 @@ export {
   type ApiRateHeaders,
 } from './limits';
 export { apiMe, type ApiMe } from './me';
+export { apiMember, type ApiMember } from './members';
 // The parameter rules (id shape, ranges, list caps) are the web layer's too: all of it is public.
 export * from './params';
 export {

@@ -96,6 +96,7 @@ export const API_ROUTE_GROUPS = [
   'xp',
   'locations',
   'leaderboards',
+  'members',
   'openapi',
   'unknown',
 ] as const;

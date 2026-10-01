@@ -13,12 +13,24 @@ import { ApiError } from './errors';
  */
 export const PUBLIC_ID_PATTERN = /^[0-9A-Za-z]{1,64}$/;
 
+/**
+ * What a Discord user id (a snowflake) can look like: 15 to 22 digits. Today's ids have 17 to 19;
+ * the margin costs nothing, and anything else is never sent to the database (DB-1). The one
+ * definition, like PUBLIC_ID_PATTERN.
+ */
+export const DISCORD_ID_PATTERN = /^[0-9]{15,22}$/;
+
 /** Most ids or names one list parameter (`ids`, `names`, `accounts`) may carry. */
 export const MAX_LIST_PARAM = 100;
 
 /** True when `value` has the shape of a public id (so it may be looked up). */
 export function isPublicIdLike(value: unknown): value is string {
   return typeof value === 'string' && PUBLIC_ID_PATTERN.test(value);
+}
+
+/** True when `value` has the shape of a Discord user id (so it may be looked up). */
+export function isDiscordIdLike(value: unknown): value is string {
+  return typeof value === 'string' && DISCORD_ID_PATTERN.test(value);
 }
 
 /** Throws ApiError('invalid') unless `value` is a valid Date. */

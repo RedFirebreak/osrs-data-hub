@@ -10,7 +10,7 @@ the hub. It is **pull-only**: poll `/snapshot` and the `/events` cursor feed; th
   website renders it as its API reference. A test fails when it is stale; refresh it with
   `pnpm openapi:update`.
 
-Design decisions: D-69 … D-77 and D-88 … D-94 in [ARCHITECTURE.md](ARCHITECTURE.md).
+Design decisions: D-69 … D-77, D-88 … D-94, D-98 and D-100 in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Authentication
 
@@ -48,6 +48,8 @@ For the guild's own services (its live map, a shared bot) an admin creates a **s
 - its rate limit is its own: **600 requests per minute** unless the admin set another (1–6000);
   `/snapshot` stays at 1 per second;
 - it alone sees `account_hash` (D-91), and it may name 50 accounts per bulk request instead of 10 (D-92);
+- it alone can ask [`/members/{discord_id}`](#get-membersdiscord_id) whether a Discord account is a
+  member of the hub and an admin (D-100). For a user key that endpoint doesn't exist;
 - day-based periods (`period=day` on gains and leaderboards) use UTC, since it has no creator settings.
 
 `/me` tells the kinds apart: `key.kind` is `user` or `service`, and `user` is `null` for a service key.
@@ -129,7 +131,7 @@ can call the API directly.
 |---|---|---|
 | 400 | `invalid_request` | a malformed or out-of-range parameter (`details` names it) |
 | 401 | `unauthorized` | no valid key |
-| 404 | `not_found` | unknown or unreadable account, or an unknown path |
+| 404 | `not_found` | unknown or unreadable account, or an unknown path (which `/members/{discord_id}` is for a user key) |
 | 429 | `rate_limited` | over a limit; wait `Retry-After` seconds |
 | 503 | `unavailable` | the hub is busy or its database is unreachable; retry after `Retry-After` |
 | 500 | `internal_error` | a bug; nothing about it is revealed |
@@ -439,6 +441,44 @@ The period's most valuable drops over accounts whose `events` the key reads (D-9
       {"rank":2,"event":{"id":"…","type":"pk_loot","account":{"id":"jHSfP5UICcQt","name":"Bravo Alt"},"value_gp":1250000,…}}]},
      "meta":{"generated_at":"…"}}
 
+### GET /members/{discord_id}
+
+**Service keys only** (D-100). Whether one Discord account is a member of the hub, and an admin. It is
+for a guild service that signs people in with Discord itself, such as the live map, and lets the hub
+decide who may come in. One Discord user id in, one verdict out: there is no list and no lookup by
+name, and the key needs no category for it.
+
+    GET /api/v1/members/100000000000000042
+
+    {"data":{"discord_id":"100000000000000042","member":true,"is_admin":false,"name":"Owner"},"meta":{"generated_at":"…"}}
+
+    GET /api/v1/members/100000000000000099
+
+    {"data":{"discord_id":"100000000000000099","member":false,"is_admin":false,"name":null},"meta":{"generated_at":"…"}}
+
+A service key always gets a `200` for a well-formed id:
+
+- `member` is `true` when a hub user with that Discord id exists and is active. `name` is their display
+  name on the hub and `is_admin` their admin flag.
+- Otherwise the answer is `member: false`, `is_admin: false`, `name: null`. An id the hub has never seen
+  and a user who left the guild or was removed look exactly alike.
+- `is_admin` is for the service's own admin pages. It changes nothing about what the key reads: a
+  service key reads what the guild audience sees, whoever is signed in to the service (D-89).
+- The verdict is the hub's state at the time of the request: someone who is offboarded answers
+  `member: false` on the next one.
+
+Other answers:
+
+- An id that isn't 15 to 22 digits is a `400 invalid_request`, never a 404.
+- A **user key** gets `404 not_found` with the body of an unknown path, whoever created it: the endpoint
+  doesn't exist for personal keys.
+- So for a service key a 404 means one thing: the hub is older than this endpoint.
+
+The two error bodies:
+
+    {"error":{"code":"invalid_request","message":"discord_id must be a Discord user id (15 to 22 digits)"}}
+    {"error":{"code":"not_found","message":"There is no such endpoint in API v1."}}
+
 ### GET /openapi.json
 
 The OpenAPI 3.1 description of all of the above, generated from the same schemas the routes validate
@@ -525,4 +565,7 @@ Other rules:
     (with `events`) for its top-drops panel (D-94).
   - `/events?accounts=&from=&to=` (with `events`) for the events along a trail of 24 hours, 7 or 30
     days (D-98).
+  - `/members/{discord_id}` to decide who may sign in to the map and who is an admin there (D-100): the
+    map signs people in with Discord itself and asks the hub about their Discord user id. It keeps no
+    accounts of its own. A 404 tells it the hub is too old to have the endpoint.
   - There is no push for keys yet (D-93): polling is the contract.

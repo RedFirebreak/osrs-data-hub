@@ -1,7 +1,7 @@
 /**
  * Query parsing of API v1 (schemas.ts): comma-separated lists (trimmed, deduplicated, capped with the
  * server's numbers), ISO-8601 instants, booleans, whole numbers, the opaque cursor, unknown
- * parameters ignored, and the account id pattern agreeing with the server's.
+ * parameters ignored, and the account id and Discord id patterns agreeing with the server's.
  */
 import {
   EVENTS_MAX_LIMIT,
@@ -10,6 +10,7 @@ import {
   MAX_BULK_ACCOUNTS_SERVICE as MAX_XP_ACCOUNTS_SERVICE,
   encodeEventsCursor,
   encodeEventsRangeCursor,
+  isDiscordIdLike,
   isPublicIdLike,
 } from '@hub/server';
 import { describe, expect, it } from 'vitest';
@@ -19,6 +20,7 @@ import {
   EventsQuery,
   GainsQuery,
   HistoryQuery,
+  MemberPath,
   SnapshotQuery,
   XpMultiQuery,
   XpQuery,
@@ -139,6 +141,27 @@ describe('account ids', () => {
       'a\u0000b',
     ]) {
       expect(AccountPath.safeParse({ id }).success, id).toBe(isPublicIdLike(id));
+    }
+  });
+});
+
+describe('Discord ids', () => {
+  it('match what the server accepts as a Discord user id: 15 to 22 digits', () => {
+    const cases: [string, boolean][] = [
+      ['100000000000000042', true],
+      ['1'.repeat(15), true],
+      ['1'.repeat(22), true],
+      ['1'.repeat(14), false],
+      ['1'.repeat(23), false],
+      ['10000000000000004x', false],
+      [' 100000000000000042', false],
+      ['１'.repeat(18), false],
+      ['', false],
+      ['100000000000000042\u0000', false],
+    ];
+    for (const [discord_id, ok] of cases) {
+      expect(isDiscordIdLike(discord_id), discord_id).toBe(ok);
+      expect(MemberPath.safeParse({ discord_id }).success, discord_id).toBe(ok);
     }
   });
 });
