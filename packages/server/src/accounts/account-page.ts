@@ -210,7 +210,8 @@ export type VitalsColumns = Pick<
 
 /**
  * HP, prayer and spellbook from latest_state: each null until the plugin first sent it (its
- * *_updated_at is null) or when a meter lacks a value. Shared with the public API (api/state.ts).
+ * *_updated_at is null) or when a meter lacks a value. Shared with the public API and the export
+ * (api/state.ts).
  */
 export function vitalsOf(state: VitalsColumns): Vitals {
   const meter = (at: Date | null, current: number | null, max: number | null) =>
@@ -227,20 +228,31 @@ function locationSection(
   state: LatestRow | undefined,
   now: Date,
 ): Section<LiveLocation> {
-  const at = state?.locationUpdatedAt ?? null;
-  const loc = visible && at !== null ? parseLocation(state?.location) : null;
-  // A stored value that isn't a location can't be shown: treat it as never sent.
-  return sectionOf(visible, loc === null ? null : at, () => ({
-    ...(loc as Omit<LiveLocation, 'stale'>),
-    stale: now.getTime() - (at as Date).getTime() > LOCATION_STALE_MS,
-  }));
+  const loc = visible && state ? locationOf(state, now) : null;
+  return sectionOf(
+    visible,
+    loc === null ? null : state?.locationUpdatedAt,
+    () => loc as LiveLocation,
+  );
 }
 
 /**
- * A stored latest_state.location ({x, y, plane, isOnBoat}), or null when it isn't one (then it is
- * treated as never sent). Shared with the public API (api/state.ts).
+ * The live location from latest_state, stale after LOCATION_STALE_MS without an update (D-18); null
+ * when the plugin never sent one, or when the stored value isn't a location (it can't be shown, so
+ * it is treated as never sent). Shared with the public API and the export (api/state.ts).
  */
-export function parseLocation(value: unknown): Omit<LiveLocation, 'stale'> | null {
+export function locationOf(
+  state: Pick<LatestRow, 'location' | 'locationUpdatedAt'>,
+  now: Date,
+): LiveLocation | null {
+  const at = state.locationUpdatedAt;
+  const loc = at === null ? null : parseLocation(state.location);
+  if (at === null || loc === null) return null;
+  return { ...loc, stale: now.getTime() - at.getTime() > LOCATION_STALE_MS };
+}
+
+/** A stored latest_state.location ({x, y, plane, isOnBoat}), or null when it isn't one. */
+function parseLocation(value: unknown): Omit<LiveLocation, 'stale'> | null {
   if (typeof value !== 'object' || value === null) return null;
   const { x, y, plane, isOnBoat } = value as Record<string, unknown>;
   if (typeof x !== 'number' || typeof y !== 'number' || typeof plane !== 'number') return null;
@@ -279,20 +291,32 @@ async function skillsSection(
     month: month.get(skill) ?? 0,
     year: year.get(skill) ?? 0,
   });
+  const levels = skillLevels(parsed);
+  return sectionOf(true, state.skillsUpdatedAt, () => ({
+    totalLevel: levels.totalLevel,
+    overallXp: levels.overallXp,
+    rows: levels.skills.map((row): SkillRow => ({ ...row, gains: gainsOf(row.skill) })),
+  }));
+}
+
+/**
+ * Parsed skills (parseSkills) as every surface lists them: the derived Overall first (the real total
+ * level, D-44, and Σ xp), then the in-game grid order. Shared with the public API and the export
+ * (api/state.ts); the account page adds the gains.
+ */
+export function skillLevels(parsed: Record<string, { xp: number; level: number }>): {
+  totalLevel: number;
+  overallXp: number;
+  skills: Omit<SkillRow, 'gains'>[];
+} {
   const total = totalLevel(parsed);
   const overall = overallXp(parsed);
-  const rows = sortSkillsForDisplay([OVERALL, ...Object.keys(parsed)]).map((skill): SkillRow => {
-    if (skill === OVERALL) {
-      return { skill, level: total, realLevel: total, xp: overall, gains: gainsOf(skill) };
-    }
+  const skills = sortSkillsForDisplay([OVERALL, ...Object.keys(parsed)]).map((skill) => {
+    if (skill === OVERALL) return { skill, level: total, realLevel: total, xp: overall };
     const { xp, level } = parsed[skill] as { xp: number; level: number };
-    return { skill, level, realLevel: realLevel(level), xp, gains: gainsOf(skill) };
+    return { skill, level, realLevel: realLevel(level), xp };
   });
-  return sectionOf(true, state.skillsUpdatedAt, () => ({
-    totalLevel: total,
-    overallXp: overall,
-    rows,
-  }));
+  return { totalLevel: total, overallXp: overall, skills };
 }
 
 async function eventsSection(

@@ -1,26 +1,20 @@
 /**
  * An account's current state (latest_state) as the public API returns it, section by section, for
- * GET /accounts/{id} and GET /snapshot. Each section is read only when the principal holds its
- * category on the account; the mapping helpers are the account page's (accounts/account-page.ts), so
- * the UI and the API agree on what a section contains.
+ * GET /accounts/{id}, GET /snapshot and the data export. Each section is read only when the
+ * principal holds its category on the account; what a section contains comes from the account page's
+ * helpers (accounts/account-page.ts, accounts/load.ts), so the UI and the API agree on it.
  */
-import {
-  LOCATION_STALE_MS,
-  OVERALL,
-  isOnline,
-  itemsValue,
-  overallXp,
-  realLevel,
-  sortSkillsForDisplay,
-  totalLevel,
-} from '@hub/core';
+import { floorTo, itemsValue, type Category } from '@hub/core';
 import { latestState, type DbOrTx } from '@hub/db';
 import { getTableColumns, inArray, sql } from 'drizzle-orm';
-import { parseLocation, vitalsOf } from '../accounts/account-page';
+import { locationOf, skillLevels, vitalsOf } from '../accounts/account-page';
+import { toPresence } from '../accounts/load';
 import { latestOf } from '../accounts/sections';
 import { parseSkills } from '../accounts/xp';
-import type { ApiItem, ApiMeter } from './types';
+import type { ApiItem, ApiMeter, ApiSection } from './types';
 import { toApiItems } from './types';
+
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 export type LatestRow = typeof latestState.$inferSelect;
 
@@ -112,48 +106,16 @@ export async function loadLatestRows(
   return out;
 }
 
-/** Presence from a latest_state row (online per @hub/core isOnline). */
-export function presenceOf(row: LatestRow, now: Date): ApiPresence {
-  return {
-    online: isOnline(row, now),
-    world: row.world,
-    specialWorld: row.specialWorld,
-    gameState: row.gameState,
-    lastSeen: row.lastSeen.toISOString(),
-  };
-}
-
 /** When the vitals section was last received: the newest of its three parts, or null. */
-export function vitalsUpdatedAt(row: LatestRow): Date | null {
+function vitalsUpdatedAt(row: LatestRow): Date | null {
   return latestOf(row.healthUpdatedAt, row.prayerUpdatedAt, row.spellbookUpdatedAt);
-}
-
-/** HP, prayer and spellbook (the account page's vitalsOf). */
-export function vitalsFrom(row: LatestRow): ApiVitals {
-  return vitalsOf(row);
 }
 
 /** Skills, or null when the plugin never sent stats (or they aren't readable). */
 export function skillsOf(row: LatestRow): ApiSkills | null {
   if (row.skillsUpdatedAt === null) return null;
   const parsed = parseSkills(row.skills);
-  if (parsed === null) return null;
-  const total = totalLevel(parsed);
-  const overall = overallXp(parsed);
-  const skills = sortSkillsForDisplay([OVERALL, ...Object.keys(parsed)]).map((skill): ApiSkill => {
-    if (skill === OVERALL) return { skill, level: total, realLevel: total, xp: overall };
-    const { xp, level } = parsed[skill] as { xp: number; level: number };
-    return { skill, level, realLevel: realLevel(level), xp };
-  });
-  return { totalLevel: total, overallXp: overall, skills };
-}
-
-/** The live location, or null when never sent (or not a location). */
-export function locationOf(row: LatestRow, now: Date): ApiLocation | null {
-  const at = row.locationUpdatedAt;
-  const loc = at === null ? null : parseLocation(row.location);
-  if (at === null || loc === null) return null;
-  return { ...loc, stale: now.getTime() - at.getTime() > LOCATION_STALE_MS };
+  return parsed === null ? null : skillLevels(parsed);
 }
 
 /** Items with their value, or null when the section was never sent. */
@@ -163,4 +125,83 @@ export function itemsOf(
 ): { items: ApiItem[]; value: number } | null {
   if (updatedAt === null || !Array.isArray(items)) return null;
   return { items: toApiItems(items), value: itemsValue(items) ?? 0 };
+}
+
+/**
+ * An account's current state by category, as GET /accounts/{id} and the export return it. Each
+ * section follows ApiSection: `shared: true` with its data, `shared: false` when the plugin never
+ * sent it, and OMITTED when the reader doesn't hold the category on the account.
+ */
+export interface ApiStateSections {
+  /** `activity`; `updatedAt` = when the hub last heard from the account. */
+  presence?: ApiSection<ApiPresence>;
+  /** `activity`. */
+  vitals?: ApiSection<ApiVitals>;
+  /** `stats`. */
+  skills?: ApiSection<ApiSkills>;
+  /** `location_live`; its `updatedAt` is exact (a live position is presence by nature). */
+  location?: ApiSection<ApiLocation>;
+  /** `equipment`. */
+  equipment?: ApiSection<ApiEquipment>;
+  /** `inventory`. */
+  inventory?: ApiSection<ApiInventory>;
+}
+
+/**
+ * The current state of one account for a reader holding `categories` on it: its latest_state row
+ * (the large jsonb sections only where a category allows them) as accountSections.
+ */
+export async function loadAccountSections(
+  db: DbOrTx,
+  accountId: number,
+  categories: ReadonlySet<Category>,
+  now: Date,
+): Promise<ApiStateSections> {
+  const rows = await loadLatestRows(db, [accountId], {
+    skills: categories.has('stats'),
+    equipment: categories.has('equipment'),
+    inventory: categories.has('inventory'),
+  });
+  return accountSections(categories, rows.get(accountId), now);
+}
+
+/**
+ * The sections of `row` that `categories` allow, in the order above; the others are omitted.
+ * Without `activity`, the `updatedAt` of skills, equipment and inventory is cut to the UTC day: the
+ * plugin sends them with every periodic update, so the exact time would be the last-seen time the
+ * owner didn't share (D-50). (The account page cuts to the viewer's local day instead: by design.)
+ */
+export function accountSections(
+  categories: ReadonlySet<Category>,
+  row: LatestRow | undefined,
+  now: Date,
+): ApiStateSections {
+  const can = (c: Category) => categories.has(c);
+  const stamp = (at: Date | null) => (at === null || can('activity') ? at : floorTo(at, DAY_MS));
+  const out: ApiStateSections = {};
+  if (can('activity')) {
+    out.presence = section(row?.lastSeen ?? null, row ? toPresence(row, now) : null);
+    out.vitals = section(row ? vitalsUpdatedAt(row) : null, row ? vitalsOf(row) : null);
+  }
+  if (can('stats')) {
+    out.skills = section(stamp(row?.skillsUpdatedAt ?? null), row ? skillsOf(row) : null);
+  }
+  if (can('location_live')) {
+    out.location = section(row?.locationUpdatedAt ?? null, row ? locationOf(row, now) : null);
+  }
+  if (can('equipment')) {
+    const at = row?.equipmentUpdatedAt ?? null;
+    out.equipment = section(stamp(at), row ? itemsOf(row.equipment, at) : null);
+  }
+  if (can('inventory')) {
+    const at = row?.inventoryUpdatedAt ?? null;
+    out.inventory = section(stamp(at), row ? itemsOf(row.inventory, at) : null);
+  }
+  return out;
+}
+
+/** A shared section when there is data and a time, else "not shared". */
+function section<T extends object>(updatedAt: Date | null, data: T | null): ApiSection<T> {
+  if (updatedAt === null || data === null) return { shared: false, updatedAt: null };
+  return { ...data, shared: true, updatedAt: updatedAt.toISOString() };
 }

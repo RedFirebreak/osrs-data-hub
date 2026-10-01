@@ -6,7 +6,7 @@
  * Evaluated on every request, so a sharing change or the creator losing access applies at once. The
  * admin override never applies through the API.
  */
-import { isGuildAudience, type Category, type Principal } from '@hub/core';
+import { accountTypeLabel, isGuildAudience, type Category, type Principal } from '@hub/core';
 import { users, type DbOrTx } from '@hub/db';
 import { and, eq, inArray } from 'drizzle-orm';
 import {
@@ -18,7 +18,7 @@ import {
 import { ApiError } from './errors';
 import type { ApiPrincipal } from './keys';
 import { MAX_LIST_PARAM, isPublicIdLike, listParam } from './params';
-import type { ApiAccountRef, ApiOwner } from './types';
+import type { ApiAccountIdentity, ApiAccountRef, ApiOwner } from './types';
 
 /** Most accounts one bulk request (`/xp`, `/locations`) may name with a user key (D-92). */
 export const MAX_BULK_ACCOUNTS = 10;
@@ -76,6 +76,27 @@ export async function loadApiOwners(
     out.set(e.account.id, owner ?? null);
   }
   return out;
+}
+
+/**
+ * What every account response starts with (ApiAccountIdentity): id, name, type and the owner (from
+ * loadApiOwners over the same entries, D-90), with `accountHash` for a service key only (D-91).
+ */
+export function accountIdentity(
+  principal: ApiPrincipal,
+  entry: AccountWithAccess,
+  owners: ReadonlyMap<number, ApiOwner | null>,
+): ApiAccountIdentity {
+  const { account } = entry;
+  const accountHash = apiAccountHash(principal, entry);
+  return {
+    id: account.publicId,
+    name: account.name,
+    ...(accountHash !== undefined ? { accountHash } : {}),
+    type: account.accountType,
+    typeLabel: accountTypeLabel(account.accountType),
+    owner: owners.get(account.id) ?? null,
+  };
 }
 
 /** The principal's key as a restriction for the shared loaders. */

@@ -21,6 +21,23 @@ export interface ApiOwner {
   discordId: string | null;
 }
 
+/**
+ * What every account in /accounts, /accounts/{id} and /snapshot starts with (built by
+ * api/access.ts accountIdentity).
+ */
+export interface ApiAccountIdentity {
+  id: string;
+  name: string;
+  /** The plugin's salted accountHash; only for service keys, omitted otherwise (D-91). */
+  accountHash?: string;
+  /** IRONMAN varbit: 0 normal, 1 IM, 2 UIM, 3 HCIM, 4 GIM, 5 HCGIM, 6 UGIM; null when never sent. */
+  type: number | null;
+  /** "Normal", "Ironman", … ("Unknown" for null). */
+  typeLabel: string;
+  /** The account's owner as the guild page shows them; null without an active owner (D-90). */
+  owner: ApiOwner | null;
+}
+
 /** A meter (HP, prayer): the current value (boosted, so it can exceed max) and the maximum. */
 export interface ApiMeter {
   current: number;
