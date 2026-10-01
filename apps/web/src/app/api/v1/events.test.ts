@@ -2,8 +2,11 @@
  * GET /api/v1/events (D-73): the cursor feed end to end over ingested fixtures — the first page,
  * `cursor=now`, following the cursor, events younger than the settle margin held back, paging with
  * `limit`, the filters, the `events` gate and 400s. Event `data` passes through unchanged (D-77).
+ * With `from`/`to` (D-98): the events that occurred in the range, newest first, paged until
+ * `next_cursor` is null, with the two cursor kinds kept apart.
  * Also GET /api/v1/leaderboards/loot (D-94), whose entries are these same events.
  */
+import { encodeEventsRangeCursor } from '@hub/server';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EventsResponse, LootLeaderboardResponse } from '@/lib/api-v1/schemas';
 import { setApiLimitsForTests } from '@/lib/api-v1/with-api-key';
@@ -169,6 +172,79 @@ describe('GET /api/v1/events', () => {
       const res = await GET(v1Request(ctx, `/events${query}`, { key: ownerKey.key }));
       expect(res.status, query).toBe(400);
       const body = (await res.json()) as { error: { code: string; details?: unknown[] } };
+      expect(body.error.code, query).toBe('invalid_request');
+    }
+  });
+});
+
+describe('GET /api/v1/events?from=&to=', () => {
+  const iso = (date: Date) => encodeURIComponent(date.toISOString());
+  /** The last hour, which holds everything the tests above ingested. */
+  const lastHour = () => `from=${iso(new Date(Date.now() - 3_600_000))}&to=${iso(new Date())}`;
+
+  it('serves the events that occurred in the range, newest first, each as the feed serves it', async () => {
+    const feed = await page(ownerKey, '?limit=500');
+    expect(feed.data.length).toBeGreaterThanOrEqual(3);
+    const ranged = await page(ownerKey, `?${lastHour()}`);
+    expect(ranged.meta).toMatchObject({ count: feed.data.length, next_cursor: null });
+    expect(new Set(ranged.data)).toEqual(new Set(feed.data));
+    const times = ranged.data.map((e) => Date.parse(e.occurred_at));
+    expect(times).toEqual(times.toSorted((a, b) => b - a));
+
+    // Nothing occurred before the hub existed, or after now.
+    const before = await page(ownerKey, `?to=${iso(new Date(Date.now() - 3_600_000))}`);
+    expect(before.data).toEqual([]);
+    expect(before.meta.next_cursor).toBeNull();
+  });
+
+  it('pages with `meta.next_cursor` until it is null, with the filters applied', async () => {
+    const all = await page(ownerKey, `?${lastHour()}&types=level_up`);
+    expect(all.data.length).toBeGreaterThanOrEqual(2);
+    const seen: string[] = [];
+    let cursor: string | null = '';
+    for (let i = 0; i < 20 && cursor !== null; i++) {
+      const from = cursor === '' ? '' : `&cursor=${cursor}`;
+      const p = await page(ownerKey, `?${lastHour()}&types=level_up&limit=1${from}`);
+      expect(p.data).toHaveLength(1);
+      seen.push(...p.data.map((e) => e.id));
+      cursor = p.meta.next_cursor;
+    }
+    expect(seen).toEqual(all.data.map((e) => e.id));
+    const main = await page(ownerKey, `?${lastHour()}&accounts=${world.main.id}&min_value=1`);
+    expect(main.data.map((e) => e.type)).toEqual(['loot']);
+    expect((await page(ownerKey, `?${lastHour()}&accounts=${world.alt.id}`)).data).toEqual([]);
+  });
+
+  it('404 for an account the key can’t read, nothing without `events`', async () => {
+    expect((await page(statsKey, `?${lastHour()}`)).data).toEqual([]);
+    for (const [key, id] of [
+      [statsKey, world.main.id],
+      [ownerKey, RANDOM_ID],
+    ] as const) {
+      const res = await GET(
+        v1Request(ctx, `/events?${lastHour()}&accounts=${id}`, { key: key.key }),
+      );
+      expect(res.status).toBe(404);
+      expect(((await res.json()) as { error: { code: string } }).error.code).toBe('not_found');
+    }
+  });
+
+  it('400 for a bad range, and for a cursor of the other kind', async () => {
+    const feedCursor = (await page(ownerKey, '?cursor=now')).meta.next_cursor;
+    const rangeCursor = encodeEventsRangeCursor(new Date(), 1);
+    for (const query of [
+      '?from=yesterday',
+      '?from=2026-09-29',
+      '?to=2026-09-29T10:00:00',
+      '?from=2026-09-30T00:00:00Z&to=2026-09-29T00:00:00Z',
+      `?${lastHour()}&cursor=now`,
+      `?${lastHour()}&cursor=${feedCursor}`,
+      `?cursor=${rangeCursor}`,
+      `?${lastHour()}&limit=501`,
+    ]) {
+      const res = await GET(v1Request(ctx, `/events${query}`, { key: ownerKey.key }));
+      expect(res.status, query).toBe(400);
+      const body = (await res.json()) as { error: { code: string } };
       expect(body.error.code, query).toBe('invalid_request');
     }
   });

@@ -103,6 +103,8 @@ describe('the OpenAPI document', () => {
       'accounts',
       'min_value',
       'limit',
+      'from',
+      'to',
     ]);
     const limit = params('/events').find((q) => q.name === 'limit');
     expect(limit?.description).toContain(String(EVENTS_MAX_LIMIT));

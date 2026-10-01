@@ -140,13 +140,15 @@ export const OPERATIONS: readonly OperationSpec[] = [
     path: '/events',
     operationId: 'getEvents',
     tag: 'Events',
-    summary: 'Event cursor feed',
+    summary: 'Event cursor feed, or the events of a time range',
     description: [
       'Loot, level-ups, deaths, collection log, diaries, combat tasks and superiors of the accounts whose `events` the key may read, ordered by the order the hub stored them, for the Discord bot and Home Assistant automations.',
       '',
       `**Cursor semantics.** Start with \`cursor=now\` (no events, just the current cursor) or without a cursor (the newest \`limit\` events, default ${EVENTS_DEFAULT_LIMIT}, at most ${EVENTS_MAX_LIMIT}). Then always pass the previous \`meta.next_cursor\`: you get the events after it, oldest first, and a new cursor. Fewer than \`limit\` events means "caught up for now". The cursor always moves forward, also past events your filters leave out, and is unchanged while nothing new has arrived. Cursors are opaque; keep them as strings.`,
       '',
       `The feed only serves events stored at least ${SECONDS(API_EVENTS_SETTLE_MS)} s ago, so a cursor can never skip an event that is still being committed: expect an event 10–15 s after the hub received it. \`occurred_at\` is when it happened in game, \`received_at\` when the hub got it (the plugin may resend events up to ~10 minutes late).`,
+      '',
+      `**Time range.** With \`from\` and/or \`to\` the request reads history instead of following the feed: the events with \`occurred_at\` from \`from\` to \`to\` (both included; \`to\` defaults to now, \`from\` to ${HISTORY_DEFAULT_DAYS} days before \`to\`), **newest first**, with the same accounts, filters, \`limit\` and event shape. \`meta.next_cursor\` is the cursor of the next (older) page, or \`null\` when the page is the range’s last; pass it as \`cursor\` with the same \`from\`, \`to\` and filters. Pages are keyed on the event’s time and storage order, so every event is visited once, events of the same instant included, whatever arrives meanwhile. There is no settle margin here: an event can appear a few seconds before the feed serves it, and one that arrives late in a stretch already paged isn’t revisited. The two modes have different cursors: \`cursor=now\` or a feed cursor with \`from\`/\`to\`, or a range cursor without them, is a 400.`,
     ].join('\n'),
     response: S.EventsResponse,
     query: S.EventsQuery,
@@ -422,6 +424,8 @@ A live location older than 2 minutes has \`stale: true\`: the player may be else
 ## The events cursor
 \`/events\` is a cursor feed: start with \`cursor=now\` (or without a cursor for the newest events), then always pass the previous \`meta.next_cursor\`. Cursors are opaque strings and only move forward. The feed serves events stored at least ${SECONDS(API_EVENTS_SETTLE_MS)} s ago, so a cursor never skips one that is still being committed: expect an event 10–15 s after it happened.
 
+With \`from\`/\`to\`, \`/events\` reads a time range instead: the events that occurred in it, newest first, a page at a time until \`meta.next_cursor\` is null.
+
 ## Rate limits
 Per key: ${API_RATE_LIMIT} requests per sliding ${SECONDS(API_RATE_WINDOW_MS)} s for a user key (a service key: ${SERVICE_KEY_RATE_LIMIT}, or the limit its admin set; \`/me\` reports it), and ${SNAPSHOT_RATE_LIMIT} request per ${SECONDS(SNAPSHOT_RATE_WINDOW_MS)} s on \`/snapshot\` for every key. Every authenticated response carries \`X-RateLimit-Limit\`, \`X-RateLimit-Remaining\` and \`X-RateLimit-Reset\` (seconds until the window frees a request: a delta, not a timestamp). Over a limit: \`429 rate_limited\` with an integer \`Retry-After\` in seconds. Failed authentications are limited to ${FAILED_AUTH_LIMIT} per ${SECONDS(FAILED_AUTH_WINDOW_MS)} s per client IP; past that, every request from that IP gets 429 until the window passes.
 
@@ -471,7 +475,7 @@ export function buildOpenApiDocument(): Json {
       { name: 'Accounts', description: 'Visible accounts and their current state.' },
       { name: 'Snapshot', description: 'Everything at once, for polling.' },
       { name: 'XP and gains', description: 'XP series and gains (`stats`).' },
-      { name: 'Events', description: 'The cursor feed (`events`).' },
+      { name: 'Events', description: 'The cursor feed and time-range reads (`events`).' },
       { name: 'Histories', description: 'Sessions, equipment, wealth and locations.' },
       {
         name: 'Leaderboards',

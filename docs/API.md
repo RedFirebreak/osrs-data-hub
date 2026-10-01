@@ -322,10 +322,11 @@ Give either `period` or `from` (optionally with `to`), not both.
     {"data":{"account":{"id":"oC8RsqiTuyak","name":"Alpha Main"},"period":"week","from":"2026-09-22T14:14:12.421Z",
      "to":"2026-09-29T14:14:12.421Z","gains":[{"skill":"Overall","xp":5000},{"skill":"Attack","xp":5000},…]},"meta":{…}}
 
-### GET /events?cursor=&types=&accounts=&min_value=&limit=
+### GET /events?cursor=&types=&accounts=&min_value=&limit=&from=&to=
 
 The cursor feed of events on accounts whose `events` category the key can read (see
-[The events cursor](#the-events-cursor)).
+[The events cursor](#the-events-cursor)). With `from` and/or `to` it reads a time range instead (see
+[Events in a time range](#events-in-a-time-range)).
 
 Parameters:
 
@@ -333,7 +334,9 @@ Parameters:
   `achievement_diary`, `combat_task`, or an unknown plugin type as sent;
 - `accounts`: up to 100 ids, each readable, else 404;
 - `min_value`: `value_gp` ≥ this;
-- `limit`: 1–500, default 100.
+- `limit`: 1–500, default 100;
+- `from`, `to`: read a time range instead of the feed; `to` defaults to now, `from` to 30 days before
+  `to`.
 
 `data` is the page of events, oldest first; `meta.next_cursor` is the cursor for the next call. Each
 event's `data` is the plugin's event object, passed through unchanged (its shape depends on `type`).
@@ -459,6 +462,41 @@ Other rules:
 - `occurred_at` is when it happened in game, as the plugin stamped it, clamped to the 15 minutes up to
   `received_at` (D-17). `received_at` is when the hub got it.
 
+## Events in a time range
+
+`GET /events?from=&to=` answers "what happened between A and B" (D-98), for example the events along
+a player's location trail. Giving `from`, `to` or both selects this mode. The rest of the request is as
+on the feed: `accounts`, `types`, `min_value`, `limit`, the event shape, the 404 for an unreadable
+account and the removal of `data.location`.
+
+1. Ask for the range, e.g. `GET /events?accounts=oC8RsqiTuyak&from=2026-09-01T00:00:00Z&to=2026-10-01T00:00:00Z`.
+   You get the **newest** `limit` events with `occurred_at` from `from` to `to`, both included, newest
+   first. Events of the same instant come in the reverse of the order the hub stored them.
+2. `meta.next_cursor` is the cursor of the next, older page, or `null` when this page is the last one.
+   Pass it as `cursor` with the same `from`, `to` and filters. Stop whenever you have enough.
+
+Other rules:
+
+- Defaults: `to` = now, `from` = `to` − 30 days. There is no maximum range. A `from` after `to` is a 400.
+- Without `accounts`, the range covers every account whose `events` the key reads, as one merged stream.
+- Paging visits every event once, without gaps or repeats, whatever arrives in the meantime: new events
+  are newer than the cursor.
+- There is no settle margin in this mode, so an event can show up here a few seconds before the feed
+  serves it. An event that arrives late (the plugin resends for up to about 10 minutes) with an
+  `occurred_at` in a stretch already paged is not revisited by that walk; read the newest part of the
+  range again to pick it up.
+- The two modes have different cursors. `cursor=now` or a feed cursor together with `from`/`to`, and a
+  range cursor without them, are a 400.
+- A hub from before this feature ignores `from` and `to` (unknown parameters are ignored) and answers
+  with the feed's newest `limit` events and a `next_cursor` that is never `null`. `/openapi.json`
+  lists `from` among `/events`' parameters only where the range read exists.
+
+    GET /api/v1/events?accounts=oC8RsqiTuyak&from=2026-09-29T00:00:00Z&to=2026-09-30T00:00:00Z&limit=2
+
+    {"data":[{"id":"01a0ed84-1827-7008-ad3e-ffb85a03171a","type":"loot","occurred_at":"2026-09-29T14:13:40.046Z",…},
+             {"id":"01a0ed71-…","type":"level_up","occurred_at":"2026-09-29T13:58:02.511Z",…}],
+     "meta":{"generated_at":"…","count":2,"next_cursor":"cjE6MTc5MDY5MDI4MjUxMToxNw"}}
+
 ## Known consumers
 
 - **Home Assistant** ("hub mode" in ha-osrs-data):
@@ -485,4 +523,6 @@ Other rules:
     (D-92).
   - `game_state` on `/snapshot` (with `activity`) for its status panel, and `/leaderboards/loot`
     (with `events`) for its top-drops panel (D-94).
+  - `/events?accounts=&from=&to=` (with `events`) for the events along a trail of 24 hours, 7 or 30
+    days (D-98).
   - There is no push for keys yet (D-93): polling is the contract.

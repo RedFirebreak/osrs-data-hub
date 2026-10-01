@@ -9,6 +9,7 @@ import {
   MAX_BULK_ACCOUNTS as MAX_XP_ACCOUNTS,
   MAX_BULK_ACCOUNTS_SERVICE as MAX_XP_ACCOUNTS_SERVICE,
   encodeEventsCursor,
+  encodeEventsRangeCursor,
   isPublicIdLike,
 } from '@hub/server';
 import { describe, expect, it } from 'vitest';
@@ -101,10 +102,15 @@ describe('other parameters', () => {
     }
   });
 
-  it('cursor is `now` or a cursor from the feed', () => {
+  it('cursor is `now`, a cursor from the feed or one of a from/to request', () => {
     expect(EventsQuery.parse({ cursor: 'now' }).cursor).toBe('now');
     const cursor = encodeEventsCursor(42);
     expect(EventsQuery.parse({ cursor }).cursor).toBe(cursor);
+    const ranged = encodeEventsRangeCursor(new Date('2026-09-29T10:00:00Z'), 42);
+    expect(EventsQuery.parse({ cursor: ranged, from: '2026-09-01T00:00:00Z' })).toEqual({
+      cursor: ranged,
+      from: new Date('2026-09-01T00:00:00Z'),
+    });
     expect(EventsQuery.safeParse({ cursor: 'NOW' }).success).toBe(false);
     expect(EventsQuery.safeParse({ cursor: 'djE6LTE' }).success).toBe(false);
   });

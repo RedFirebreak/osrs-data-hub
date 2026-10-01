@@ -16,8 +16,11 @@ export {
   EVENTS_DEFAULT_LIMIT,
   EVENTS_MAX_LIMIT,
   apiEvents,
+  apiEventsInRange,
   decodeEventsCursor,
+  decodeEventsRangeCursor,
   encodeEventsCursor,
+  encodeEventsRangeCursor,
   type ApiEvent,
 } from './events';
 export {

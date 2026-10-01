@@ -18,6 +18,7 @@ Postgres behaviour, drizzle-orm 0.45 and drizzle-kit 0.31 (queries, errors, the 
 | [DB-12](#db-12) | The bundled migrate entrypoint fails with `Can't find meta/_journal.json file`. |
 | [DB-13](#db-13) | `pg_notify` fails with `22023 payload string too long` and takes the transaction it was called in down with it. |
 | [DB-14](#db-14) | Node logs `DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated`, from code that runs several queries with `Promise.all` inside `db.transaction`. |
+| [DB-15](#db-15) | A newest-first query (`WHERE account_id = … ORDER BY occurred_at DESC LIMIT n`) gets slower as the table grows although an index on exactly those columns exists; `EXPLAIN` shows a top-N Sort over every matching row, or a Seq Scan, instead of an ordered index scan. |
 | [TSDB-1](#tsdb-1) | Hourly or daily XP history older than the raw retention disappears from `xp_hourly`/`xp_daily` after a refresh. |
 | [TSDB-2](#tsdb-2) | After deleting an account, its rows are still in `xp_hourly`/`xp_daily`, and `DELETE FROM xp_hourly` fails with `55000 cannot delete from view`. |
 | [TSDB-3](#tsdb-3) | A changed retention or compression setting has no effect after restart; the log only shows `WARNING: … A policy already exists with different arguments`. |
@@ -195,6 +196,24 @@ a transaction. Fix: run queries on a possibly-transactional handle sequentially
 (packages/server/src/accounts/access.ts `loadAccountAccess`).
 
 *Source: `OBSERVED` (server tests, pg 8.23.0, 2026-09-28)*
+
+### DB-15
+**A newest-first query (`WHERE account_id = … ORDER BY occurred_at DESC LIMIT n`) gets slower as the table grows although an index on exactly those columns exists; `EXPLAIN` shows a top-N Sort over every matching row, or a Seq Scan, instead of an ordered index scan.**
+Drizzle's `.desc()` on an index column creates the index as `DESC NULLS LAST`
+(`events_account_occurred_idx`, `events_account_seq_idx`, `events_type_occurred_idx`, …). In Postgres a
+plain `ORDER BY col DESC` means `DESC NULLS FIRST`, and the planner doesn't use the column being
+`NOT NULL` to treat the two as the same order, so it can't read the order off the index: it fetches every
+row the `WHERE` matches and sorts them. drizzle's `desc(col)` in `.orderBy()` writes the plain form too.
+On a 2.4M-row `events` table, one page of a heavy account's last 30 days took 45 ms and 19.7k buffers
+(a sort of 62k rows) with `ORDER BY occurred_at DESC, seq DESC`, and 1.7 ms and 2.2k buffers with
+`ORDER BY occurred_at DESC NULLS LAST, seq DESC` (index scan plus incremental sort, stopping at the
+limit); `WHERE account_id = 1 ORDER BY occurred_at DESC LIMIT 20` was a parallel seq scan of 164 ms.
+Fix: whenever the order is meant to come from an index declared with `.desc()`, spell the null order out,
+`ORDER BY col DESC NULLS LAST` in raw SQL or ``sql`${col} DESC NULLS LAST` `` in `.orderBy()`
+(packages/server/src/api/events.ts `apiEventsInRange`), and check the plan on a table with real volume:
+an empty dev database hides it.
+
+*Source: `OBSERVED` (scratch copy of `events`, 2.4M rows, pg 18, 2026-10-01)*
 
 ### TSDB-1
 **Hourly or daily XP history older than the raw retention disappears from `xp_hourly`/`xp_daily` after a refresh.**

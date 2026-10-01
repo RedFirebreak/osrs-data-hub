@@ -1,6 +1,6 @@
 # Gotchas
 
-86 traps, grouped into five files, found while building osrs-data-hub. Each is written up
+87 traps, grouped into five files, found while building osrs-data-hub. Each is written up
 once under a stable ID and referenced by ID from everywhere else, so there is exactly one place to edit
 when something changes. Package-agnostic: things that are true of the shared layer (the HA Exporter
 plugin protocol, Next.js, Better Auth, Drizzle, Postgres/TimescaleDB, pg-boss, the Discord API, and the
@@ -23,7 +23,7 @@ defeats the point of them being separate.
 | File | Covers | Entries |
 |---|---|---|
 | [auth.md](auth.md) | `AUTH`, `DISCORD` — Better Auth 1.7 (Discord provider, Drizzle adapter, hooks, sessions, endpoints) and the Discord HTTP API (OAuth, guild member lookups) | 14 |
-| [database.md](database.md) | `DB`, `TSDB` — Postgres behaviour, drizzle-orm 0.45 and drizzle-kit 0.31 (queries, errors, the migrator), and TimescaleDB 2.30 (hypertables, compression, continuous aggregates, policies, the Docker image) | 27 |
+| [database.md](database.md) | `DB`, `TSDB` — Postgres behaviour, drizzle-orm 0.45 and drizzle-kit 0.31 (queries, errors, the migrator), and TimescaleDB 2.30 (hypertables, compression, continuous aggregates, policies, the Docker image) | 28 |
 | [nextjs.md](nextjs.md) | `NEXT` — Next.js 16 (route handlers, server actions, RSC, proxy.ts, instrumentation, basePath, standalone output, the dev and build CLI) | 17 |
 | [plugin.md](plugin.md) | `PLUGIN` — the HA Exporter v1.5 wire protocol as seen from the hub (payload shapes, Gson serialization, the OkHttp transport, status handling, the retry queue, the pairing panel) | 13 |
 | [toolchain.md](toolchain.md) | `PGBOSS`, `PROM`, `TOOL`, `ZOD` — build, lint, test and package tooling (TypeScript, ESLint, Prettier, pnpm, tsup, shadcn, Playwright, Docker base images, Git line endings) and the pg-boss, prom-client and zod libraries | 15 |
@@ -74,6 +74,7 @@ The `gotcha` skill walks this, including a trap that fits no existing file.
 | [DB-12](database.md#db-12) | Database | The bundled migrate entrypoint fails with `Can't find meta/_journal.json file`. |
 | [DB-13](database.md#db-13) | Database | `pg_notify` fails with `22023 payload string too long` and takes the transaction it was called in down with it. |
 | [DB-14](database.md#db-14) | Database | Node logs `DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated`, from code that runs several queries with `Promise.all` inside `db.transaction`. |
+| [DB-15](database.md#db-15) | Database | A newest-first query (`WHERE account_id = … ORDER BY occurred_at DESC LIMIT n`) gets slower as the table grows although an index on exactly those columns exists; `EXPLAIN` shows a top-N Sort over every matching row, or a Seq Scan, instead of an ordered index scan. |
 | [TSDB-1](database.md#tsdb-1) | Timescale | Hourly or daily XP history older than the raw retention disappears from `xp_hourly`/`xp_daily` after a refresh. |
 | [TSDB-2](database.md#tsdb-2) | Timescale | After deleting an account, its rows are still in `xp_hourly`/`xp_daily`, and `DELETE FROM xp_hourly` fails with `55000 cannot delete from view`. |
 | [TSDB-3](database.md#tsdb-3) | Timescale | A changed retention or compression setting has no effect after restart; the log only shows `WARNING: … A policy already exists with different arguments`. |
