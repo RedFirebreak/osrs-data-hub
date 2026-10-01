@@ -51,7 +51,7 @@ export async function apiMe(db: DbOrTx, principal: ApiPrincipal): Promise<ApiMe>
     .where(eq(apiKeys.id, principal.keyId));
   if (!key) throw new Error('apiMe: the authenticated key is gone');
   let user: { name: string } | null = null;
-  if (principal.userId !== null) {
+  if (principal.kind === 'user') {
     const [creator] = await db
       .select({ name: users.name })
       .from(users)

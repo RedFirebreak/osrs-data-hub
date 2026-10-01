@@ -9,7 +9,7 @@ import { and, desc, gte, inArray, lte } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { getGainsLeaderboards, leaderboardStarts, type LeaderboardPeriod } from '../accounts/guild';
 import { EVENT_ROW_COLUMNS } from '../feed';
-import { apiRestriction, apiViewer } from './access';
+import { apiRestriction } from './access';
 import { eventReadableAccounts, toApiEvents, type ApiEvent } from './events';
 import type { ApiPrincipal } from './key-auth';
 import { enumParam, intParam } from './params';
@@ -62,7 +62,7 @@ export async function apiLeaderboardGains(
   const timezone = period === 'day' ? await principalTimezone(db, principal) : undefined;
   const boards = await getGainsLeaderboards(
     db,
-    apiViewer(principal),
+    principal.viewer,
     { period, now, timezone },
     apiRestriction(principal),
   );

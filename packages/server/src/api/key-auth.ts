@@ -8,9 +8,10 @@ import {
   isCategory,
   sha256Hex,
   type Category,
-  type Principal,
+  type GuildAudience,
+  type Viewer,
 } from '@hub/core';
-import { apiKeys, pgErrorCode, type ApiKeyKind, type DbOrTx } from '@hub/db';
+import { apiKeys, pgErrorCode, type DbOrTx } from '@hub/db';
 import { eq, sql } from 'drizzle-orm';
 import { loadViewer } from '../accounts/access';
 import { getLogger } from '../logger';
@@ -26,24 +27,43 @@ const MAX_AUTHORIZATION_LENGTH = 512;
 /** Compared against when no key has the prefix, so both failures do the same work (see below). */
 const NO_KEY_HASH = '0'.repeat(64);
 
-/**
- * Who a request acts as: the key and whom the resolver evaluates for it. For a user key, `viewer` is
- * the creator as the resolver sees them, with isAdmin always false (no admin override through the
- * API, D-70) and `userId` the creator; for a service key (D-88), `viewer` is the guild audience
- * (GUILD_AUDIENCE, D-89) and `userId` is null. `categories` are the key's; `accountIds` its explicit
- * account list (internal ids), or null for 'all_visible' (always null for service keys). What the
- * key may read is evaluated on every request from these (api/access.ts).
- */
-export interface ApiPrincipal {
+/** What a principal of either kind carries: the key, its categories and its rate limit. */
+interface ApiPrincipalBase {
   keyId: string;
-  kind: ApiKeyKind;
-  userId: string | null;
-  viewer: Principal;
   categories: ReadonlySet<Category>;
-  accountIds: ReadonlySet<number> | null;
   /** Requests per sliding minute this key may make (D-72, D-88). */
   rateLimitPerMinute: number;
 }
+
+/**
+ * A member's key: `viewer` is the creator as the resolver sees them, with isAdmin false (no admin
+ * override through the API, D-70), and `userId` is the creator. `accountIds` is the key's explicit
+ * account list (internal ids), or null for 'all_visible'.
+ */
+export interface UserApiPrincipal extends ApiPrincipalBase {
+  kind: 'user';
+  userId: string;
+  viewer: Viewer;
+  accountIds: ReadonlySet<number> | null;
+}
+
+/**
+ * A service key (D-88): it belongs to no user, `viewer` is the guild audience (GUILD_AUDIENCE, D-89)
+ * and it has no account list. `userId` is always null; tell the kinds apart by `kind`, not by it.
+ */
+export interface ServiceApiPrincipal extends ApiPrincipalBase {
+  kind: 'service';
+  userId: null;
+  viewer: GuildAudience;
+  accountIds: null;
+}
+
+/**
+ * Who a request acts as: the key and whom the resolver evaluates for it, a user key's creator or a
+ * service key's guild audience. Branch on `kind`. What the key may read is evaluated on every request
+ * from `viewer`, `categories` and `accountIds` (api/access.ts).
+ */
+export type ApiPrincipal = UserApiPrincipal | ServiceApiPrincipal;
 
 /**
  * Why a request's key was refused (all answered 401; the web doesn't tell them apart):

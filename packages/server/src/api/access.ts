@@ -4,9 +4,11 @@
  * the key's viewer (its creator, or the guild audience for a service key, D-88/D-89) at least one
  * category that the key also has; the principal's categories on it are that intersection.
  * Evaluated on every request, so a sharing change or the creator losing access applies at once. The
- * admin override never applies through the API.
+ * admin override never applies through the API: authenticateApiKey hands out a viewer with isAdmin
+ * false, and the shared loaders ignore isAdmin whenever they are given a restriction, which every
+ * load here passes (apiRestriction).
  */
-import { accountTypeLabel, isGuildAudience, type Category, type Principal } from '@hub/core';
+import { accountTypeLabel, type Category } from '@hub/core';
 import { users, type DbOrTx } from '@hub/db';
 import { and, eq, inArray } from 'drizzle-orm';
 import {
@@ -24,13 +26,6 @@ import type { ApiAccountIdentity, ApiAccountRef, ApiOwner } from './types';
 export const MAX_BULK_ACCOUNTS = 10;
 /** … and with a service key (D-92): the live map polls its whole guild in one call. */
 export const MAX_BULK_ACCOUNTS_SERVICE = 50;
-
-/** Whom the resolver evaluates for this key: its creator, never an admin (D-70), or the guild audience. */
-export function apiViewer(principal: ApiPrincipal): Principal {
-  return isGuildAudience(principal.viewer)
-    ? principal.viewer
-    : { ...principal.viewer, isAdmin: false };
-}
 
 /** How many accounts a bulk request may name for this key (D-92). */
 export function bulkAccountLimit(principal: ApiPrincipal): number {
@@ -99,7 +94,10 @@ export function accountIdentity(
   };
 }
 
-/** The principal's key as a restriction for the shared loaders. */
+/**
+ * The principal's key as a restriction for the shared loaders. Loading with it is also what turns the
+ * admin override off (D-70): never load an account for the API without it.
+ */
 export function apiRestriction(principal: ApiPrincipal): AccessRestriction {
   return { categories: principal.categories, accountIds: principal.accountIds };
 }
@@ -116,12 +114,7 @@ export async function loadApiAccount(
   category?: Category,
 ): Promise<AccountWithAccess | null> {
   if (!isPublicIdLike(publicId)) return null;
-  const entry = await loadVisibleAccount(
-    db,
-    apiViewer(principal),
-    publicId,
-    apiRestriction(principal),
-  );
+  const entry = await loadVisibleAccount(db, principal.viewer, publicId, apiRestriction(principal));
   if (!entry || (category !== undefined && !entry.access.categories.has(category))) return null;
   return entry;
 }
@@ -131,7 +124,7 @@ export async function loadApiAccounts(
   db: DbOrTx,
   principal: ApiPrincipal,
 ): Promise<AccountWithAccess[]> {
-  return loadVisibleAccounts(db, apiViewer(principal), apiRestriction(principal));
+  return loadVisibleAccounts(db, principal.viewer, apiRestriction(principal));
 }
 
 /**
