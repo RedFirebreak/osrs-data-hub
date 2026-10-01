@@ -4,7 +4,7 @@
  * principal holds its category on the account; what a section contains comes from the account page's
  * helpers (accounts/account-page.ts, accounts/load.ts), so the UI and the API agree on it.
  */
-import { floorTo, itemsValue, type Category } from '@hub/core';
+import { DAY_MS, floorTo, itemsValue, type Category } from '@hub/core';
 import { latestState, type DbOrTx } from '@hub/db';
 import { getTableColumns, inArray, sql } from 'drizzle-orm';
 import { locationOf, skillLevels, vitalsOf } from '../accounts/account-page';
@@ -13,8 +13,6 @@ import { latestOf } from '../accounts/sections';
 import { parseSkills } from '../accounts/xp';
 import type { ApiItem, ApiMeter, ApiSection } from './types';
 import { toApiItems } from './types';
-
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 export type LatestRow = typeof latestState.$inferSelect;
 

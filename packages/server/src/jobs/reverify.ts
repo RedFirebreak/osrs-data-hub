@@ -1,3 +1,4 @@
+import { HOUR_MS } from '@hub/core';
 import { auditLog, pgErrorCode, users, type Db } from '@hub/db';
 import {
   and,
@@ -59,7 +60,6 @@ export interface ReverifyResult {
   aborted: boolean;
 }
 
-const HOUR_MS = 3_600_000;
 /** The per-batch breaker needs at least this many answers before it judges a batch (DISCORD-1). */
 export const BREAKER_MIN_CHECKED = 5;
 /** More than this share of departures (in a batch, or in the window) is a config problem (D-34). */

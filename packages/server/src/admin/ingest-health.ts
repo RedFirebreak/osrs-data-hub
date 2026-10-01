@@ -8,15 +8,12 @@
  * counters (hub_ingest_payloads_total by status) have them, and the per-minute series takes them
  * from the process's in-memory count (`rejected`, D-83) when the caller hands it over.
  */
-import { compareVersions, parsePluginVersion } from '@hub/core';
+import { DAY_MS, HOUR_MS, MINUTE_MS, compareVersions, parsePluginVersion } from '@hub/core';
 import { devices, users, type Db } from '@hub/db';
 import { eq, inArray, isNull, sql } from 'drizzle-orm';
 import { RECENT_REJECTION_MINUTES } from '../metrics';
 import type { RecentMinuteCounts } from '../recent-counts';
 
-const MINUTE_MS = 60_000;
-const HOUR_MS = 60 * MINUTE_MS;
-const DAY_MS = 24 * HOUR_MS;
 /**
  * Minutes in the per-minute series (the current, partial minute is the last one): as many as the
  * process keeps its unarchived responses for, so the `rejected` counts cover the whole series.

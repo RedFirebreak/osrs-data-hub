@@ -4,15 +4,13 @@
  * repeated invalid codes. In memory in the single web process (D-5); the caller keeps one PairLimits
  * on globalThis (D-37).
  */
-import { FailureLockout, WindowLimiter, type Clock } from '@hub/core';
+import { FailureLockout, MINUTE_MS, WindowLimiter, type Clock } from '@hub/core';
 
 export interface PairLimits {
   perIp: WindowLimiter;
   global: WindowLimiter;
   lockout: FailureLockout;
 }
-
-const MINUTE_MS = 60_000;
 
 /**
  * 10 attempts per client per 10 minutes, 60 per minute over all clients, and 20 invalid codes from

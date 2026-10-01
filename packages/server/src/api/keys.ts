@@ -4,7 +4,7 @@
  * the row, its status and rate limit, and the fields both kinds are created with. The key format is
  * in key-format.ts, authenticating a request in key-auth.ts.
  */
-import { CATEGORIES, sha256Hex, type Category } from '@hub/core';
+import { CATEGORIES, DAY_MS, sha256Hex, type Category } from '@hub/core';
 import { apiKeys, osrsAccounts, users, type ApiKeyKind, type Db, type DbOrTx } from '@hub/db';
 import { and, count, desc, eq, gt, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
 import { z } from 'zod';
@@ -24,8 +24,6 @@ export const API_KEY_NAME_MAX = 64;
 export const API_KEY_MAX_EXPIRY_DAYS = 365;
 /** Most accounts a key with an explicit account list may name. */
 export const MAX_KEY_ACCOUNTS = 500;
-
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 export type ApiKeyScope = 'all_visible' | 'list';
 export type ApiKeyStatus = 'active' | 'expired' | 'revoked';

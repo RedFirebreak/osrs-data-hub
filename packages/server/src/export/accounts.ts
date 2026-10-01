@@ -3,7 +3,7 @@
  * current state section by section, and its full histories, each only for a category the user can see
  * today (resolveAccess). The histories are streamed in keyset-paginated batches, never loaded whole.
  */
-import { CATEGORIES, accountTypeLabel, floorTo, type Category } from '@hub/core';
+import { CATEGORIES, DAY_MS, accountTypeLabel, floorTo, type Category } from '@hub/core';
 import {
   accountLinks,
   accountNames,
@@ -34,8 +34,6 @@ import {
   wireVitals,
   wireWealthDay,
 } from './wire';
-
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 export interface AccountExportContext {
   db: Db;

@@ -1,3 +1,4 @@
+import { DAY_MS } from '@hub/core';
 import {
   accountLinks,
   apiKeys,
@@ -23,7 +24,6 @@ import {
   type AuditActor,
 } from './accounts';
 
-const DAY_MS = 86_400_000;
 /** Offboarding waits for ingest's per-account locks; ingest holds them for at most a few seconds. */
 const LOCK_TIMEOUT = '10s';
 
