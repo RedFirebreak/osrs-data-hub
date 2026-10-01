@@ -265,11 +265,9 @@ describe('listServiceKeys and revokeServiceKey', () => {
         keyId: '00000000-0000-7000-8000-000000000000',
       }),
     ).toBe(false);
-    // And the user-key path never touches a service key, even as admin.
+    // And the user-key path never touches a service key, not even its creator's.
     const { info } = await serviceKey();
-    expect(await revokeApiKey(t.db, { userId: admin.id, keyId: info.id, asAdmin: true })).toBe(
-      false,
-    );
+    expect(await revokeApiKey(t.db, { userId: admin.id, keyId: info.id })).toBe(false);
     await expect(
       revokeServiceKey(t.db, { actor: member.viewer, keyId: info.id }),
     ).rejects.toBeInstanceOf(AdminError);

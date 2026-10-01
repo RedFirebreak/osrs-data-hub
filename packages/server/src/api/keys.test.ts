@@ -366,14 +366,10 @@ describe('revokeApiKey', () => {
     });
   });
 
-  it('refuses someone else’s key (false), unless as admin', async () => {
+  it('refuses someone else’s key (false)', async () => {
     const { info } = await createApiKey(t.db, bob.id, valid, NOW);
     expect(await revokeApiKey(t.db, { userId: alice.id, keyId: info.id })).toBe(false);
     expect((await keyRow(info.id)).revokedAt).toBeNull();
-    expect(await revokeApiKey(t.db, { userId: alice.id, keyId: info.id, asAdmin: true })).toBe(
-      true,
-    );
-    expect((await keyRow(info.id)).revokedAt).not.toBeNull();
   });
 
   it('answers false for unknown ids and ids that are not uuids', async () => {

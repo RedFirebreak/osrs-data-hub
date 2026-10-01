@@ -425,24 +425,21 @@ function byNameThenHidden(a: ApiKeyAccount, b: ApiKeyAccount): number {
 }
 
 /**
- * Revokes a user key: the user's own, or any user's when `asAdmin` (the caller checks that the actor
- * is an admin; service keys are revoked through revokeServiceKey, D-88). The next request with it
- * gets 401. Idempotent: revoking a revoked key keeps its time, writes no second audit entry and
- * still returns true. False when the key doesn't exist, isn't the user's (and not `asAdmin`), or
- * `keyId` isn't a uuid, so the route answers 404 without revealing other users' keys. A key revoked
- * by offboarding stays revoked when the user is restored.
- * Audit: 'api_key.revoked' with the owner and the prefix.
+ * Revokes one of the user's own keys (service keys are revoked through revokeServiceKey, D-88). The
+ * next request with it gets 401. Idempotent: revoking a revoked key keeps its time, writes no second
+ * audit entry and still returns true. False when the key doesn't exist, isn't the user's, or `keyId`
+ * isn't a uuid, so the route answers 404 without revealing other users' keys. A key revoked by
+ * offboarding stays revoked when the user is restored.
+ * Audit: 'api_key.revoked' with the owner and the prefix (`asAdmin` is always false: nobody revokes
+ * another user's key; the field keeps stored entries one shape).
  */
 export async function revokeApiKey(
   db: Db,
-  opts: { userId: string; keyId: string; asAdmin?: boolean; now?: Date },
+  opts: { userId: string; keyId: string; now?: Date },
 ): Promise<boolean> {
   if (!isUuid(opts.keyId)) return false;
   const now = opts.now ?? new Date();
-  const scope = and(
-    eq(apiKeys.kind, 'user'),
-    opts.asAdmin === true ? undefined : eq(apiKeys.userId, opts.userId),
-  );
+  const scope = and(eq(apiKeys.kind, 'user'), eq(apiKeys.userId, opts.userId));
   return db.transaction(async (tx) => {
     const [revoked] = await tx
       .update(apiKeys)
@@ -455,11 +452,7 @@ export async function revokeApiKey(
         action: 'api_key.revoked',
         targetType: 'api_key',
         targetId: revoked.id,
-        meta: {
-          ownerUserId: revoked.userId,
-          prefix: revoked.prefix,
-          asAdmin: opts.asAdmin === true,
-        },
+        meta: { ownerUserId: revoked.userId, prefix: revoked.prefix, asAdmin: false },
       });
       return true;
     }
