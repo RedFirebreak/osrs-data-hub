@@ -325,7 +325,10 @@ function readEvents(
         afterSeq === null ? undefined : gt(events.seq, afterSeq),
       ),
     )
-    .orderBy(asc(events.seq))
+    // See DB-15, mirrored: events_account_seq_idx (seq DESC NULLS LAST) read backward is ASC NULLS
+    // FIRST, and a plain ASC (NULLS LAST) isn't read off it: it walks events_seq_uidx past every
+    // other account's rows instead.
+    .orderBy(sql`${events.seq} ASC NULLS FIRST`)
     .limit(limit);
 }
 
@@ -373,7 +376,8 @@ function sessionPages(ctx: AccountExportContext, accountId: number) {
             ),
           ),
         )
-        .orderBy(asc(playSessions.startedAt), asc(playSessions.id))
+        // See DB-15, mirrored: play_sessions_account_started_idx read backward is ASC NULLS FIRST.
+        .orderBy(sql`${playSessions.startedAt} ASC NULLS FIRST`, asc(playSessions.id))
         .limit(limit),
     ctx.batchSize,
   );

@@ -67,7 +67,9 @@ export async function listRawPayloads(
         beforeFilter(opts.before),
       ),
     )
-    .orderBy(desc(rawPayloads.receivedAt), desc(rawPayloads.id))
+    // See DB-15: NULLS LAST, as raw_payloads_received_at_idx and raw_payloads_device_idx have it, so
+    // a chunk is read in index order (ids of one instant sorted on the way) and stops at the limit.
+    .orderBy(sql`${rawPayloads.receivedAt} DESC NULLS LAST`, desc(rawPayloads.id))
     .limit(clampLimit(opts.limit, RAW_PAYLOAD_PAGE_MAX, RAW_PAYLOAD_PAGE_MAX));
   return rows.map((r) => ({ ...r, meta: (r.meta ?? null) as IngestMeta | null }));
 }

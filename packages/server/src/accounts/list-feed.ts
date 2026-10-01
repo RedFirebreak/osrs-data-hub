@@ -88,7 +88,10 @@ export async function feedForAccounts(
         opts.guildFilter ? guildFeedCondition(opts.guildFilter) : undefined,
       ),
     )
-    .orderBy(desc(events.seq))
+    // See DB-15: one account's feed reads its order off events_account_seq_idx, which only matches
+    // with NULLS LAST spelled out. Several accounts walk events_seq_uidx backward, a plain ascending
+    // index that only the plain form matches (NULLS LAST there sorts every matching row instead).
+    .orderBy(byId.size === 1 ? sql`${events.seq} DESC NULLS LAST` : desc(events.seq))
     .limit(clampLimit(opts.limit, FEED_MAX_LIMIT, FEED_DEFAULT_LIMIT));
   return rows.flatMap((row) => {
     const entry = byId.get(row.accountId);

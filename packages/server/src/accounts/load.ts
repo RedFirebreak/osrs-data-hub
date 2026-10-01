@@ -228,12 +228,15 @@ export async function loadRecentEventRows(
 ): Promise<Map<number, EventRowLike[]>> {
   const out = new Map<number, EventRowLike[]>();
   if (accountIds.length === 0 || perAccount <= 0) return out;
+  // See DB-15: the inner ORDER BY must say NULLS LAST, as events_account_seq_idx does, to be read off
+  // it; a plain DESC walks events_seq_uidx backward past every other account's rows instead.
   const result = await db.execute<RawEventRow>(sql`
     SELECT e.account_id, e.id, e.seq, e.type, e.occurred_at, e.received_at, e.value_gp, e.item_id,
            e.npc_id, e.skill, e.level, e.tier, e.points, e.special_world, e.data
     FROM unnest(${sql.param([...accountIds])}::int[]) AS a(id)
     CROSS JOIN LATERAL (
-      SELECT * FROM events ev WHERE ev.account_id = a.id ORDER BY ev.seq DESC LIMIT ${perAccount}
+      SELECT * FROM events ev WHERE ev.account_id = a.id
+      ORDER BY ev.seq DESC NULLS LAST LIMIT ${perAccount}
     ) e
     ORDER BY e.seq DESC`);
   for (const r of result.rows) {
