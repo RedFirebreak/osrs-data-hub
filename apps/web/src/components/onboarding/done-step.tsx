@@ -10,9 +10,8 @@ import type { DeviceFirstData } from '@hub/server';
 import { LayoutDashboardIcon, MonitorSmartphoneIcon, PlusIcon } from 'lucide-react';
 import type { Route } from 'next';
 import Link from 'next/link';
-import { accountHref } from '@/components/accounts/account-link';
 import { Button } from '@/components/ui/button';
-import { DoneSharing } from './done-sharing';
+import { DoneSharing, sharingHref } from './done-sharing';
 import { StepHeading } from './step-heading';
 
 export interface DoneStepProps {
@@ -45,10 +44,7 @@ export function DoneStep({ firstData, onRestart, headingRef }: DoneStepProps) {
             {firstData.ownerName
               ? `${firstData.ownerName} owns ${account.name} and decides who in the guild sees it.`
               : `The owner of ${account.name} decides who in the guild sees it.`}{' '}
-            <Link
-              href={`${accountHref(account.publicId)}#sharing` as Route}
-              className="font-medium underline underline-offset-4"
-            >
+            <Link href={sharingHref(account)} className="font-medium underline underline-offset-4">
               Who can see {account.name}
             </Link>
           </p>

@@ -1,7 +1,7 @@
 /**
  * The Settings form's model, kept free of React so it is unit-tested: form state from saved settings,
  * the PATCH body for what changed (only changed fields are sent, D-10 strict schema on the server),
- * field errors from the route's 400 `details`, and the time-zone picker's groups.
+ * the fields the route's 400 `details` can name, and the time-zone picker's groups.
  */
 import type { UserSettings, UserSettingsPatchInput } from '@hub/server';
 
@@ -10,13 +10,14 @@ export type SettingsField =
 
 export type FieldErrors = Partial<Record<SettingsField, string>>;
 
-const FIELDS: ReadonlySet<string> = new Set<SettingsField>([
+/** The form's fields the route's 400 `details` can name (fieldErrorsFrom, lib/api-client.ts). */
+export const SETTINGS_FIELDS: readonly SettingsField[] = [
   'toastsEnabled',
   'toastTypes',
   'toastMinLootValue',
   'toastOwnAccountsOnly',
   'timezone',
-]);
+];
 
 export interface SettingsFormState {
   toastsEnabled: boolean;
@@ -128,25 +129,6 @@ export function changesToastFilter(patch: UserSettingsPatchInput): boolean {
     patch.toastMinLootValue !== undefined ||
     patch.toastOwnAccountsOnly !== undefined
   );
-}
-
-/**
- * Field errors from a 400 `{ error: { details: [{ path, message }] } }` (handleApi's ZodError shape):
- * the first message per field; "toastTypes.1" counts for toastTypes. Unknown paths are ignored.
- */
-export function fieldErrorsFrom(details: unknown): FieldErrors {
-  const errors: FieldErrors = {};
-  if (!Array.isArray(details)) return errors;
-  for (const d of details) {
-    if (typeof d !== 'object' || d === null) continue;
-    const { path, message } = d as { path?: unknown; message?: unknown };
-    if (typeof path !== 'string' || typeof message !== 'string') continue;
-    const field = path.split('.')[0] ?? '';
-    if (FIELDS.has(field) && errors[field as SettingsField] === undefined) {
-      errors[field as SettingsField] = message;
-    }
-  }
-  return errors;
 }
 
 export interface TimeZoneGroup {

@@ -5,7 +5,6 @@
  * owner sees what the guild gets from the start and can change it right there. The settings are
  * read once from GET /api/app/accounts/[publicId]/sharing; every change saves at once.
  */
-import { CATEGORY_LABELS, DEFAULT_AUDIENCE } from '@hub/core';
 import type { SharingSettings } from '@hub/server';
 import { LoaderCircleIcon } from 'lucide-react';
 import type { Route } from 'next';
@@ -24,7 +23,8 @@ export interface DoneSharingAccount {
 type Loaded =
   { kind: 'loading' } | { kind: 'failed' } | { kind: 'ready'; settings: SharingSettings };
 
-function sharingHref(account: DoneSharingAccount): Route {
+/** The account page's sharing section. */
+export function sharingHref(account: DoneSharingAccount): Route {
   return `${accountHref(account.publicId)}#sharing` as Route;
 }
 
@@ -100,12 +100,7 @@ export function DoneSharingControls({
   });
   return (
     <div ref={rootRef} className="flex flex-col">
-      <CategoryAudiences
-        idPrefix={id}
-        sharing={sharing}
-        categoryLabels={CATEGORY_LABELS}
-        defaults={DEFAULT_AUDIENCE}
-      />
+      <CategoryAudiences idPrefix={id} sharing={sharing} />
       <p className="text-xs text-muted-foreground">
         <Link href={sharingHref(account)} className="font-medium underline underline-offset-4">
           More sharing options for {account.name}

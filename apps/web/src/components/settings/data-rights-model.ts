@@ -3,6 +3,7 @@
  * (a client component must not pull the server package into the browser, D-67): the confirmation
  * check, where the browser goes after a deletion, and the error text for a failed request.
  */
+import { failureMessage } from '@/lib/api-client';
 
 /** The word to type, as the server compares it (SELF_DELETE_CONFIRMATION, trimmed, any case). */
 export const CONFIRMATION_WORD = 'delete';
@@ -24,14 +25,14 @@ export function graceUntilFrom(body: unknown): string | null {
   return typeof value === 'string' && Number.isFinite(Date.parse(value)) ? value : null;
 }
 
-/** What to tell the user when POST /api/app/me/delete didn't succeed. */
+/**
+ * What to tell the user when POST /api/app/me/delete didn't succeed: the hub's reason for a refusal
+ * (400), plain words otherwise.
+ */
 export function deleteErrorMessage(status: number, body: unknown): string {
-  const message =
-    typeof body === 'object' && body !== null
-      ? (body as { error?: { message?: unknown } }).error?.message
-      : undefined;
-  if (status === 400 && typeof message === 'string') return message;
-  if (status === 401) return 'Your session has ended. Sign in again.';
   if (status === 503) return 'The hub is busy. Try again in a moment.';
-  return "Couldn't delete your data. Try again in a moment.";
+  return failureMessage(status, body, {
+    fallback: "Couldn't delete your data. Try again in a moment.",
+    hubMessageFor: [400],
+  });
 }

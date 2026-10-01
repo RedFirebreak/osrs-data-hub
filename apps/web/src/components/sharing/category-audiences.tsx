@@ -5,7 +5,7 @@
  * with an "Add person" picker. Shared by the account page's sharing panel and the wizard's last
  * step; the state and the requests are the caller's (useSharing).
  */
-import type { Audience, Category } from '@hub/core';
+import { CATEGORY_LABELS, DEFAULT_AUDIENCE, type Audience } from '@hub/core';
 import { XIcon } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -23,24 +23,15 @@ export interface CategoryAudiencesProps {
   /** Prefix of the controls' ids: `<idPrefix>-<category>` for a select, `…-add` for its picker. */
   idPrefix: string;
   sharing: Sharing;
-  /** CATEGORY_LABELS from @hub/core. */
-  categoryLabels: Readonly<Record<Category, { label: string; covers: string }>>;
-  /** DEFAULT_AUDIENCE from @hub/core. */
-  defaults: Readonly<Record<Category, Audience>>;
 }
 
-export function CategoryAudiences({
-  idPrefix,
-  sharing,
-  categoryLabels,
-  defaults,
-}: CategoryAudiencesProps) {
+export function CategoryAudiences({ idPrefix, sharing }: CategoryAudiencesProps) {
   const { settings, pending, members, loadMembers, apply } = sharing;
   const canManage = settings.canManage;
   return (
     <ul className="flex flex-col divide-y">
       {settings.categories.map((c) => {
-        const { label, covers } = categoryLabels[c.category];
+        const { label, covers } = CATEGORY_LABELS[c.category];
         const selectId = `${idPrefix}-${c.category}`;
         return (
           <li key={c.category} className="flex flex-col gap-2 py-3">
@@ -81,7 +72,7 @@ export function CategoryAudiences({
                         <span className="flex flex-col">
                           <span>
                             {o.label}
-                            {defaults[c.category] === o.value && (
+                            {DEFAULT_AUDIENCE[c.category] === o.value && (
                               <span className="text-muted-foreground"> (default)</span>
                             )}
                           </span>

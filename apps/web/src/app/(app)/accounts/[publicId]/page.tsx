@@ -14,14 +14,7 @@
  * Live: presence follows the LiveProvider (AccountPresence), new events are prepended to the timeline,
  * and the server-rendered numbers refresh every minute (AutoRefresh).
  */
-import {
-  CATEGORY_LABELS,
-  DEFAULT_AUDIENCE,
-  formatGp,
-  formatNumber,
-  getConfig,
-  itemsValue,
-} from '@hub/core';
+import { formatGp, formatNumber, getConfig, itemsValue } from '@hub/core';
 import type { Viewer } from '@hub/core';
 import { getDb } from '@hub/db';
 import {
@@ -460,8 +453,6 @@ async function SharingSection({
         key={`${account.owner?.userId ?? 'none'}:${settings.canManage}`}
         publicId={publicId}
         initial={settings}
-        categoryLabels={CATEGORY_LABELS}
-        defaults={DEFAULT_AUDIENCE}
         hasOwner={account.owner !== null}
         relation={account.relation}
         now={now}

@@ -2,6 +2,7 @@ import type { SharingSettings } from '@hub/server';
 import { describe, expect, it } from 'vitest';
 import {
   audienceLabel,
+  changeFailureMessage,
   errorMessage,
   grantCandidates,
   successMessage,
@@ -88,5 +89,19 @@ describe('messages', () => {
     expect(errorMessage("the owner can't be blocked", 'x')).toBe("The owner can't be blocked.");
     expect(errorMessage('Done!', 'x')).toBe('Done!');
     expect(errorMessage(undefined, 'Fallback.')).toBe('Fallback.');
+  });
+
+  it('says why a change was not saved', () => {
+    const body = { error: { code: 'invalid', message: "the owner can't be blocked" } };
+    expect(changeFailureMessage(400, body)).toBe("The owner can't be blocked.");
+    expect(changeFailureMessage(403, null)).toBe("That change couldn't be saved.");
+    expect(changeFailureMessage(500, {})).toBe("That change couldn't be saved.");
+    expect(changeFailureMessage(0, null)).toBe(
+      "That change couldn't be saved. Check your connection and try again.",
+    );
+    // A session that ended is said as on every other page, not as the hub's "sign in first".
+    expect(changeFailureMessage(401, { error: { message: 'not signed in' } })).toBe(
+      'Your session has ended. Sign in again.',
+    );
   });
 });

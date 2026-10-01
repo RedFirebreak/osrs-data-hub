@@ -8,6 +8,8 @@
  */
 import type { OffboardReason, UserStatus } from '@hub/db';
 import type { DeviceStatus, IngestMeta } from '@hub/server';
+import type { FailureOptions } from '@/lib/api-client';
+import { isUuidLike } from '@/lib/guards';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -41,7 +43,7 @@ export function utcDateText(ms: number, withTime: boolean): string | null {
 // --- Users -------------------------------------------------------------------------------------
 
 /** Why a user is in grace, as the Users table says it. */
-export const OFFBOARD_REASON_LABELS: Readonly<Record<OffboardReason, string>> = {
+const OFFBOARD_REASON_LABELS: Readonly<Record<OffboardReason, string>> = {
   left_guild: 'Left the Discord server',
   lost_role: 'Lost the required role',
   admin: 'Offboarded by an admin',
@@ -273,13 +275,6 @@ export interface RawPayloadQuery {
   before?: { receivedAt: Date; id: string };
 }
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/** Whether `value` looks like a uuid. */
-export function isUuidLike(value: string): boolean {
-  return UUID_RE.test(value);
-}
-
 function first(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
 }
@@ -368,12 +363,12 @@ export function adminUserActionPath(userId: string, action: 'offboard' | 'restor
   return `/api/app/admin/users/${encodeURIComponent(userId)}/${action}`;
 }
 
-/** DELETE path that revokes any device. */
 /** The admin API path of one service key (D-88). */
 export function adminServiceKeyPath(keyId: string): string {
   return `/api/app/admin/service-keys/${encodeURIComponent(keyId)}`;
 }
 
+/** DELETE path that revokes any device. */
 export function adminDevicePath(deviceId: string): string {
   return `/api/app/admin/devices/${encodeURIComponent(deviceId)}`;
 }
@@ -402,23 +397,14 @@ export function decommissionConfirmMatches(typed: string | undefined, hubName: s
   return typed !== undefined && expected !== '' && typed.trim() === expected;
 }
 
-/** The `error.message` of an API error body, else `fallback`. */
-function errorBodyMessage(body: unknown, fallback: string): string {
-  if (typeof body === 'object' && body !== null && 'error' in body) {
-    const error = (body as { error: unknown }).error;
-    if (typeof error === 'object' && error !== null && 'message' in error) {
-      const message = (error as { message: unknown }).message;
-      if (typeof message === 'string' && message.trim() !== '') return message;
-    }
-  }
-  return fallback;
-}
-
-/** What to tell the admin when a request failed with `status` and `body`. */
-export function adminFailureMessage(status: number, body: unknown, fallback: string): string {
-  if (status === 401) return 'Your session has ended. Sign in again.';
-  if (status === 403) return errorBodyMessage(body, 'Only admins can do this.');
-  if (status === 404) return 'It no longer exists. Reload the page.';
-  if (status === 400 || status === 503) return errorBodyMessage(body, fallback);
-  return fallback;
+/**
+ * How a failed admin request is told (failureMessage, lib/api-client.ts): `fallback` when the hub
+ * gives no better text, and the admin pages' wording for 403 and 404.
+ */
+export function adminFailure(fallback: string): FailureOptions {
+  return {
+    fallback,
+    forbidden: 'Only admins can do this.',
+    notFound: 'It no longer exists. Reload the page.',
+  };
 }

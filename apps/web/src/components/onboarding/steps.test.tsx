@@ -5,13 +5,19 @@
 import { CATEGORIES, CATEGORY_LABELS, type Audience, type Category } from '@hub/core';
 import type { SharingSettings } from '@hub/server';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { DoneSharingControls } from './done-sharing';
 import { DoneStep } from './done-step';
 import { FirstDataStep } from './first-data-step';
 import { PairStep, type PairStepProps } from './pair-step';
 import { WizardProgress } from './wizard-progress';
+
+// The sharing controls send their changes through useApiRequest, which needs the app router.
+vi.mock('next/navigation', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  useRouter: () => ({ refresh() {}, push() {}, replace() {}, back() {}, prefetch() {} }),
+}));
 
 const noop = () => {};
 
@@ -25,6 +31,7 @@ function pairStep(overrides: Partial<PairStepProps> = {}): string {
       lifetimeMs: 300_000,
     },
     codeRequest: 'idle',
+    resuming: false,
     codeError: null,
     msLeft: 252_000,
     expired: false,

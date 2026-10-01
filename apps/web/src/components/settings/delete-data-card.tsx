@@ -24,6 +24,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { sendJson } from '@/lib/api-client';
 import {
   CONFIRMATION_WORD,
   confirmsDeletion,
@@ -55,30 +56,18 @@ export function DeleteDataCard({ undoDays, deleteOnLabel, deleteOnIso }: DeleteD
     if (!confirmed || pending) return;
     setPending(true);
     setError(null);
-    try {
-      const res = await fetch('/api/app/me/delete', {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ confirm: typed }),
-      });
-      const body: unknown = await res.json().catch(() => null);
-      const graceUntil = res.ok ? graceUntilFrom(body) : null;
-      if (graceUntil !== null) {
-        // A full page load: the session is gone and no signed-in page may stay on screen.
-        window.location.assign(deletedLoginPath(graceUntil));
-        return;
-      }
-      const message = deleteErrorMessage(res.status, body);
-      setError(message);
-      toast.error(message);
-      setPending(false);
-    } catch {
-      const message = "Couldn't reach the hub. Check your connection and try again.";
-      setError(message);
-      toast.error(message);
-      setPending(false);
+    const res = await sendJson('/api/app/me/delete', { method: 'POST', json: { confirm: typed } });
+    const graceUntil = res.ok ? graceUntilFrom(res.body) : null;
+    if (graceUntil !== null) {
+      // A full page load: the session is gone and no signed-in page may stay on screen. The dialog
+      // stays pending until it arrives.
+      window.location.assign(deletedLoginPath(graceUntil));
+      return;
     }
+    const message = deleteErrorMessage(res.status, res.body);
+    setError(message);
+    toast.error(message);
+    setPending(false);
   }
 
   return (

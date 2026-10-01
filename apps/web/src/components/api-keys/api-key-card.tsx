@@ -38,7 +38,7 @@ const STATUS_TONES: Readonly<Record<ApiKeyStatus, string>> = {
   revoked: 'border-border bg-muted text-muted-foreground',
 };
 
-export function ApiKeyStatusBadge({ status }: { status: ApiKeyStatus }) {
+function ApiKeyStatusBadge({ status }: { status: ApiKeyStatus }) {
   return (
     <Badge variant="outline" className={STATUS_TONES[status]}>
       <span aria-hidden className="size-1.5 rounded-full bg-current" />

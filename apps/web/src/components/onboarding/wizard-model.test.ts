@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest';
 import {
   INITIAL_WIZARD_STATE,
   SUBMIT_TIMEOUT_MS,
-  apiErrorMessage,
   asDeviceFirstData,
   asDeviceMessage,
   asPairingMessage,
@@ -115,12 +114,6 @@ describe('small helpers', () => {
       'Linked as contributor; owner is Bob',
     );
     expect(describeRole({ role: 'contributor', ownerName: null })).toBe('Linked as contributor');
-  });
-
-  it('reads error messages from API error bodies', () => {
-    expect(apiErrorMessage({ error: { code: 'x', message: 'Nope.' } }, 'fallback')).toBe('Nope.');
-    expect(apiErrorMessage(null, 'fallback')).toBe('fallback');
-    expect(apiErrorMessage({ error: 'x' }, 'fallback')).toBe('fallback');
   });
 });
 
