@@ -22,7 +22,7 @@ const FINISH_WAIT_MS = 1_000;
  * U+FFFD rather than dropped, so the archive still shows that something was there. (JSON can't
  * contain a literal NUL, so such a body is invalid JSON anyway; escaped "\u0000" is kept as sent.)
  */
-export function archivableBody(text: string): string {
+function archivableBody(text: string): string {
   return text.replaceAll('\u0000', '�');
 }
 
