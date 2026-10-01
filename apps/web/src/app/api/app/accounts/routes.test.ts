@@ -3,6 +3,7 @@
  * Auth (401), visibility and category gating (404, existence never leaks), query validation (400)
  * and the happy paths over seeded rows.
  */
+import { CATEGORIES } from '@hub/core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { withTestDb, type WebTestContext } from '@/lib/test-utils';
 import { GET as getEquipment } from './[publicId]/equipment/route';
@@ -127,7 +128,7 @@ describe('GET /api/app/accounts/[publicId]/xp', () => {
     expect((await call(getXp, 'NoSuchAccount1', '', stranger.cookie)).status).toBe(404);
 
     const hidden = await seed.account({ owner: owner.userId });
-    for (const category of ['stats', 'events', 'activity', 'location_live'] as const) {
+    for (const category of CATEGORIES) {
       await seed.sharing(hidden.id, category, 'private');
     }
     const res = await call(getXp, hidden.publicId, '', stranger.cookie);
@@ -238,8 +239,11 @@ describe('history routes', () => {
     ]);
   });
 
-  it('gates each route by its category: guild defaults give activity only', async () => {
-    // activity is guild by default; equipment, inventory and location_history are private.
+  it('gates each route by its category: with the rest private, a member gets activity only', async () => {
+    // activity stays guild (D-96); equipment, inventory and location_history are private.
+    for (const category of ['equipment', 'inventory', 'location_history'] as const) {
+      await seed.sharing(account.id, category, 'private');
+    }
     expect((await call(getSessions, account.publicId, '', member.cookie)).status).toBe(200);
     for (const handler of [getEquipment, getWealth, getLocations]) {
       const res = await call(handler, account.publicId, '', member.cookie);

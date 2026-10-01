@@ -4,6 +4,24 @@ Changes are consolidated per pull request, newest first. Each entry names the PR
 open), what changed, and any decision (`D-n`, see [ARCHITECTURE.md](ARCHITECTURE.md#decision-log)) or
 gotcha (`AREA-n`, see [gotchas](gotchas/README.md)) it introduced.
 
+## Share everything by default (branch `sj/share-all-by-default`)
+
+Every sharing category now defaults to the guild, and the pairing wizard shows what is shared (D-96).
+
+- **Defaults:** `DEFAULT_AUDIENCE` sets `location_history`, `equipment` and `inventory` to `guild` too.
+  Migration `0007_sharing_keep_private` pins those three categories to `private` for every account
+  the hub already knew (explicit choices kept), so only accounts first seen afterwards share them by
+  default.
+- **Wizard:** the Done step shows the owner "Who can see <account>" with the account page's
+  per-category controls (Private / Guild / Selected people); a change saves at once. Contributors
+  still read that the owner decides; without an account yet, the step names the default.
+- **Shared controls:** the category list and the change logic moved out of `SharingPanel` into
+  `CategoryAudiences` and `useSharing` (`components/sharing/`), used by the panel and the wizard.
+- **Copy:** the settings page and the privacy page describe the new default; the privacy page says
+  that accounts from before a default changed keep what they had.
+- **Gotcha:** Docker Desktop on Windows failing to start over stale socket files, which leaves
+  `pnpm test` without its database (TOOL-11, new).
+
 ## Static OpenAPI copy for the website (branch `feat/openapi-export`)
 
 - **`docs/openapi.json`:** a checked-in copy of the `/api/v1` OpenAPI document, built with

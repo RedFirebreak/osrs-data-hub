@@ -31,6 +31,10 @@ beforeAll(async () => {
   owner = await seedUser(t.db);
   member = await seedUser(t.db);
   account = await seedAccount(t.db, { owner: owner.id });
+  // Kept from the guild (every category is guild by default, D-96); activity stays on the default.
+  for (const category of ['equipment', 'inventory', 'location_history'] as const) {
+    await seedSharing(t.db, account.id, category, 'private');
+  }
 
   await t.db.insert(playSessions).values([
     {

@@ -93,8 +93,15 @@ describe('GET /api/v1/snapshot', () => {
   });
 
   it('omits the fields of categories the key or the viewer lacks', async () => {
-    // No location category for the member: live location isn't shared (it is by default, D-82).
-    await setAudience(ctx, world.main.hash, 'location_live', 'private');
+    // The member reads stats, events and activity: the rest (guild by default, D-96) is private.
+    for (const category of [
+      'location_live',
+      'location_history',
+      'equipment',
+      'inventory',
+    ] as const) {
+      await setAudience(ctx, world.main.hash, category, 'private');
+    }
     const member = expectShape(SnapshotResponse, await (await snapshot(memberKey)).json());
     const main = member.data.find((a) => a.id === world.main.id);
     expect(main?.categories).toEqual(['stats', 'events', 'activity']);

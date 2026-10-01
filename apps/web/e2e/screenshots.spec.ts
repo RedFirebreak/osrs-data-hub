@@ -12,7 +12,7 @@
  * second device of alice's through the API) and the payload fixtures (packages/fixtures/payloads) are
  * POSTed to /api/osrs-data/events as the plugin would. alice (admin) owns Zezima and Lynx Titan (whose
  * plugin doesn't send inventory, equipment or location, so those sections say "Not shared"); carol owns
- * Iron Mira. carol looking at Zezima is the guild-member view, where the private sections are hidden.
+ * Iron Mira. carol looking at Zezima is the guild-member view (everything is shared by default, D-96).
  */
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, rmSync } from 'node:fs';
@@ -249,6 +249,8 @@ test('screenshots of every page', { tag: '@screenshots' }, async ({ browser, req
 
     await page.getByRole('button', { name: 'Continue' }).click();
     await expect(page.getByRole('heading', { name: "You're all set" })).toBeVisible();
+    // The sharing controls load after the step shows (D-96).
+    await expect(page.getByLabel('Inventory', { exact: true })).toBeVisible();
     await shoot(page, 'onboarding-4-done');
   });
 
@@ -333,7 +335,7 @@ test('screenshots of every page', { tag: '@screenshots' }, async ({ browser, req
     const mira = await accountHref(carol.page, 'Iron Mira');
     await visit(alice.page, mira);
     await shoot(alice.page, 'account-admin-view-mira', { waitMs: 800 });
-    // carol is a plain member: Zezima's private sections are hidden from her.
+    // carol is a plain member: she sees what Zezima shares with the guild (everything, D-96).
     await visit(carol.page, zezima);
     await shoot(carol.page, 'account-member-view-zezima', { waitMs: 800 });
     await visit(alice.page, '/accounts/does-not-exist');

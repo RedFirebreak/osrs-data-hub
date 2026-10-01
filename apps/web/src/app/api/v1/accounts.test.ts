@@ -43,9 +43,16 @@ let memberLiveKey: TestKey;
 beforeAll(async () => {
   ctx = await withTestDb({ label: 'v1accounts' });
   world = await seedWorld(ctx);
-  // The member has no location category here: live location (guild by default, D-82) is private.
+  // The member reads stats, events and activity here: the rest (guild by default, D-96) is private.
   for (const { hash } of [world.main, world.alt]) {
-    await setAudience(ctx, hash, 'location_live', 'private');
+    for (const category of [
+      'location_live',
+      'location_history',
+      'equipment',
+      'inventory',
+    ] as const) {
+      await setAudience(ctx, hash, category, 'private');
+    }
   }
   ownerKey = await makeKey(ctx, world.ownerId, { name: 'owner, everything' });
   memberKey = await makeKey(ctx, world.memberId, { name: 'member, everything' });

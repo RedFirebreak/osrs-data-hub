@@ -342,11 +342,10 @@ describe('ingest → read models → live', () => {
     const theirs = await page(member, zezima.publicId);
     expect(theirs?.account).toMatchObject({ relation: 'member', canManage: false });
     expect(shared(theirs!.skills).totalLevel).toBe(2372);
-    // Live location is shared with the guild by default (D-82).
+    // Every category is shared with the guild by default (D-96).
     expect(theirs?.location).toMatchObject({ visible: true, shared: true });
-    // Private by default (handoff §10): not even the "not shared" state.
-    expect(theirs?.equipment).toEqual({ visible: false });
-    expect(theirs?.inventory).toEqual({ visible: false });
+    expect(theirs?.equipment).toMatchObject({ visible: true, shared: true });
+    expect(theirs?.inventory).toMatchObject({ visible: true, shared: true });
 
     const ownFeed = await listFeed(t.db, owner, { accountPublicId: zezima.publicId });
     const memberFeed = await listFeed(t.db, member, { accountPublicId: zezima.publicId });

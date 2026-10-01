@@ -13,17 +13,17 @@ export const AUDIENCES = ['private', 'guild', 'selected'] as const;
 export type Audience = (typeof AUDIENCES)[number];
 
 /**
- * Handoff §10 defaults (D-22), with live location shared with the guild (D-82). A missing
- * account_sharing row means the default.
+ * Every category is shared with the guild by default (D-96, superseding the handoff §10 defaults of
+ * D-22 and D-82). A missing account_sharing row means the default.
  */
 export const DEFAULT_AUDIENCE: Readonly<Record<Category, Audience>> = {
   stats: 'guild',
   events: 'guild',
   activity: 'guild',
   location_live: 'guild',
-  location_history: 'private',
-  equipment: 'private',
-  inventory: 'private',
+  location_history: 'guild',
+  equipment: 'guild',
+  inventory: 'guild',
 };
 
 export const CATEGORY_LABELS: Readonly<Record<Category, { label: string; covers: string }>> = {

@@ -113,8 +113,9 @@ describe('GET /api/app/feed', () => {
 
   it('redacts event locations for viewers without a location category', async () => {
     const shared = await seed.account({ owner: owner.userId });
-    // No location category for the member: live location isn't shared (it is by default, D-82).
+    // No location category for the member: neither is shared (both are by default, D-96).
     await seed.sharing(shared.id, 'location_live', 'private');
+    await seed.sharing(shared.id, 'location_history', 'private');
     await seed.event(shared.id, {
       type: 'death',
       data: {

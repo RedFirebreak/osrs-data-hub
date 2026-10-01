@@ -212,8 +212,9 @@ describe('apiLootLeaderboard', () => {
 
   it('serves each event exactly as /events does, location redaction included', async () => {
     const w = await world();
-    // The member's only location category would be live location, guild by default (D-82).
-    await seedSharing(t.db, w.gary.id, 'location_live', 'private');
+    // The member would have both location categories, guild by default (D-96).
+    for (const c of ['location_live', 'location_history'] as const)
+      await seedSharing(t.db, w.gary.id, c, 'private');
     const data = {
       type: 'loot',
       eventId: 'loc',

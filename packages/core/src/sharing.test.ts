@@ -51,8 +51,8 @@ const sorted = (s: ReadonlySet<Category>) => [...s].sort();
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v);
 const ALL = [...CATEGORIES].sort();
-/** What a member sees of an account with no sharing rows: live location is guild by default (D-82). */
-const DEFAULT_GUILD: Category[] = ['activity', 'events', 'location_live', 'stats'];
+/** What a member sees of an account with no sharing rows: every category is guild by default (D-96). */
+const DEFAULT_GUILD: Category[] = ALL;
 
 describe('constants', () => {
   it('has the seven handoff §10 categories', () => {
@@ -68,15 +68,15 @@ describe('constants', () => {
     expect(AUDIENCES).toEqual(['private', 'guild', 'selected']);
   });
 
-  it('defaults stats/events/activity and live location to guild, the rest to private (D-22, D-82)', () => {
+  it('defaults every category to guild (D-96)', () => {
     expect(DEFAULT_AUDIENCE).toEqual({
       stats: 'guild',
       events: 'guild',
       activity: 'guild',
       location_live: 'guild',
-      location_history: 'private',
-      equipment: 'private',
-      inventory: 'private',
+      location_history: 'guild',
+      equipment: 'guild',
+      inventory: 'guild',
     });
   });
 
@@ -128,7 +128,7 @@ describe('effectiveAudience', () => {
     // Others stay default.
     expect(effectiveAudience({ sharing }, 'events')).toBe('guild');
     expect(effectiveAudience({ sharing }, 'location_live')).toBe('guild');
-    expect(effectiveAudience({ sharing }, 'location_history')).toBe('private');
+    expect(effectiveAudience({ sharing }, 'location_history')).toBe('guild');
   });
 
   it('treats a null value as missing', () => {
@@ -371,7 +371,7 @@ describe('resolveAccess', () => {
     it('private audience → denied', () => {
       const r = resolveAccess(viewer(MEMBER), account({ sharing: { stats: 'private' } }));
       expect(r.categories.has('stats')).toBe(false);
-      expect(sorted(r.categories)).toEqual(['activity', 'events', 'location_live']);
+      expect(sorted(r.categories)).toEqual(ALL.filter((c) => c !== 'stats'));
     });
 
     it('is invisible when nothing is allowed', () => {
@@ -417,12 +417,12 @@ describe('resolveAccess', () => {
       const r = resolveAccess(
         viewer(MEMBER),
         account({
-          sharing: { inventory: 'selected' },
+          sharing: { inventory: 'selected', equipment: 'private' },
           grants: [{ category: 'equipment', userId: MEMBER }],
         }),
       );
       expect(r.categories.has('inventory')).toBe(false);
-      // equipment is still private (default), so the grant alone doesn't open it either.
+      // equipment is private, so the grant alone doesn't open it either.
       expect(r.categories.has('equipment')).toBe(false);
     });
 
@@ -576,7 +576,7 @@ describe('resolveAccess', () => {
   });
 
   it('returns a fresh categories set on every call', () => {
-    const acc = account();
+    const acc = account({ sharing: { inventory: 'private' } });
     const a = resolveAccess(viewer(MEMBER), acc);
     (a.categories as Set<Category>).add('inventory');
     expect(resolveAccess(viewer(MEMBER), acc).categories.has('inventory')).toBe(false);
@@ -792,7 +792,7 @@ describe('redactEventData', () => {
   });
 
   it('works on the output of the resolver', () => {
-    const noLocation = { location_live: 'private' } as const;
+    const noLocation = { location_live: 'private', location_history: 'private' } as const;
     const member = resolveAccess(viewer(MEMBER), account({ sharing: noLocation }));
     const owner = resolveAccess(viewer(OWNER), account({ sharing: noLocation }));
     const ev = storedEvent('event-death-dangerous');
@@ -805,7 +805,7 @@ describe('redactEventData', () => {
       account({ sharing: { ...noLocation, location_history: 'guild' } }),
     );
     expect(redactEventData('death', ev, shared.categories)).toBe(ev);
-    // By default a member gets live location (D-82), so the coordinates are kept.
+    // By default a member gets both location categories (D-96), so the coordinates are kept.
     const byDefault = resolveAccess(viewer(MEMBER), account());
     expect(redactEventData('death', ev, byDefault.categories)).toBe(ev);
   });

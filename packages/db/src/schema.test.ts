@@ -1,7 +1,10 @@
-import { sql } from 'drizzle-orm';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { asc, eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { MIGRATIONS_DIR } from './migrate';
 import { createTestDatabase, type TestDatabase } from './testing';
-import { osrsAccounts, skills, xpSamples } from './schema';
+import { accountSharing, osrsAccounts, skills, xpSamples } from './schema';
 
 let t: TestDatabase;
 beforeAll(async () => {
@@ -89,5 +92,64 @@ describe('migrations', () => {
         sql`INSERT INTO osrs_accounts (public_id, account_hash, current_name, name_normalized, status) VALUES ('p2', 'x', 'a', 'a', 'bogus')`,
       ),
     ).rejects.toThrow();
+  });
+});
+
+describe('0007_sharing_keep_private (D-96)', () => {
+  // The template database ran the migration on empty tables; running its SQL again here is what a
+  // deployment with accounts gets.
+  const migration = readFileSync(
+    path.join(MIGRATIONS_DIR, '0007_sharing_keep_private.sql'),
+    'utf8',
+  );
+
+  async function addAccount(publicId: string): Promise<number> {
+    const [acc] = await t.db
+      .insert(osrsAccounts)
+      .values({
+        publicId,
+        accountHash: publicId.padEnd(56, 'x'),
+        currentName: publicId,
+        nameNormalized: publicId,
+      })
+      .returning({ id: osrsAccounts.id });
+    return acc!.id;
+  }
+
+  const sharingOf = async (accountId: number) =>
+    Object.fromEntries(
+      (
+        await t.db
+          .select({ category: accountSharing.category, audience: accountSharing.audience })
+          .from(accountSharing)
+          .where(eq(accountSharing.accountId, accountId))
+          .orderBy(asc(accountSharing.category))
+      ).map((r) => [r.category, r.audience]),
+    );
+
+  it('pins the formerly private categories of an existing account to private, and nothing else', async () => {
+    const untouched = await addAccount('pin-untouched');
+    await t.db.execute(sql.raw(migration));
+    expect(await sharingOf(untouched)).toEqual({
+      equipment: 'private',
+      inventory: 'private',
+      location_history: 'private',
+    });
+  });
+
+  it("keeps an owner's explicit choices", async () => {
+    const chosen = await addAccount('pin-chosen');
+    await t.db.insert(accountSharing).values([
+      { accountId: chosen, category: 'inventory', audience: 'guild' },
+      { accountId: chosen, category: 'equipment', audience: 'selected' },
+      { accountId: chosen, category: 'stats', audience: 'private' },
+    ]);
+    await t.db.execute(sql.raw(migration));
+    expect(await sharingOf(chosen)).toEqual({
+      equipment: 'selected',
+      inventory: 'guild',
+      location_history: 'private',
+      stats: 'private',
+    });
   });
 });

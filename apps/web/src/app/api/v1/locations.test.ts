@@ -98,7 +98,8 @@ describe('GET /api/v1/locations', () => {
   });
 
   it('is the one 404 for any account whose location_history the key can’t read', async () => {
-    // A plain member doesn't get the trail (private by default, D-22) ...
+    // A plain member doesn't get a private trail (it is guild by default, D-96) ...
+    await setAudience(ctx, world.main.hash, 'location_history', 'private');
     const member = await multi(memberKey.key, `?accounts=${world.main.id}`);
     expect(member.status).toBe(404);
     // A list parameter's 404 names the id, as /xp does (unknown and unreadable alike, D-70).

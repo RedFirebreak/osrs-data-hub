@@ -2,8 +2,9 @@
  * The account page as a Server Component render sees it (next/headers stubbed with the request's
  * cookie, next/navigation's client hooks stubbed): who gets through, notFound() for invisible
  * accounts, and each section's three states (hidden / "Not shared" / data) for the owner and for a
- * guild member with the default sharing (handoff §10).
+ * guild member who is kept out of some categories (handoff §10).
  */
+import { CATEGORIES } from '@hub/core';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderToReadableStream } from 'react-dom/server';
 import {
@@ -150,7 +151,7 @@ describe('account page', () => {
     await signIn();
     expect(await render('NoSuchAcct00')).toBe('not-found');
     const secret = await seed.account({ owner: ownerId });
-    for (const category of ['stats', 'events', 'activity', 'location_live'] as const) {
+    for (const category of CATEGORIES) {
       await seed.sharing(secret.id, category, 'private');
     }
     expect(await render(secret.publicId)).toBe('not-found');
@@ -234,6 +235,9 @@ describe('account page', () => {
   });
 
   it('hides what a guild member may not see, and never shows them the sharing panel', async () => {
+    for (const category of ['location_history', 'equipment', 'inventory'] as const) {
+      await seed.sharing(account.id, category, 'private');
+    }
     await signIn({ name: 'Member' });
     const html = await render(account.publicId);
     expect(headings(html)).toEqual([
@@ -244,7 +248,7 @@ describe('account page', () => {
       'Vitals',
       'Location',
     ]);
-    // Live location is shared with the guild by default (D-82); the rest stays private.
+    // Live location stays shared with the guild (the default, D-96); the rest is private.
     expect(html).toContain('3222, 3218');
     for (const hidden of ['Abyssal whip', 'Shark', 'Sharing']) {
       expect(html).not.toContain(hidden);

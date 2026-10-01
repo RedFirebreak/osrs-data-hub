@@ -1,3 +1,4 @@
+import { CATEGORIES } from '@hub/core';
 import { createTestDatabase, type TestDatabase } from '@hub/db/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { LEADERBOARD_SIZE, getGuildOverview } from './guild';
@@ -90,9 +91,7 @@ beforeAll(async () => {
 
   // Nothing shared with the guild: invisible, however big its gains.
   const uniform = await seedAccount(t.db, { name: 'Uniform', owner: bob.id });
-  for (const c of ['stats', 'events', 'activity', 'location_live'] as const) {
-    await seedSharing(t.db, uniform.id, c, 'private');
-  }
+  for (const c of CATEGORIES) await seedSharing(t.db, uniform.id, c, 'private');
   await withSkills(uniform, { Attack: [1e9, 99] });
   await seedXp(t.db, uniform.id, [['Attack', '2026-09-28T01:00:00Z', 1]]);
   await seedEvent(t.db, uniform.id, { type: 'loot' });
