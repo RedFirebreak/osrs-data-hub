@@ -4,13 +4,13 @@
  * strings are parsed with parseQuery (lib/query.ts) and the schemas in schemas.ts.
  */
 import { accountNotFound, json } from '@/lib/http';
-import { AccountPath } from './schemas';
+import { AccountPath, type WireMetaExtra } from './schemas';
 
 /**
  * 200 `{ data, meta }`, `meta` = `{ generated_at, …meta }`. `Cache-Control: no-store` unless
  * `headers` sets its own (json()).
  */
-export function v1Ok(data: unknown, meta: Record<string, unknown> = {}, headers?: HeadersInit) {
+export function v1Ok(data: unknown, meta: WireMetaExtra = {}, headers?: HeadersInit) {
   return json(200, { data, meta: { generated_at: new Date().toISOString(), ...meta } }, headers);
 }
 

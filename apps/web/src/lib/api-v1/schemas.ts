@@ -648,6 +648,18 @@ export const SnapshotMeta = ListMeta.extend({
   }),
 });
 
+type MetaExtra<M extends z.ZodType> = Omit<z.infer<M>, 'generated_at'>;
+
+/**
+ * What a route adds to `meta` beside `generated_at` (v1Ok): nothing, or the fields one of the meta
+ * schemas documents, so a misspelt or undocumented meta key doesn't compile.
+ */
+export type WireMetaExtra =
+  | Record<string, never>
+  | MetaExtra<typeof ListMeta>
+  | MetaExtra<typeof EventsMeta>
+  | MetaExtra<typeof SnapshotMeta>;
+
 function envelope<D extends z.ZodType, M extends z.ZodType>(data: D, meta: M) {
   return z.object({ data, meta });
 }
