@@ -52,6 +52,7 @@ describe('xpChartOption', () => {
       points: [['2026-09-28T00:00:00.000Z', 1_000]],
       from: new Date('2026-09-28T00:00:00.000Z'),
       to: TO,
+      timezone: 'UTC',
     },
     FALLBACK_THEME,
   );
@@ -83,7 +84,7 @@ describe('xpChartOption', () => {
 
   it('formats the tooltip with the exact XP and escapes the skill name', () => {
     const evil = xpChartOption(
-      { skill: '<img src=x>', points: [], from: TO, to: TO },
+      { skill: '<img src=x>', points: [], from: TO, to: TO, timezone: 'UTC' },
       FALLBACK_THEME,
     );
     const tooltip = evil.tooltip as { formatter: (p: unknown) => string };
@@ -94,6 +95,26 @@ describe('xpChartOption', () => {
     expect(tooltip.formatter([])).toBe('');
   });
 
+  it("writes the tooltip's moment in the viewer's time zone, not the runtime's", () => {
+    // 22:30 UTC is the next morning in Tokyo and the same afternoon in Los Angeles: at most one of
+    // the two can be the zone the tests run in. (August: en-GB's short "Sep" or "Sept" depends on the
+    // runtime's ICU version.)
+    const at = Date.parse('2026-08-29T22:30:00.000Z');
+    const titleIn = (timezone: string) => {
+      const option = xpChartOption(
+        { skill: 'Attack', points: [], from: TO, to: TO, timezone },
+        FALLBACK_THEME,
+      );
+      const tooltip = option.tooltip as { formatter: (p: unknown) => string };
+      return /^<div[^>]*>([^<]*)<\/div>/.exec(tooltip.formatter([{ value: [at, 1] }]))?.[1];
+    };
+    expect(titleIn('Asia/Tokyo')).toBe('30 Aug 2026, 07:30');
+    expect(titleIn('America/Los_Angeles')).toBe('29 Aug 2026, 15:30');
+    expect(titleIn('UTC')).toBe('29 Aug 2026, 22:30');
+    // A zone this runtime doesn't know falls back to UTC (formatInZone).
+    expect(titleIn('Mars/Olympus')).toBe('29 Aug 2026, 22:30');
+  });
+
   it('draws dots when the history covers only a sliver of the window (a line would be invisible)', () => {
     const fresh = xpChartOption(
       {
@@ -101,6 +122,7 @@ describe('xpChartOption', () => {
         points: [['2026-09-29T11:58:00.000Z', 534_946_983]],
         from: new Date('2026-08-30T12:00:00.000Z'),
         to: TO,
+        timezone: 'UTC',
       },
       FALLBACK_THEME,
     );
@@ -110,8 +132,10 @@ describe('xpChartOption', () => {
 
   it('uses the theme colours (dark steps in dark mode)', () => {
     const dark: ChartTheme = { ...FALLBACK_THEME, dark: true, series: SERIES_DARK };
-    const [series] = xpChartOption({ skill: 'Attack', points: [], from: TO, to: TO }, dark)
-      .series as { color: string }[];
+    const [series] = xpChartOption(
+      { skill: 'Attack', points: [], from: TO, to: TO, timezone: 'UTC' },
+      dark,
+    ).series as { color: string }[];
     expect(series?.color).toBe(SERIES_DARK[0]);
   });
 });
@@ -234,7 +258,8 @@ describe('the full option of each chart', () => {
     `<span style="display:inline-block;width:10px;height:2px;border-radius:1px;background:${color}"></span>` +
     `<strong>${value}</strong><span style="opacity:.7">${label}</span></div>`;
   const title = (text: string) => `<div style="opacity:.7;margin-bottom:2px">${text}</div>`;
-  // The charts' day labels follow the runner's locale; the day itself is a calendar date (UTC).
+  // The day labels of the per-day charts follow the runner's locale; the day itself is a calendar
+  // date (UTC).
   const shortDay = (day: string) =>
     new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' }).format(
       new Date(`${day}T00:00:00Z`),
@@ -254,7 +279,13 @@ describe('the full option of each chart', () => {
   it('xpChartOption', () => {
     const from = new Date('2026-09-28T00:00:00.000Z');
     const option = xpChartOption(
-      { skill: 'Attack', points: [['2026-09-28T00:00:00.000Z', 1_000]], from, to: TO },
+      {
+        skill: 'Attack',
+        points: [['2026-09-28T00:00:00.000Z', 1_000]],
+        from,
+        to: TO,
+        timezone: 'Asia/Tokyo',
+      },
       PIN,
     );
     expect(option).toStrictEqual({
@@ -296,15 +327,9 @@ describe('the full option of each chart', () => {
         },
       ],
     });
-    const when = new Intl.DateTimeFormat(undefined, {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    }).format(TO);
-    expect(formatterOf(option)([{ value: [TO.getTime(), 1_000] }])).toBe(
-      title(when) + row('#aa0000', '1,000 XP', 'Attack'),
+    // 12:00 UTC, in the viewer's zone (Settings).
+    expect(formatterOf(option)([{ value: [Date.parse('2026-08-29T12:00:00Z'), 1_000] }])).toBe(
+      title('29 Aug 2026, 21:00') + row('#aa0000', '1,000 XP', 'Attack'),
     );
     expect(yLabelOf(option)(13_200_000)).toBe('13.2M');
   });

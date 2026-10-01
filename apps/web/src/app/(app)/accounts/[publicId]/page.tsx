@@ -219,7 +219,7 @@ function skillsSection({ page, now, dayOnlyIn }: SectionContext) {
   });
 }
 
-function xpSection({ page, publicId }: SectionContext) {
+function xpSection({ page, publicId, timezone }: SectionContext) {
   const skills = page.skills;
   if (!skills.visible || !skills.shared) return null;
   return (
@@ -233,6 +233,7 @@ function xpSection({ page, publicId }: SectionContext) {
         publicId={publicId}
         skills={skills.data.rows.map((r) => r.skill)}
         firstSeen={page.account.firstSeen}
+        timezone={timezone}
       />
     </SectionCard>
   );

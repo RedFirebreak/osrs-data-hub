@@ -4,7 +4,9 @@
  * (24 hours … all time) above a step line of the skill's XP, fetched from
  * GET /api/app/accounts/[publicId]/xp with resolution auto (5 min up to 7 days, hourly up to 90, daily
  * beyond; handoff §9). While a new range loads, the previous chart stays, dimmed. The chart itself is
- * the lazy EChart (echarts never loads on the server).
+ * the lazy EChart (echarts never loads on the server). The dates it writes (the tooltip, "since …")
+ * are in the viewer's time zone from Settings, handed in by the page; the time axis's own tick labels
+ * are placed by ECharts in the browser's zone.
  */
 import { formatGain } from '@hub/core';
 import type { XpSeries } from '@hub/server';
@@ -21,6 +23,7 @@ import {
 } from '@/components/charts/ranges';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { formatInZone } from './dates';
 import { SkillSelect, defaultSkill } from './skill-select';
 
 export interface XpChartPanelProps {
@@ -29,6 +32,8 @@ export interface XpChartPanelProps {
   skills: readonly string[];
   /** The account's first-seen time (ISO), where "All time" starts. */
   firstSeen: string;
+  /** The viewer's time zone (Settings), for the dates in the tooltip and the "since …" text. */
+  timezone: string;
 }
 
 interface Loaded {
@@ -54,7 +59,7 @@ const SHORT_RANGE_LABELS: Readonly<Record<XpRange, string>> = {
   all: 'All',
 };
 
-export function XpChartPanel({ publicId, skills, firstSeen }: XpChartPanelProps) {
+export function XpChartPanel({ publicId, skills, firstSeen, timezone }: XpChartPanelProps) {
   const [skill, setSkill] = useState(() => defaultSkill(skills));
   const [range, setRange] = useState<XpRange>('30d');
   const [attempt, setAttempt] = useState(0);
@@ -86,11 +91,17 @@ export function XpChartPanel({ publicId, skills, firstSeen }: XpChartPanelProps)
     (theme: ChartTheme) =>
       xpChartOption(
         loaded
-          ? { skill: loaded.skill, points: loaded.points, from: loaded.from, to: loaded.to }
-          : { skill, points: [], from: new Date(), to: new Date() },
+          ? {
+              skill: loaded.skill,
+              points: loaded.points,
+              from: loaded.from,
+              to: loaded.to,
+              timezone,
+            }
+          : { skill, points: [], from: new Date(), to: new Date(), timezone },
         theme,
       ),
-    [loaded, skill],
+    [loaded, skill, timezone],
   );
 
   const error = failed?.key === key ? failed.error : null;
@@ -137,7 +148,7 @@ export function XpChartPanel({ publicId, skills, firstSeen }: XpChartPanelProps)
               {formatGain(gained)} XP
             </span>{' '}
             in {loaded.skill}{' '}
-            {trackedSince(firstSeen, loaded.from) ??
+            {trackedSince(firstSeen, loaded.from, timezone) ??
               `over ${XP_RANGE_LABELS[loaded.range].toLowerCase()}`}
           </>
         ) : busy ? (
@@ -180,16 +191,16 @@ export function XpChartPanel({ publicId, skills, firstSeen }: XpChartPanelProps)
   );
 }
 
-const SINCE_DAY = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' });
-
 /**
- * "since Sep 29, when the hub first saw it" when the account is younger than the range: "0 XP over
- * 30 days" would claim a month of history the hub doesn't have. Null otherwise.
+ * "since 29 Sep, when the hub first saw this account" when the account is younger than the range:
+ * "0 XP over 30 days" would claim a month of history the hub doesn't have. Null otherwise. The day is
+ * the one in `timezone` (the viewer's, from Settings), as everywhere else on the account page.
  */
-function trackedSince(firstSeen: string, from: Date): string | null {
+export function trackedSince(firstSeen: string, from: Date, timezone: string): string | null {
   const first = Date.parse(firstSeen);
   if (!Number.isFinite(first) || first <= from.getTime()) return null;
-  return `since ${SINCE_DAY.format(new Date(first))}, when the hub first saw this account`;
+  const day = formatInZone(new Date(first), timezone, { day: 'numeric', month: 'short' });
+  return `since ${day}, when the hub first saw this account`;
 }
 
 /** XP gained over the loaded points (last − first); null with fewer than one point. */

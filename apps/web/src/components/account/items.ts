@@ -189,7 +189,7 @@ export function mergeStacks(items: readonly ItemData[]): MergedStack[] {
   );
 }
 
-/** 1500 → "1.5K", 10_000_000 → "10M" (the in-game stack notation); below 100K the exact count. */
+/** 150_000 → "150K", 12_345_678 → "12M" (the in-game stack notation); below 100K the exact count. */
 export function stackLabel(quantity: number): string {
   if (!Number.isFinite(quantity)) return '0';
   if (quantity >= 10_000_000) return `${Math.floor(quantity / 1_000_000)}M`;

@@ -16,6 +16,7 @@ import type {
   TooltipComponentOption,
 } from 'echarts/components';
 import type { ComposeOption } from 'echarts/core';
+import { DATE_TIME_OPTIONS, formatInZone } from '@/components/account/dates';
 
 export type ChartOption = ComposeOption<
   | BarSeriesOption
@@ -301,13 +302,8 @@ export function firstParam(params: unknown): { value: unknown; dataIndex?: numbe
 
 // --- The account page's charts -------------------------------------------------------------------
 
-const DATE_TIME = new Intl.DateTimeFormat(undefined, {
-  year: 'numeric',
-  month: 'short',
-  day: 'numeric',
-  hour: '2-digit',
-  minute: '2-digit',
-});
+/** "29 Sep 2026, 14:05": a moment in a tooltip, with the year (a range can span several). */
+const MOMENT_OPTIONS: Intl.DateTimeFormatOptions = { ...DATE_TIME_OPTIONS, year: 'numeric' };
 const DATE_UTC = new Intl.DateTimeFormat(undefined, {
   year: 'numeric',
   month: 'short',
@@ -359,6 +355,8 @@ export interface XpChartInput {
   points: readonly [string, number][];
   from: Date;
   to: Date;
+  /** The viewer's time zone (Settings): the tooltip's date and time are shown in it. */
+  timezone: string;
 }
 
 /**
@@ -370,7 +368,8 @@ const MIN_VISIBLE_LINE_SHARE = 0.02;
 /**
  * The XP chart: one step line (`step: 'end'`: XP is change-only and monotonic, so a value holds until
  * the next change instead of interpolating between samples), a 10% area wash, a crosshair tooltip
- * with the exact XP. The y-axis fits the data (XP ranges are far from zero). A line covering only a
+ * with the exact XP and the moment in the viewer's time zone (like the rest of the account page, not
+ * the browser's). The y-axis fits the data (XP ranges are far from zero). A line covering only a
  * sliver of the window (a new account) gets dots, so the chart isn't blank.
  */
 export function xpChartOption(input: XpChartInput, theme: ChartTheme): ChartOption {
@@ -388,7 +387,7 @@ export function xpChartOption(input: XpChartInput, theme: ChartTheme): ChartOpti
       const value = Array.isArray(p?.value) ? (p.value as [number, number]) : null;
       if (!value) return '';
       return (
-        tooltipTitle(DATE_TIME.format(new Date(value[0]))) +
+        tooltipTitle(formatInZone(new Date(value[0]), input.timezone, MOMENT_OPTIONS) ?? '') +
         tooltipRow(color, `${formatNumber(value[1])} XP`, input.skill)
       );
     }),
