@@ -33,6 +33,7 @@ import {
   type ApiLocationsMulti,
   type ApiLootLeaderboard,
   type ApiMe,
+  type ApiMember,
   type ApiOwner,
   type ApiSessions,
   type ApiSnapshotAccount,
@@ -53,6 +54,7 @@ import type {
   WireLocationsMulti,
   WireLootLeaderboard,
   WireMe,
+  WireMember,
   WireOwner,
   WireSessions,
   WireSkills,
@@ -108,6 +110,10 @@ export function wireMe(me: ApiMe): WireMe {
     user: me.user === null ? null : { name: me.user.name },
     visible_accounts: me.visibleAccounts,
   };
+}
+
+export function wireMember(m: ApiMember): WireMember {
+  return { discord_id: m.discordId, member: m.member, is_admin: m.isAdmin, name: m.name };
 }
 
 function wireOwner(owner: ApiOwner | null): WireOwner | null {

@@ -2,7 +2,8 @@
  * Admin → Integrations (D-88): the hub's service keys, the integration keys of the public API used
  * by the guild's own services (the live map). Active keys with Revoke, then revoked and expired
  * ones, and "Create integration key". Explains that a service key belongs to nobody, reads what the
- * guild audience sees (D-89) and survives every offboarding.
+ * guild audience sees (D-89), survives every offboarding, and can ask whether a Discord account is a
+ * member and an admin (D-100).
  */
 import { getConfig } from '@hub/core';
 import { getDb } from '@hub/db';
@@ -51,7 +52,7 @@ export default async function AdminIntegrationsPage() {
       <AdminSectionHeader
         id="admin-integrations"
         title="Integrations"
-        description="Integration keys for the guild's own services, such as its live map. A key belongs to nobody: it reads exactly what every guild member can see, the accounts and categories shared with the guild, and offboarding anyone never revokes it."
+        description="Integration keys for the guild's own services, such as its live map. A key belongs to nobody: it reads exactly what every guild member can see, the accounts and categories shared with the guild, and offboarding anyone never revokes it. It can also ask whether a Discord account is a member of the hub and an admin."
         actions={
           <>
             <Button asChild variant="outline">

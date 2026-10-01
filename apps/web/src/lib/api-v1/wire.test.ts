@@ -5,8 +5,8 @@
  */
 import type { ApiAccountDetail, ApiEvent, ApiSnapshotAccount } from '@hub/server';
 import { describe, expect, it } from 'vitest';
-import { AccountDetail, Event, Item, SnapshotAccount } from './schemas';
-import { wireAccountDetail, wireEvent, wireItem, wireSnapshotAccount } from './wire';
+import { AccountDetail, Event, Item, MemberResponse, SnapshotAccount } from './schemas';
+import { wireAccountDetail, wireEvent, wireItem, wireMember, wireSnapshotAccount } from './wire';
 
 const AT = '2026-09-29T10:00:00.000Z';
 
@@ -221,5 +221,38 @@ describe('wireEvent', () => {
       expect(Event.parse(guarded)).toEqual(guarded);
       expect(guarded.data).toEqual({});
     }
+  });
+});
+
+describe('wireMember', () => {
+  const data = MemberResponse.shape.data;
+
+  it('renames the hub’s keys for a member and for someone who isn’t one', () => {
+    const member = wireMember({
+      discordId: '100000000000000042',
+      member: true,
+      isAdmin: true,
+      name: 'Ada Admin',
+    });
+    expect(data.parse(member)).toEqual(member);
+    expect(member).toEqual({
+      discord_id: '100000000000000042',
+      member: true,
+      is_admin: true,
+      name: 'Ada Admin',
+    });
+    const stranger = wireMember({
+      discordId: '100000000000000099',
+      member: false,
+      isAdmin: false,
+      name: null,
+    });
+    expect(data.parse(stranger)).toEqual(stranger);
+    expect(stranger).toEqual({
+      discord_id: '100000000000000099',
+      member: false,
+      is_admin: false,
+      name: null,
+    });
   });
 });

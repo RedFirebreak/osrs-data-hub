@@ -14,6 +14,7 @@ describe('apiRouteGroup', () => {
     expect(apiRouteGroup(`${base}/api/v1/xp`)).toBe('xp');
     expect(apiRouteGroup(`${base}/api/v1/locations?accounts=a,b`)).toBe('locations');
     expect(apiRouteGroup(`${base}/api/v1/leaderboards/gains`)).toBe('leaderboards');
+    expect(apiRouteGroup(`${base}/api/v1/members/100000000000000042`)).toBe('members');
     expect(apiRouteGroup(`${base}/api/v1/openapi.json`)).toBe('openapi');
   });
 
@@ -25,7 +26,7 @@ describe('apiRouteGroup', () => {
         .filter((route) => !route.catchAll)
         .map((route) => route.segments[0] ?? ''),
     );
-    expect(segments.size).toBeGreaterThanOrEqual(7);
+    expect(segments.size).toBeGreaterThanOrEqual(8);
     const groups = [...segments].map((segment) => {
       const group = apiRouteGroup(`https://hub.example.com/api/v1/${segment}`);
       expect(group, `/api/v1/${segment}`).not.toBe('unknown');

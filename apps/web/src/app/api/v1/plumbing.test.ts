@@ -14,6 +14,7 @@ import { withTestDb, type WebTestContext } from '@/lib/test-utils';
 import * as catchAll from './[[...rest]]/route';
 import * as accountRoute from './accounts/[id]/route';
 import * as meRoute from './me/route';
+import * as memberRoute from './members/[discord_id]/route';
 import * as openapiRoute from './openapi.json/route';
 import { v1RouteFiles } from './route-files';
 import * as snapshotRoute from './snapshot/route';
@@ -116,7 +117,9 @@ describe('CORS', () => {
       expect(res.status).toBe(404);
       expectCors(res);
       expect(res.headers.get('content-type')).toBe('application/json; charset=utf-8');
-      expect(((await res.json()) as { error: { code: string } }).error.code).toBe('not_found');
+      expect(await res.json()).toEqual({
+        error: { code: 'not_found', message: 'There is no such endpoint in API v1.' },
+      });
     }
   });
 });
@@ -313,6 +316,12 @@ describe('metrics (D-84)', () => {
         200,
       );
       expect((await xpRoute.GET(v1Request(ctx, '/xp?accounts=x'))).status).toBe(401);
+      // A user key's 404 on /members counts under its own group, not as an unknown path.
+      const member = memberRoute.GET(
+        v1Request(ctx, '/members/100000000000000042', { key: key.key }),
+        { params: Promise.resolve({ discord_id: '100000000000000042' }) },
+      );
+      expect((await member).status).toBe(404);
       expect((await openapiRoute.GET()).status).toBe(200);
       expect((await catchAll.GET()).status).toBe(404);
     };
@@ -326,10 +335,19 @@ describe('metrics (D-84)', () => {
       'accounts|404': 1,
       'snapshot|200': 1,
       'xp|401': 1,
+      'members|404': 1,
       'openapi|200': 1,
       'unknown|404': 1,
     });
-    expect(latency).toEqual({ me: 1, accounts: 1, snapshot: 1, xp: 1, openapi: 1, unknown: 1 });
+    expect(latency).toEqual({
+      me: 1,
+      accounts: 1,
+      snapshot: 1,
+      xp: 1,
+      members: 1,
+      openapi: 1,
+      unknown: 1,
+    });
   });
 
   it('counts refused keys by reason, never with the key', async () => {

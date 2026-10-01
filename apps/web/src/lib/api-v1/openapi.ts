@@ -44,10 +44,12 @@ interface OperationSpec {
    */
   response: z.ZodType;
   query?: z.ZodObject;
-  /** The `{id}` account path parameter. */
-  accountPath?: boolean;
+  /** The path's parameters (`{id}`: S.AccountPath). */
+  pathParams?: z.ZodObject;
   /** 404 for accounts the key can't read (path id or a list parameter). */
   notFound?: boolean;
+  /** For service keys only: a user key gets the 404 of an unknown path (D-100). */
+  serviceKeysOnly?: boolean;
   /** 304 with If-None-Match (/snapshot). */
   conditional?: boolean;
 }
@@ -83,7 +85,7 @@ export const OPERATIONS: readonly OperationSpec[] = [
     description:
       'The account’s current state, section by section. A section of a category the key can’t read on this account is **omitted**; a readable section the player’s plugin never sent is `{ "shared": false, "updated_at": null }` ("not shared"), never an empty value. Every sent section carries `updated_at`.',
     response: S.AccountResponse,
-    accountPath: true,
+    pathParams: S.AccountPath,
     notFound: true,
   },
   {
@@ -111,7 +113,7 @@ export const OPERATIONS: readonly OperationSpec[] = [
     description: `XP per skill over time (\`stats\`). Defaults: Overall, the last ${XP_DEFAULT_DAYS} days, \`resolution=auto\`.`,
     response: S.XpResponse,
     query: S.XpQuery,
-    accountPath: true,
+    pathParams: S.AccountPath,
     notFound: true,
   },
   {
@@ -133,7 +135,7 @@ export const OPERATIONS: readonly OperationSpec[] = [
       'XP gained per skill in a period or an explicit range (`stats`): every skill the account has, 0 when nothing was gained. Default `period=day`.',
     response: S.GainsResponse,
     query: S.GainsQuery,
-    accountPath: true,
+    pathParams: S.AccountPath,
     notFound: true,
   },
   {
@@ -162,7 +164,7 @@ export const OPERATIONS: readonly OperationSpec[] = [
     description: `Play sessions overlapping the range, newest first (\`activity\`). Default: the last ${HISTORY_DEFAULT_DAYS} days.`,
     response: S.SessionsResponse,
     query: S.HistoryQuery,
-    accountPath: true,
+    pathParams: S.AccountPath,
     notFound: true,
   },
   {
@@ -173,7 +175,7 @@ export const OPERATIONS: readonly OperationSpec[] = [
     description: `Every change of the worn set in the range, newest first, each with the whole set after it (\`equipment\`). Default: the last ${HISTORY_DEFAULT_DAYS} days.`,
     response: S.EquipmentHistoryResponse,
     query: S.HistoryQuery,
-    accountPath: true,
+    pathParams: S.AccountPath,
     notFound: true,
   },
   {
@@ -184,7 +186,7 @@ export const OPERATIONS: readonly OperationSpec[] = [
     description: `Carried value (inventory + equipment at GE prices) per UTC day, oldest first (\`inventory\`). Default: the last ${HISTORY_DEFAULT_DAYS} days.`,
     response: S.WealthResponse,
     query: S.HistoryQuery,
-    accountPath: true,
+    pathParams: S.AccountPath,
     notFound: true,
   },
   {
@@ -195,7 +197,7 @@ export const OPERATIONS: readonly OperationSpec[] = [
     description: `The location trail, at most one point per minute, oldest first (\`location_history\`; kept 30 days). Default: the last ${HISTORY_DEFAULT_DAYS} days.`,
     response: S.LocationsResponse,
     query: S.HistoryQuery,
-    accountPath: true,
+    pathParams: S.AccountPath,
     notFound: true,
   },
   {
@@ -226,6 +228,22 @@ export const OPERATIONS: readonly OperationSpec[] = [
     description: `The period’s most valuable drops over the accounts whose \`events\` the key may read: \`loot\` and \`pk_loot\` events with a value, not on a special world, highest \`value_gp\` first. Each entry’s \`event\` is exactly what \`/events\` serves (with \`data.location\` removed the same way), though it can appear here a few seconds before the \`/events\` cursor serves it. Default \`period=day\`, \`limit=${LOOT_LEADERBOARD_DEFAULT_LIMIT}\` (at most ${LOOT_LEADERBOARD_MAX_LIMIT}).`,
     response: S.LootLeaderboardResponse,
     query: S.LootLeaderboardQuery,
+  },
+  {
+    path: '/members/{discord_id}',
+    operationId: 'getMember',
+    tag: 'Members',
+    summary: 'Is this Discord account a member?',
+    description: [
+      '**Service keys only.** For a guild service that signs people in with Discord itself and lets the hub decide who may come in: one Discord user id in, one verdict out. No category is needed.',
+      '',
+      'A service key always gets a 200. `member` is true when a hub user with that Discord id exists and is active, with their display `name` and `is_admin`, the hub’s admin flag (for the service’s own admin pages; it widens nothing the key reads). Otherwise `member` and `is_admin` are false and `name` is null: an id the hub doesn’t know and a user who left the guild or was removed look exactly alike.',
+      '',
+      'An id that isn’t 15 to 22 digits is a 400, never a 404. For a user key the endpoint doesn’t exist: it gets the 404 of an unknown path, which is also what a hub from before this endpoint answers any key. There is no list and no lookup by name.',
+    ].join('\n'),
+    response: S.MemberResponse,
+    pathParams: S.MemberPath,
+    serviceKeysOnly: true,
   },
 ];
 
@@ -351,7 +369,7 @@ function errorResponse(description: string, headers: Json = {}): Json {
 
 function operation(op: OperationSpec): Json {
   const params: Json[] = [];
-  if (op.accountPath) params.push(...parameters(S.AccountPath, 'path'));
+  if (op.pathParams) params.push(...parameters(op.pathParams, 'path'));
   if (op.query) params.push(...parameters(op.query, 'query'));
   const responses: Json = {
     '200': {
@@ -380,6 +398,7 @@ function operation(op: OperationSpec): Json {
   if (params.length > 0) responses['400'] = { $ref: '#/components/responses/BadRequest' };
   responses['401'] = { $ref: '#/components/responses/Unauthorized' };
   if (op.notFound) responses['404'] = { $ref: '#/components/responses/NotFound' };
+  if (op.serviceKeysOnly) responses['404'] = { $ref: '#/components/responses/NoSuchEndpoint' };
   responses['429'] = { $ref: '#/components/responses/TooManyRequests' };
   responses['503'] = { $ref: '#/components/responses/Unavailable' };
   return {
@@ -402,7 +421,7 @@ Create a key on the hub's **API keys** page and send it on every request:
 
 A key is shown once. It reads only the categories chosen for it (stats, events, activity, live location, location history, equipment, inventory), only its account scope (every account its creator can see, or an explicit list), and only what its creator may see **right now**: the owners' sharing settings are evaluated on every request. A missing, malformed, unknown, revoked or expired key, or one whose creator left the guild, gets the same \`401 unauthorized\`. Cookies are never read.
 
-**Service keys** (Admin → Integrations) are for the guild's own integrations, such as its live map. A service key belongs to no user: it reads what the guild audience sees, i.e. the accounts and categories whose sharing audience is *guild* (never *private* or *selected*), it survives every offboarding, and it has its own rate limit (${SERVICE_KEY_RATE_LIMIT} requests per minute unless the admin set another). Only service keys see \`account_hash\`, and they may name ${MAX_BULK_ACCOUNTS_SERVICE} accounts per bulk request instead of ${MAX_BULK_ACCOUNTS}. \`/me\` tells the kinds apart (\`key.kind\`, \`user\` null).
+**Service keys** (Admin → Integrations) are for the guild's own integrations, such as its live map. A service key belongs to no user: it reads what the guild audience sees, i.e. the accounts and categories whose sharing audience is *guild* (never *private* or *selected*), it survives every offboarding, and it has its own rate limit (${SERVICE_KEY_RATE_LIMIT} requests per minute unless the admin set another). Only service keys see \`account_hash\`, and they may name ${MAX_BULK_ACCOUNTS_SERVICE} accounts per bulk request instead of ${MAX_BULK_ACCOUNTS}. Only they can ask \`/members/{discord_id}\` whether a Discord account is a member of the hub and an admin; for a user key that endpoint doesn't exist (404). \`/me\` tells the kinds apart (\`key.kind\`, \`user\` null).
 
 ## Owner identity
 Accounts carry \`owner\` (\`{ name, discord_id }\`): the account's owner as the hub's guild page shows them to every member, or null when the account has no active owner. Contributors are never exposed.
@@ -481,6 +500,10 @@ export function buildOpenApiDocument(): Json {
         name: 'Leaderboards',
         description: 'Gains leaderboards (`stats`) and the loot leaderboard (`events`).',
       },
+      {
+        name: 'Members',
+        description: 'Whether one Discord account is a member of the hub (service keys only).',
+      },
       { name: 'Meta', description: 'This document.' },
     ],
     paths,
@@ -534,6 +557,10 @@ export function buildOpenApiDocument(): Json {
         ),
         NotFound: errorResponse(
           '`not_found`: the account doesn’t exist or isn’t readable with this key (the two are indistinguishable).',
+          RATE_HEADERS,
+        ),
+        NoSuchEndpoint: errorResponse(
+          '`not_found`: the key is a user key. The endpoint exists for service keys only and answers a user key exactly like an unknown path.',
           RATE_HEADERS,
         ),
         TooManyRequests: errorResponse(

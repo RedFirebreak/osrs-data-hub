@@ -229,7 +229,8 @@ export default async function PrivacyPage() {
             each section follows the same rules as everyone else&apos;s. To troubleshoot, admins can
             open the raw plugin messages of the last {formatHours(config.rawPayloadRetentionHours)},
             which contain everything the plugin sent; every message an admin opens is recorded in
-            the audit log.
+            the audit log. Services an admin connects to the hub, such as the guild&apos;s live map,
+            can ask whether a Discord account is a member of the hub and an admin.
           </p>
         </Section>
 
