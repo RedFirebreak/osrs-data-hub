@@ -7,6 +7,7 @@ import { events, osrsAccounts, type DbOrTx } from '@hub/db';
 import { and, asc, eq, gt, inArray, lt, lte, max, sql, type SQL } from 'drizzle-orm';
 import { loadAccountAccess } from '../accounts/access';
 import { EVENT_ROW_COLUMNS, toFeedEvent } from '../feed';
+import { clampLimit } from '../paging';
 import { seqFloor, settledCeiling } from '../settled-cursor';
 import { toEventMessage, type LiveEventMessage } from './messages';
 
@@ -88,7 +89,7 @@ export async function replayEvents(
       and(window, inArray(events.accountId, [...allowed.keys()]), lte(events.seq, highestSeen)),
     )
     .orderBy(asc(events.seq))
-    .limit(clampLimit(opts.limit));
+    .limit(clampLimit(opts.limit, REPLAY_MAX_LIMIT, REPLAY_DEFAULT_LIMIT));
 
   return rows.flatMap((row) => {
     const access = allowed.get(row.accountId);
@@ -179,9 +180,4 @@ async function readableAccounts(
     if (resolved.categories.has('events')) allowed.set(accountId, { resolved, maxSeq });
   }
   return allowed;
-}
-
-function clampLimit(limit: number | undefined): number {
-  if (limit === undefined || !Number.isFinite(limit)) return REPLAY_DEFAULT_LIMIT;
-  return Math.min(Math.max(Math.trunc(limit), 1), REPLAY_MAX_LIMIT);
 }
