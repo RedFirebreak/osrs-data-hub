@@ -21,6 +21,13 @@
       "matchPackageNames": ["node"],
       "matchUpdateTypes": ["major"],
       "enabled": false
+    },
+    {
+      "description": "typescript stays on 6.x until typescript-eslint supports TypeScript 7: it refuses to load on 7.0, which has no compiler API, so the lint job fails (TOOL-1). Minor and patch updates still come through.",
+      "matchDatasources": ["npm"],
+      "matchPackageNames": ["typescript"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
     }
   ]
 }
