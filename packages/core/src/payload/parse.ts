@@ -18,6 +18,8 @@ const MAX_DEPTH = 32;
  */
 const MAX_SKILLS = 64;
 const MAX_SKILL_NAME = 64;
+/** player.locationTrail limit. The plugin keeps at most 300 points per message. */
+const MAX_TRAIL_POINTS = 512;
 /** Names the plugin never puts in stats (plugin Skill.values()); accepting them corrupts the totals. */
 const RESERVED_SKILLS: ReadonlyMap<string, string> = new Map([
   [OVERALL, 'Overall is derived by the hub, never sent by the plugin'],
@@ -70,6 +72,17 @@ const PLAYER = {
     plane: smallint,
     isOnBoat: z.boolean().optional(),
   }),
+  locationTrail: z
+    .array(
+      z.looseObject({
+        x: int32,
+        y: int32,
+        plane: smallint,
+        isOnBoat: z.boolean().optional(),
+        timestamp: z.number().int(),
+      }),
+    )
+    .max(MAX_TRAIL_POINTS, `more than ${MAX_TRAIL_POINTS} points`),
   spellbook: z.looseObject({ id: smallint, name: z.string() }),
   // z.custom keeps the object itself: zod's looseObject silently drops a "__proto__" key.
   stats: z.looseObject({
@@ -104,7 +117,9 @@ const eventEnvelope = z.looseObject({
  *   skipped.sections: name (string, 1..64 chars), accountHash (string, 1..128 chars), accountType
  *   (string of digits or number, an integer 0..127 → number), world (string of digits or number, an
  *   integer 1..2^31−1 → number), worldTypes (string[]), location ({x, y: int32, plane: smallint,
- *   isOnBoat?: boolean}), health / prayerPoints ({current, max}: smallint integers → `health` /
+ *   isOnBoat?: boolean}), locationTrail (plugin 1.6: an array of at most 512 points {x, y: int32,
+ *   plane: smallint, isOnBoat?: boolean, timestamp: safe integer}, oldest first; an invalid point or
+ *   more points drops the whole section; [] is kept), health / prayerPoints ({current, max}: smallint integers → `health` /
  *   `prayer`), spellbook ({id: smallint integer, name: string}), stats.skills (object of at most 64
  *   entries {xp: integer 0..2^31−1, level: integer 0..32767}, more → section `player.stats`; an
  *   invalid ENTRY, or a name that is empty, longer than 64 characters, "Overall" (hub-derived),
@@ -175,6 +190,8 @@ function parsePlayer(value: unknown, skipped: Skipped): PlayerSnapshot | null {
   if (worldTypes !== undefined) player.worldTypes = worldTypes;
   const location = section('location', PLAYER.location);
   if (location !== undefined) player.location = location;
+  const locationTrail = section('locationTrail', PLAYER.locationTrail);
+  if (locationTrail !== undefined) player.locationTrail = locationTrail;
   const health = section('health', meter);
   if (health !== undefined) player.health = health;
   const prayer = section('prayerPoints', meter);
