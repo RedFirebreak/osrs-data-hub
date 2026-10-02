@@ -96,7 +96,13 @@ describe('history endpoints', () => {
       await (await call(getLocations, ownerKey, world.main.id)).json(),
     );
     expect(data.points.length).toBeGreaterThanOrEqual(1);
-    expect(data.points[0]).toMatchObject({ x: 3164, y: 3487, plane: 0, is_on_boat: false });
+    expect(data.points[0]).toMatchObject({
+      x: 3164,
+      y: 3487,
+      plane: 0,
+      is_on_boat: false,
+      via: null,
+    });
   });
 
   it('honours an explicit range', async () => {

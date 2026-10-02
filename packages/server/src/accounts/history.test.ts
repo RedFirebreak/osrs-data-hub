@@ -149,11 +149,64 @@ describe('getLocationHistory', () => {
     const trail = await getLocationHistory(t.db, owner.viewer, account.publicId, RANGE);
     expect(trail).toEqual({
       points: [
-        { ts: '2026-09-01T00:00:00.000Z', x: 3, y: 3, plane: 1, world: null, onBoat: true },
-        { ts: '2026-09-02T00:00:00.000Z', x: 2, y: 2, plane: 0, world: 302, onBoat: false },
+        {
+          ts: '2026-09-01T00:00:00.000Z',
+          x: 3,
+          y: 3,
+          plane: 1,
+          world: null,
+          onBoat: true,
+          via: null,
+        },
+        {
+          ts: '2026-09-02T00:00:00.000Z',
+          x: 2,
+          y: 2,
+          plane: 0,
+          world: 302,
+          onBoat: false,
+          via: 'gap',
+        },
       ],
       truncated: false,
     });
+  });
+
+  it('says how the player got to each point (D-103)', async () => {
+    const walker = await seedAccount(t.db, { owner: owner.id });
+    const tick = (n: number) => new Date(d('2026-09-10T10:00:00Z').getTime() + n * 600);
+    await t.db.insert(locationSamples).values(
+      [
+        [0, 3222, 3218], // Lumbridge
+        [1, 3224, 3218],
+        [5, 2757, 3478], // a teleport to Camelot
+        [6, 2757, 3480],
+        [20, 3097, 3468], // back to Edgeville ...
+        [22, 3096, 9867], // ... and down the trapdoor
+        [40, 1860, 7040], // home
+        [41, 2100, 7110], // the next room
+      ].map(([n, x, y]) => ({ accountId: walker.id, ts: tick(n!), x: x!, y: y!, plane: 0 })),
+    );
+    const trail = await getLocationHistory(t.db, owner.viewer, walker.publicId, RANGE);
+    expect(trail?.points.map((p) => p.via)).toEqual([
+      null,
+      'move',
+      'teleport',
+      'move',
+      'teleport',
+      'entrance',
+      'teleport',
+      'house',
+    ]);
+
+    // A trail cut by the limit knows the point before its first one, a range that starts there
+    // doesn't.
+    const newest = await getLocationHistory(t.db, owner.viewer, walker.publicId, RANGE, 2);
+    expect(newest).toMatchObject({ truncated: true });
+    expect(newest?.points.map((p) => p.via)).toEqual(['teleport', 'house']);
+    const from = { from: tick(40), to: NOW };
+    const ranged = await getLocationHistory(t.db, owner.viewer, walker.publicId, from);
+    expect(ranged?.points.map((p) => p.via)).toEqual([null, 'house']);
   });
 
   it('needs location_history (not location_live)', async () => {
@@ -177,6 +230,7 @@ describe('getLocationHistory', () => {
     expect(trail?.truncated).toBe(true);
     expect(trail?.points).toHaveLength(MAX_LOCATION_POINTS);
     expect(trail?.points[0]?.x).toBe(11);
+    expect(trail?.points[0]?.via).toBe('move');
     expect(trail?.points.at(-1)?.x).toBe(count);
 
     // A caller's own, lower limit; a range holding exactly the limit is not cut.
@@ -184,8 +238,9 @@ describe('getLocationHistory', () => {
     expect(few).toMatchObject({ truncated: true });
     expect(few?.points.map((p) => p.x)).toEqual([count - 2, count - 1, count]);
     const lastThree = { from: d(few!.points[0]!.ts), to: year.to };
+    // Nothing was read before the first of them this time, so how it was reached isn't known.
     expect(await getLocationHistory(t.db, owner.viewer, busy.publicId, lastThree, 3)).toEqual({
-      points: few!.points,
+      points: [{ ...few!.points[0]!, via: null }, ...few!.points.slice(1)],
       truncated: false,
     });
   });

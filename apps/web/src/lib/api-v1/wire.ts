@@ -267,6 +267,7 @@ function wireLocationPoints(points: ApiLocations['points']): WireLocations['poin
     plane: p.plane,
     world: p.world,
     is_on_boat: p.isOnBoat,
+    via: p.via,
   }));
 }
 

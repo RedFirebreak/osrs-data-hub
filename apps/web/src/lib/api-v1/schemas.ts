@@ -12,7 +12,7 @@
  * @hub/server's exported limits, so the docs state the numbers the server enforces; the read models
  * re-validate everything anyway.
  */
-import { CATEGORIES, KNOWN_EVENT_TYPES } from '@hub/core';
+import { CATEGORIES, KNOWN_EVENT_TYPES, TRAIL_STEPS } from '@hub/core';
 import { API_KEY_KINDS, SESSION_END_REASONS } from '@hub/db';
 import {
   DISCORD_ID_PATTERN,
@@ -630,12 +630,16 @@ const LocationPoint = z.object({
   plane: int,
   world: int.nullable(),
   is_on_boat: z.boolean(),
+  via: z.enum(TRAIL_STEPS).nullable().meta({
+    description:
+      'How the player got here from the point before. `move`: walked, ran or sailed (stairs are a move to another plane). `entrance`: into or out of the underground, which lies 6400 tiles north of the surface. `house`: from one room of a player-owned house to another, walked although the coordinates jump. `teleport`: anything else that wasn’t walked. `gap`: more than 5 minutes since the point before (offline, not sharing, or never delivered). Null on the first point of a trail when the point before it lies outside the range. Only `move` is a line to draw.',
+  }),
 });
 
 const trailShape = {
   points: z.array(LocationPoint).meta({
     description:
-      'Oldest first. Every tile a 1.6 plugin reported, at the time the plugin saw it; from an older plugin, one point a minute. A player standing still has one point a minute. Two consecutive points far apart were not walked (a teleport, an instance, or a stretch that was never delivered): don’t join them.',
+      'Oldest first. Every tile a 1.6 plugin reported, at the time the plugin saw it; from an older plugin, one point a minute. A player standing still has one point a minute. `via` says for each point whether it was walked to.',
   }),
   truncated: z.boolean().meta({
     description:
