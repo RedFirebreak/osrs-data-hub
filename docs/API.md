@@ -385,17 +385,33 @@ The location trail, oldest first (`location_history`, kept 30 days). Default: th
 (the other histories default to 30 days).
 
     {"data":{"account":{…},"from":"…","to":"…","truncated":false,"points":[
-      {"at":"2026-09-29T13:24:25.236Z","x":3164,"y":3487,"plane":0,"world":302,"is_on_boat":false},
-      {"at":"2026-09-29T13:24:25.832Z","x":3166,"y":3489,"plane":0,"world":302,"is_on_boat":false},…]},"meta":{…}}
+      {"at":"2026-09-29T13:24:25.236Z","x":3164,"y":3487,"plane":0,"world":302,"is_on_boat":false,"via":null},
+      {"at":"2026-09-29T13:24:25.832Z","x":3166,"y":3489,"plane":0,"world":302,"is_on_boat":false,"via":"move"},…]},"meta":{…}}
 
 - **What a point is.** With plugin 1.6 or newer: every tile the player was on, one point per game
   tick (0.6 s) on which the tile, plane or boat state changed, dated by the player's PC (D-102). With
   an older plugin, and while a player stands still: one point a minute.
-- **Gaps are yours to judge.** Nothing marks a teleport. A player on foot moves at most 2 tiles per
-  tick, so two consecutive points much further apart were not walked: a teleport, a dungeon entrance,
-  a room change inside an instance such as a player-owned house (the coordinates there are those of
-  the map area the room was copied from), or a stretch that never reached the hub. Don't join them.
-  Allow a few tiles of margin (lag), and more for boats (`is_on_boat`).
+- **`via`** says how the player got to a point from the one before it (D-103). Only `move` is a
+  line to draw.
+
+  | `via` | What happened |
+  | --- | --- |
+  | `move` | Walked, ran or sailed: the point is within reach in the time since the one before. Stairs are a move to another `plane`. |
+  | `entrance` | Into or out of the underground (a cave, a dungeon, a basement), which lies 6400 tiles north of the surface. The player went through an entrance at this spot. |
+  | `house` | From one room of a player-owned house to the next. The player walked, but the coordinates are those of the map area each room was copied from, so they jump. |
+  | `teleport` | Anything else that wasn't walked: a teleport, including into or out of the house. |
+  | `gap` | More than 5 minutes since the point before: offline, not sharing, or a stretch that never reached the hub. Nothing is known about what happened in between. |
+  | `null` | The first point of the trail, when the point before it lies before `from`. |
+
+  - Reach is 2 tiles per game tick (0.6 s) plus 6 tiles of margin for lag, and 4 tiles per tick
+    while both points are on a boat (`is_on_boat`).
+  - The label belongs to the pair of points, so it is only right on the trail as the hub returns it.
+    When you thin a trail, keep both points of every step that isn't a `move`.
+  - With one point a minute (an older plugin) a minute's run is within reach, so a teleport of
+    under 200 tiles reads as a `move`.
+  - A late message can add a point between two you already have, which changes the label of the
+    point after it.
+  - When `truncated` is true the first point has its label too: the hub knows the point it left out.
 - **`world`** is the world of the message a point arrived in, so tiles walked just before a hop carry
   the new world.
 - **Limit.** At most 20,000 points, the newest ones. `truncated: true` means older points in the
@@ -587,7 +603,8 @@ Other rules:
     (D-92).
   - `/locations?accounts=&from=` (with `location_history`) for the trails: every tile since plugin
     1.6 (D-102). Always send `from`, check `truncated`, and for a long window page backwards with
-    `to` or thin on your side; a week of play is far more than one response carries.
+    `to` or thin on your side; a week of play is far more than one response carries. `via` on each
+    point says whether to draw a line to it, a teleport, an entrance or nothing (D-103).
   - `game_state` on `/snapshot` (with `activity`) for its status panel, and `/leaderboards/loot`
     (with `events`) for its top-drops panel (D-94).
   - `/events?accounts=&from=&to=` (with `events`) for the events along a trail of 24 hours, 7 or 30

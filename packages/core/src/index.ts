@@ -13,6 +13,7 @@ export * from './sharing';
 export * from './skills';
 export * from './time';
 export * from './toasts';
+export * from './trail';
 export * from './version';
 export * from './worlds';
 export * from './payload/types';

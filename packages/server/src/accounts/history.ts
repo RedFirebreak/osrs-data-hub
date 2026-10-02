@@ -8,7 +8,14 @@
  * UI's: it resolves the viewer's access first and returns null when the account isn't visible or the
  * viewer lacks the category, so routes answer 404.
  */
-import { utcDay, type Category, type ItemData, type Principal } from '@hub/core';
+import {
+  trailSteps,
+  utcDay,
+  type Category,
+  type ItemData,
+  type Principal,
+  type TrailStep,
+} from '@hub/core';
 import {
   equipmentChanges,
   locationSamples,
@@ -67,6 +74,11 @@ export interface LocationPoint {
   plane: number;
   world: number | null;
   onBoat: boolean;
+  /**
+   * How the player got here from the point before (D-103, @hub/core classifyStep). Null on the
+   * first point of a trail when the point before it isn't part of what was read.
+   */
+  via: TrailStep | null;
 }
 
 /**
@@ -217,6 +229,7 @@ export interface LocationTrail {
  * The location trail in [from, to], oldest first: every tile a 1.6 plugin reported, at the time the
  * plugin saw it, and one sample a minute from older plugins (D-102; kept LOCATION_RETENTION_DAYS).
  * At most `limit` points, the newest ones, with `truncated` saying that older ones were left out.
+ * Each point says how the player got there from the one before (`via`, D-103).
  * Gated by `location_history`. Snapshot coordinates only: event locations are another coordinate
  * space (PLUGIN-12) and are never mixed in.
  */
@@ -264,10 +277,10 @@ export async function readLocationHistory(
     // One more than asked for: whether anything older was left out, without a second query.
     .limit(limit + 1);
   const truncated = rows.length > limit;
-  const points = rows
-    .slice(0, limit)
-    .reverse()
-    .map((r) => ({ ...r, ts: r.ts.toISOString() }));
+  const kept = rows.slice(0, limit).reverse();
+  // The row that was left out is the point before the trail: its first step is known after all.
+  const steps = trailSteps(kept, truncated ? rows[limit] : null);
+  const points = kept.map((r, i) => ({ ...r, ts: r.ts.toISOString(), via: steps[i] ?? null }));
   return { points, truncated };
 }
 

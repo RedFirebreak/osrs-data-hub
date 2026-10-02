@@ -8,7 +8,7 @@
  * The location trail has its own default range and limits (D-102): it holds a point per tile, not
  * a row per day or per change.
  */
-import type { Category } from '@hub/core';
+import type { Category, TrailStep } from '@hub/core';
 import type { DbOrTx, SessionEndReason } from '@hub/db';
 import { DAY_MS } from '@hub/core';
 import {
@@ -108,6 +108,8 @@ export interface ApiLocationPoint {
   plane: number;
   world: number | null;
   isOnBoat: boolean;
+  /** How the player got here from the point before; null when that point isn't known (D-103). */
+  via: TrailStep | null;
 }
 
 interface ApiTrail {
@@ -122,7 +124,8 @@ interface ApiTrail {
 
 /**
  * The location trail in the range (kept 30 days): every tile a 1.6 plugin reported, one point a
- * minute from older plugins. At most 20,000 points, the newest (D-102).
+ * minute from older plugins. At most 20,000 points, the newest (D-102). Each point says how the
+ * player got there (D-103).
  */
 export interface ApiLocations extends ApiHistory, ApiTrail {}
 
@@ -145,6 +148,7 @@ function toLocationPoints(rows: readonly LocationPoint[]): ApiLocationPoint[] {
     plane: p.plane,
     world: p.world,
     isOnBoat: p.onBoat,
+    via: p.via,
   }));
 }
 
