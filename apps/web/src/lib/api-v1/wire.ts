@@ -276,6 +276,7 @@ export function wireLocations(h: ApiLocations): WireLocations {
     from: h.from,
     to: h.to,
     points: wireLocationPoints(h.points),
+    truncated: h.truncated,
   };
 }
 
@@ -286,6 +287,7 @@ export function wireLocationsMulti(m: ApiLocationsMulti): WireLocationsMulti {
     accounts: m.accounts.map((a) => ({
       account: { id: a.account.id, name: a.account.name },
       points: wireLocationPoints(a.points),
+      truncated: a.truncated,
     })),
   };
 }

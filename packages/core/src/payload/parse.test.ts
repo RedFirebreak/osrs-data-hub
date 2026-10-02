@@ -399,6 +399,55 @@ describe('parsePayload: player sections', () => {
     }
   });
 
+  it('keeps the location trail of plugin 1.6 as sent, oldest first', () => {
+    const trail = (v: unknown) => normal((b) => (b.player.locationTrail = v));
+    // Two points of a live 1.6 payload.
+    const points = [
+      { x: 2963, y: 3253, plane: 0, isOnBoat: false, timestamp: 1790950466236 },
+      { x: 2965, y: 3255, plane: 0, isOnBoat: false, timestamp: 1790950466832 },
+    ];
+    const p = trail(points);
+    expect(p.skipped).toEqual({ sections: [], events: 0, reasons: [] });
+    expect(p.player!.locationTrail).toEqual(points);
+    // A player who stood still sends an empty trail: kept, it tells 1.6 from an older plugin.
+    expect(trail([]).player!.locationTrail).toEqual([]);
+    expect(normal().player).not.toHaveProperty('locationTrail');
+    // isOnBoat is optional, as on location; unknown keys stay (the unreleased `teleport` flag).
+    expect(
+      trail([{ x: 1, y: 2, plane: 0, timestamp: 5, teleport: true }]).player!.locationTrail,
+    ).toEqual([{ x: 1, y: 2, plane: 0, timestamp: 5, teleport: true }]);
+  });
+
+  it('drops the whole location trail when one point is invalid, and keeps location', () => {
+    const point = { x: 1, y: 2, plane: 0, isOnBoat: false, timestamp: 1790950466236 };
+    for (const bad of [
+      [point, { ...point, x: 1.5 }],
+      [{ ...point, plane: 40000 }],
+      [{ x: 1, y: 2, plane: 0 }],
+      [{ ...point, timestamp: 1790950466236.5 }],
+      [{ ...point, timestamp: '1790950466236' }],
+      [{ ...point, isOnBoat: 'no' }],
+      [point, null],
+      point,
+    ]) {
+      const p = normal((b) => (b.player.locationTrail = bad));
+      expect(p.skipped.sections).toEqual(['player.locationTrail']);
+      expect(p.player).not.toHaveProperty('locationTrail');
+      expect(p.player!.location).toEqual({ x: 3164, y: 3487, plane: 0, isOnBoat: false });
+    }
+  });
+
+  it('accepts at most 512 trail points (the plugin sends at most 300)', () => {
+    const points = (n: number) =>
+      Array.from({ length: n }, (_, i) => ({ x: i, y: 0, plane: 0, timestamp: 1000 + i }));
+    expect(
+      normal((b) => (b.player.locationTrail = points(512))).player!.locationTrail,
+    ).toHaveLength(512);
+    const p = normal((b) => (b.player.locationTrail = points(513)));
+    expect(p.skipped.sections).toEqual(['player.locationTrail']);
+    expect(p.skipped.reasons).toEqual(['player.locationTrail: more than 512 points']);
+  });
+
   it('reads a null inside a section as a missing key', () => {
     const p = normal((b) => {
       b.player.location = { x: 1, y: 2, plane: 0, isOnBoat: null, region: null };

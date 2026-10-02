@@ -64,6 +64,13 @@
       "when": 1790859309846,
       "tag": "0008_enum_checks_in_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1790953412894,
+      "tag": "0009_location_samples_columnstore",
+      "breakpoints": true
     }
   ]
 }

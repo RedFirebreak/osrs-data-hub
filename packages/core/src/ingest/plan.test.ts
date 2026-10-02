@@ -7,8 +7,10 @@ import type {
   ParsedPayload,
   PlayerSnapshot,
   SkillValue,
+  TrailPoint,
 } from '../payload/types';
 import { KNOWN_SKILLS } from '../skills';
+import { EVENT_CLAMP_MS, TRAIL_CLOCK_TOLERANCE_MS, payloadTime } from '../time';
 import { planSnapshot } from './plan';
 import type { LatestStatePatch, PrevState, SnapshotContext } from './types';
 
@@ -21,6 +23,7 @@ interface WireBody {
     world?: string;
     worldTypes?: string[];
     location?: Location;
+    locationTrail?: TrailPoint[];
     health?: Meter;
     prayerPoints?: Meter;
     spellbook?: { id: number; name: string };
@@ -46,6 +49,7 @@ function fromFixture(name: FixtureName): ParsedPayload {
     if (p.world !== undefined) player.world = Number(p.world);
     if (p.worldTypes !== undefined) player.worldTypes = p.worldTypes;
     if (p.location !== undefined) player.location = p.location;
+    if (p.locationTrail !== undefined) player.locationTrail = p.locationTrail;
     if (p.health !== undefined) player.health = p.health;
     if (p.prayerPoints !== undefined) player.prayer = p.prayerPoints;
     if (p.spellbook !== undefined) player.spellbook = p.spellbook;
@@ -86,16 +90,21 @@ function ctxFor(p: ParsedPayload, lagMs = 1500, deviceId = DEVICE): SnapshotCont
   return { recv: new Date(ts + lagMs), deviceId, payloadTs: new Date(ts) };
 }
 
+/** latest_state of an account nothing was stored for yet. */
+const NO_STATE: PrevState = {
+  sourceDeviceId: null,
+  sourceTs: null,
+  skills: null,
+  equipment: null,
+  gameState: null,
+  world: null,
+  location: null,
+  locationUpdatedAt: null,
+};
+
 /** What the caller would read back from latest_state after applying a plan's patch. */
 function applyPatch(prev: PrevState | null, patch: LatestStatePatch | null): PrevState {
-  const base: PrevState = prev ?? {
-    sourceDeviceId: null,
-    sourceTs: null,
-    skills: null,
-    equipment: null,
-    gameState: null,
-    world: null,
-  };
+  const base: PrevState = prev ?? NO_STATE;
   if (patch === null) return base;
   return {
     ...base,
@@ -104,6 +113,8 @@ function applyPatch(prev: PrevState | null, patch: LatestStatePatch | null): Pre
     skills: patch.skills ?? base.skills,
     equipment: patch.equipment ?? base.equipment,
     world: patch.world ?? base.world,
+    location: patch.location ?? base.location,
+    locationUpdatedAt: patch.locationUpdatedAt ?? base.locationUpdatedAt,
   };
 }
 
@@ -186,14 +197,16 @@ describe('planSnapshot: first snapshot', () => {
   });
 
   it('samples the location in the recv minute', () => {
-    expect(plan.locationSample).toEqual({
-      ts: new Date(Math.floor(ctx.recv.getTime() / 60_000) * 60_000),
-      x: 3164,
-      y: 3487,
-      plane: 0,
-      onBoat: false,
-      world: 302,
-    });
+    expect(plan.locationPoints).toEqual([
+      {
+        ts: new Date(Math.floor(ctx.recv.getTime() / 60_000) * 60_000),
+        x: 3164,
+        y: 3487,
+        plane: 0,
+        onBoat: false,
+        world: 302,
+      },
+    ]);
   });
 
   it('computes carried wealth from per-slot inventory entries plus equipment', () => {
@@ -213,6 +226,8 @@ describe('planSnapshot: first snapshot', () => {
       equipment: null,
       gameState: 'LOGGED_IN',
       world: 301,
+      location: null,
+      locationUpdatedAt: null,
     };
     const again = planSnapshot(prev, p, ctx);
     expect(again.xpWrites).toHaveLength(25);
@@ -230,7 +245,7 @@ describe('planSnapshot: XP diffing', () => {
     expect(plan.xpGuardTripped).toBe(false);
     // The rest of latest_state is still refreshed.
     expect(plan.latestPatch?.skills).toEqual(p.player!.skills);
-    expect(plan.locationSample).not.toBeNull();
+    expect(plan.locationPoints).toHaveLength(1);
     expect(plan.wealth).not.toBeNull();
   });
 
@@ -306,7 +321,7 @@ describe('planSnapshot: XP diffing', () => {
     // and the source device/time stay as they were so the next normal snapshot is judged against them.
     expect(plan.latestPatch).toEqual({});
     expect(plan.equipmentChange).toBeNull();
-    expect(plan.locationSample).toBeNull();
+    expect(plan.locationPoints).toEqual([]);
     expect(plan.wealth).toBeNull();
   });
 
@@ -330,7 +345,7 @@ describe('planSnapshot: XP diffing', () => {
       worldUpdatedAt: ctx.recv,
     });
     expect(plan.wealth).toBeNull();
-    expect(plan.locationSample).toBeNull();
+    expect(plan.locationPoints).toEqual([]);
     expect(plan.equipmentChange).toBeNull();
   });
 
@@ -361,7 +376,7 @@ describe('planSnapshot: staleness (per device, D-17)', () => {
       xpGuardTripped: false,
       xpGuardSkill: null,
       equipmentChange: null,
-      locationSample: null,
+      locationPoints: [],
       wealth: null,
       session: { open: false, extend: true, world: 302 },
       latestPatch: null,
@@ -426,7 +441,7 @@ describe('planSnapshot: special worlds', () => {
     expect(plan.xpGuardTripped).toBe(false);
     expect(plan.xpGuardSkill).toBeNull();
     expect(plan.equipmentChange).toBeNull();
-    expect(plan.locationSample).toBeNull();
+    expect(plan.locationPoints).toEqual([]);
     expect(plan.wealth).toBeNull();
     // Sessions are still tracked on special worlds (D-45).
     expect(plan.session).toEqual({ open: true, extend: true, world: 485 });
@@ -508,7 +523,7 @@ describe('planSnapshot: missing sections (D-18)', () => {
     }
     expect(patch).toHaveProperty('skills');
     expect(patch).toHaveProperty('hpCurrent');
-    expect(plan.locationSample).toBeNull();
+    expect(plan.locationPoints).toEqual([]);
     expect(plan.wealth).toBeNull();
     expect(plan.equipmentChange).toBeNull();
   });
@@ -597,6 +612,8 @@ describe('planSnapshot: equipment changes', () => {
     equipment,
     gameState: 'LOGGED_IN',
     world: 302,
+    location: null,
+    locationUpdatedAt: null,
   });
   const change = (before: ItemData[] | null, after: ItemData[]) => {
     const p = payload({ equipment: after });
@@ -685,7 +702,7 @@ describe('planSnapshot: wealth', () => {
   });
 });
 
-describe('planSnapshot: location sample', () => {
+describe('planSnapshot: location sample (plugins before 1.6)', () => {
   const loc = (location: Location, world?: number) =>
     payload(world === undefined ? { location } : { location, world });
   const recv = new Date('2026-09-21T13:40:59.999Z');
@@ -695,35 +712,278 @@ describe('planSnapshot: location sample', () => {
     payloadTs: new Date('2026-09-21T13:40:58.000Z'),
   };
 
-  it('is floored to the minute of recv', () => {
-    const sample = planSnapshot(null, loc({ x: 1, y: 2, plane: 3 }, 302), ctx).locationSample;
-    expect(sample).toEqual({
-      ts: new Date('2026-09-21T13:40:00.000Z'),
-      x: 1,
-      y: 2,
-      plane: 3,
-      onBoat: false,
-      world: 302,
-    });
+  it('is one point, floored to the minute of recv', () => {
+    expect(planSnapshot(null, loc({ x: 1, y: 2, plane: 3 }, 302), ctx).locationPoints).toEqual([
+      { ts: new Date('2026-09-21T13:40:00.000Z'), x: 1, y: 2, plane: 3, onBoat: false, world: 302 },
+    ]);
   });
 
   it('keeps isOnBoat', () => {
     expect(
-      planSnapshot(null, loc({ x: 1, y: 2, plane: 0, isOnBoat: true }), ctx).locationSample?.onBoat,
+      planSnapshot(null, loc({ x: 1, y: 2, plane: 0, isOnBoat: true }), ctx).locationPoints[0]
+        ?.onBoat,
     ).toBe(true);
   });
 
   it('falls back to the previous world, then null', () => {
-    const prev: PrevState = {
-      sourceDeviceId: null,
-      sourceTs: null,
-      skills: null,
-      equipment: null,
-      gameState: null,
-      world: 330,
+    const prev: PrevState = { ...NO_STATE, world: 330 };
+    const p = loc({ x: 1, y: 2, plane: 0 });
+    expect(planSnapshot(prev, p, ctx).locationPoints[0]?.world).toBe(330);
+    expect(planSnapshot(null, p, ctx).locationPoints[0]?.world).toBeNull();
+  });
+});
+
+describe('planSnapshot: location trail (plugin 1.6)', () => {
+  const recv = new Date('2026-09-21T13:40:30.000Z');
+  const R = recv.getTime();
+  /** The payload's own time: built 150 ms before the hub received it. */
+  const ROOT = R - 150;
+  const HERE: Location = { x: 3200, y: 3200, plane: 0, isOnBoat: false };
+
+  const at = (x: number, y: number, timestamp: number): TrailPoint => ({
+    x,
+    y,
+    plane: 0,
+    isOnBoat: false,
+    timestamp,
+  });
+  const row = (x: number, y: number, ms: number) => ({
+    ts: new Date(ms),
+    x,
+    y,
+    plane: 0,
+    onBoat: false,
+    world: 302,
+  });
+  /** A 1.6 payload on world 302. */
+  const sent = (
+    locationTrail: TrailPoint[],
+    location: Location | null = HERE,
+    timestamp: number | null = ROOT,
+  ): ParsedPayload => ({
+    ...payload({ world: 302, locationTrail, ...(location && { location }) }),
+    timestamp,
+  });
+  const planAt = (prev: PrevState | null, p: ParsedPayload, received = recv, deviceId = DEVICE) =>
+    planSnapshot(prev, p, {
+      recv: received,
+      deviceId,
+      payloadTs: payloadTime(p.timestamp, received),
+    });
+  /** latest_state of an account last seen on `location`, `agoMs` before recv, by another device. */
+  const seenAt = (location: Location, agoMs: number): PrevState => ({
+    ...NO_STATE,
+    world: 302,
+    location,
+    locationUpdatedAt: new Date(R - agoMs),
+  });
+
+  it('stores every point of the fixture at the time the plugin saw it', () => {
+    const p = fromFixture('snapshot-location-trail');
+    const trail = p.player!.locationTrail!;
+    expect(trail).toHaveLength(10);
+    const plan = planSnapshot(null, p, ctxFor(p, 150));
+    // The trail ends on the `location` tile, so nothing is added.
+    expect(plan.locationPoints).toEqual(trail.map((t) => row(t.x, t.y, t.timestamp)));
+    expect(plan.latestPatch).toMatchObject({ location: p.player!.location });
+  });
+
+  it('adds `location` at the payload time when the trail does not end there', () => {
+    const p = sent([at(1, 1, ROOT - 1200), at(2, 2, ROOT - 600)]);
+    expect(planAt(null, p).locationPoints).toEqual([
+      row(1, 1, ROOT - 1200),
+      row(2, 2, ROOT - 600),
+      row(HERE.x, HERE.y, ROOT),
+    ]);
+    // Never on the timestamp of the point before it.
+    const sameMs = sent([at(1, 1, ROOT)]);
+    expect(planAt(null, sameMs).locationPoints).toEqual([
+      row(1, 1, ROOT),
+      row(HERE.x, HERE.y, ROOT + 1),
+    ]);
+  });
+
+  it('counts the boat state and the plane as part of the tile', () => {
+    const aboard = { ...HERE, isOnBoat: true };
+    const p = sent([at(HERE.x, HERE.y, ROOT - 600)], aboard);
+    expect(planAt(null, p).locationPoints).toEqual([
+      row(HERE.x, HERE.y, ROOT - 600),
+      { ...row(HERE.x, HERE.y, ROOT), onBoat: true },
+    ]);
+    const upstairs = { ...HERE, plane: 1 };
+    expect(planAt(seenAt(HERE, 1000), sent([], upstairs)).locationPoints).toEqual([
+      { ...row(HERE.x, HERE.y, ROOT), plane: 1 },
+    ]);
+  });
+
+  describe('an empty trail (the player stood still)', () => {
+    it('writes `location` when the hub has no position for the account yet', () => {
+      expect(planAt(null, sent([])).locationPoints).toEqual([row(HERE.x, HERE.y, ROOT)]);
+      expect(planAt(NO_STATE, sent([])).locationPoints).toEqual([row(HERE.x, HERE.y, ROOT)]);
+    });
+
+    it('writes nothing while the player stays on the tile within one minute', () => {
+      // recv is 13:40:30; the last location came in at 13:40:24.
+      expect(planAt(seenAt(HERE, 6000), sent([])).locationPoints).toEqual([]);
+    });
+
+    it('writes one point for the first payload of each new minute', () => {
+      // The last location came in at 13:39:59.
+      expect(planAt(seenAt(HERE, 31_000), sent([])).locationPoints).toEqual([
+        row(HERE.x, HERE.y, ROOT),
+      ]);
+    });
+
+    it('writes `location` when it is not where the account was last seen', () => {
+      const elsewhere = { ...HERE, x: HERE.x + 40 };
+      expect(planAt(seenAt(elsewhere, 6000), sent([])).locationPoints).toEqual([
+        row(HERE.x, HERE.y, ROOT),
+      ]);
+    });
+
+    it('writes nothing without a location', () => {
+      expect(planAt(null, sent([], null)).locationPoints).toEqual([]);
+    });
+  });
+
+  describe('the player clock', () => {
+    const trail = (root: number) => [at(1, 1, root - 1200), at(HERE.x, HERE.y, root - 5)];
+
+    it('is used as it is up to 10 s ahead of the hub', () => {
+      const root = R + TRAIL_CLOCK_TOLERANCE_MS;
+      expect(planAt(null, sent(trail(root), HERE, root)).locationPoints).toEqual([
+        row(1, 1, root - 1200),
+        row(HERE.x, HERE.y, root - 5),
+      ]);
+    });
+
+    it('further ahead, the whole trail is moved so the payload time lands on recv', () => {
+      const root = R + TRAIL_CLOCK_TOLERANCE_MS + 1;
+      expect(planAt(null, sent(trail(root), HERE, root)).locationPoints).toEqual([
+        row(1, 1, R - 1200),
+        row(HERE.x, HERE.y, R - 5),
+      ]);
+    });
+
+    it('is used as it is up to 15 minutes behind (a queued payload)', () => {
+      const root = R - EVENT_CLAMP_MS;
+      expect(planAt(null, sent(trail(root), HERE, root)).locationPoints).toEqual([
+        row(1, 1, root - 1200),
+        row(HERE.x, HERE.y, root - 5),
+      ]);
+    });
+
+    it('further behind, the whole trail is moved so the payload time lands on recv', () => {
+      for (const root of [R - EVENT_CLAMP_MS - 1, R - 86_400_000, 0]) {
+        expect(planAt(null, sent(trail(root), HERE, root)).locationPoints).toEqual([
+          row(1, 1, R - 1200),
+          row(HERE.x, HERE.y, R - 5),
+        ]);
+      }
+    });
+
+    it('with a root timestamp far outside any clock, only the closing point is left', () => {
+      // 1e300 swallows the offsets between the points, so none of them falls in the window.
+      for (const root of [-1e300, 1e300]) {
+        expect(planAt(null, sent(trail(ROOT), HERE, root)).locationPoints).toEqual([
+          row(HERE.x, HERE.y, R),
+        ]);
+      }
+    });
+
+    it('gives a resend the same timestamps, so it dedupes on (account, ts)', () => {
+      const p = sent(trail(ROOT));
+      const first = planAt(null, p).locationPoints;
+      const again = planAt(null, p, new Date(R + 40_000)).locationPoints;
+      expect(again).toEqual(first);
+    });
+
+    it('takes the newest point as the payload time when the root timestamp is missing', () => {
+      const p = sent([at(1, 1, ROOT - 600), at(2, 2, ROOT)], HERE, null);
+      expect(planAt(null, p).locationPoints).toEqual([
+        row(1, 1, ROOT - 600),
+        row(2, 2, ROOT),
+        row(HERE.x, HERE.y, ROOT + 1),
+      ]);
+      // Without points either, the receive time.
+      expect(planAt(null, sent([], HERE, null)).locationPoints).toEqual([row(HERE.x, HERE.y, R)]);
+    });
+  });
+
+  it('drops points after the payload time or more than 15 minutes before it', () => {
+    const p = sent([
+      at(9, 9, ROOT - EVENT_CLAMP_MS - 1),
+      at(1, 1, ROOT - EVENT_CLAMP_MS),
+      at(HERE.x, HERE.y, ROOT),
+      at(8, 8, ROOT + 1),
+    ]);
+    expect(planAt(null, p).locationPoints).toEqual([
+      row(1, 1, ROOT - EVENT_CLAMP_MS),
+      row(HERE.x, HERE.y, ROOT),
+    ]);
+  });
+
+  it('orders the points by time and keeps one per timestamp', () => {
+    const p = sent([at(HERE.x, HERE.y, ROOT), at(1, 1, ROOT - 1200), at(7, 7, ROOT - 1200)]);
+    expect(planAt(null, p).locationPoints).toEqual([
+      row(1, 1, ROOT - 1200),
+      row(HERE.x, HERE.y, ROOT),
+    ]);
+  });
+
+  it('keeps the tile the plugin sends again after a hop (same tile, new time)', () => {
+    const p = sent([at(HERE.x, HERE.y, ROOT - 600), at(HERE.x, HERE.y, ROOT)]);
+    expect(planAt(null, p).locationPoints).toHaveLength(2);
+  });
+
+  it('labels the points with the previous world when the payload has none, then null', () => {
+    const p: ParsedPayload = { ...payload({ locationTrail: [at(1, 1, ROOT)] }), timestamp: ROOT };
+    expect(planAt({ ...NO_STATE, world: 330 }, p).locationPoints[0]?.world).toBe(330);
+    expect(planAt(null, p).locationPoints[0]?.world).toBeNull();
+  });
+
+  describe('a stale snapshot (same device, older than the last one applied)', () => {
+    const newer: PrevState = {
+      ...seenAt({ ...HERE, x: 1 }, 6000),
+      sourceDeviceId: DEVICE,
+      sourceTs: new Date(ROOT + 1),
     };
-    expect(planSnapshot(prev, loc({ x: 1, y: 2, plane: 0 }), ctx).locationSample?.world).toBe(330);
-    expect(planSnapshot(null, loc({ x: 1, y: 2, plane: 0 }), ctx).locationSample?.world).toBeNull();
+
+    it('still stores its trail points: each point is sent only once', () => {
+      const plan = planAt(newer, sent([at(1, 1, ROOT - 600), at(2, 2, ROOT - 5)]));
+      expect(plan.stale).toBe(true);
+      expect(plan.latestPatch).toBeNull();
+      // No closing point: `location` is older than what latest_state holds.
+      expect(plan.locationPoints).toEqual([row(1, 1, ROOT - 600), row(2, 2, ROOT - 5)]);
+    });
+
+    it('stores nothing from a plugin without a trail, as before', () => {
+      const p: ParsedPayload = { ...payload({ world: 302, location: HERE }), timestamp: ROOT };
+      const plan = planAt(newer, p);
+      expect(plan.stale).toBe(true);
+      expect(plan.locationPoints).toEqual([]);
+    });
+
+    it('stores nothing from a special world', () => {
+      const p = sent([at(1, 1, ROOT - 600)]);
+      p.player!.worldTypes = ['SEASONAL'];
+      const plan = planAt(newer, p);
+      expect(plan).toMatchObject({ stale: true, special: true, locationPoints: [] });
+    });
+  });
+
+  it('stores nothing from a special world or when the XP guard trips', () => {
+    const special = sent([at(1, 1, ROOT - 600)]);
+    special.player!.worldTypes = ['MEMBERS', 'DEADMAN'];
+    expect(planAt(null, special).locationPoints).toEqual([]);
+
+    const prev = prevAfterNormal();
+    const base = skillsOf('snapshot-normal');
+    const guarded = sent([at(1, 1, ROOT - 600)]);
+    guarded.player!.skills = { ...base, Fishing: { xp: base.Fishing!.xp - 1, level: 103 } };
+    const plan = planAt(prev, guarded, recv, OTHER_DEVICE);
+    expect(plan.xpGuardTripped).toBe(true);
+    expect(plan.locationPoints).toEqual([]);
   });
 });
 

@@ -8,6 +8,9 @@ export interface PrevState {
   equipment: ItemData[] | null;
   gameState: string | null;
   world: number | null;
+  /** The last location applied, and when the hub received it. */
+  location: Location | null;
+  locationUpdatedAt: Date | null;
 }
 
 export interface SnapshotContext {
@@ -24,6 +27,16 @@ export interface XpWrite {
   xp: number;
   /** Plugin level for skills (virtual above 99); real total level (Σ min(level, 99)) for Overall. */
   level: number;
+}
+
+/** One row of location_samples (without its account). */
+export interface LocationWrite {
+  ts: Date;
+  x: number;
+  y: number;
+  plane: number;
+  onBoat: boolean;
+  world: number | null;
 }
 
 /** Columns of latest_state to set. Absent keys keep their previous value (D-18). */
@@ -55,7 +68,10 @@ export interface LatestStatePatch {
 
 /** Everything a snapshot (the `player` part of a payload) should write, decided purely. */
 export interface SnapshotPlan {
-  /** Same device, older payload time than the last applied snapshot: skip derived writes + latest. */
+  /**
+   * Same device, older payload time than the last applied snapshot: skip derived writes + latest.
+   * Only the trail points of a 1.6 plugin are still written (D-102).
+   */
   stale: boolean;
   /** worldTypes intersects the special set: only live fields are updated (D-24 area, handoff §7.1.9). */
   special: boolean;
@@ -67,15 +83,11 @@ export interface SnapshotPlan {
   xpGuardSkill: string | null;
   /** New equipment list when the slot → itemId map changed (or first seen). */
   equipmentChange: ItemData[] | null;
-  /** Location sample for the 1-minute bucket. */
-  locationSample: {
-    ts: Date;
-    x: number;
-    y: number;
-    plane: number;
-    onBoat: boolean;
-    world: number | null;
-  } | null;
+  /**
+   * Rows for location_samples, oldest first, at most one per timestamp: the trail of a 1.6 plugin,
+   * or the 1-minute sample of an older one. A stale snapshot still has its trail points.
+   */
+  locationPoints: LocationWrite[];
   /** Carried wealth when both inventory and equipment are present (UTC day of recv). */
   wealth: { day: string; value: number } | null;
   /** Session bookkeeping for this payload. */

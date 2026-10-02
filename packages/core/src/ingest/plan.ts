@@ -1,16 +1,31 @@
 import { carriedValue } from '../events/values';
-import type { ItemData, ParsedPayload, PlayerSnapshot } from '../payload/types';
+import type { ItemData, Location, ParsedPayload, PlayerSnapshot } from '../payload/types';
 import { IN_GAME_STATES } from '../presence';
 import { OVERALL, overallXp, totalLevel } from '../skills';
-import { LOCATION_BUCKET_MS, floorTo, isStaleSnapshot, utcDay } from '../time';
+import {
+  EVENT_CLAMP_MS,
+  LOCATION_BUCKET_MS,
+  floorTo,
+  isPlausibleClock,
+  isStaleSnapshot,
+  utcDay,
+} from '../time';
 import { isSpecialWorld } from '../worlds';
-import type { LatestStatePatch, PrevState, SnapshotContext, SnapshotPlan, XpWrite } from './types';
+import type {
+  LatestStatePatch,
+  LocationWrite,
+  PrevState,
+  SnapshotContext,
+  SnapshotPlan,
+  XpWrite,
+} from './types';
 
 /**
  * Decides everything a payload's snapshot writes (handoff §7.1 steps 9–13), purely:
  *
  * - special = isSpecialWorld(player.worldTypes). stale = isStaleSnapshot(prev, deviceId, payloadTs).
- * - stale → latestPatch null, no derived writes; session.open false, session.extend true only if
+ * - stale → latestPatch null, no derived writes except the trail points of a 1.6 plugin on a normal
+ *   world (planTrail, without the closing point); session.open false, session.extend true only if
  *   state is in-game.
  * - special (and not stale) → latestPatch has ONLY world/worldTypes/specialWorld=true/worldUpdatedAt;
  *   no XP, equipment, location or wealth; session handled as normal (D-45).
@@ -30,8 +45,9 @@ import type { LatestStatePatch, PrevState, SnapshotContext, SnapshotPlan, XpWrit
  * - equipmentChange: when player.equipment is present and its slot→id map (equipmentSlot → id, items
  *   without a slot keyed by index) differs from prev.equipment's (or prev/prev.equipment is null) →
  *   the new list. A quantity change alone (ammo being used up) is not a change.
- * - locationSample: when location present → {ts: floorTo(recv, 1 min), x, y, plane,
- *   onBoat: isOnBoat ?? false, world: player.world ?? prev.world ?? null}.
+ * - locationPoints: with a locationTrail (plugin 1.6) → planTrail's rows; without one, when location
+ *   is present → the one sample {ts: floorTo(recv, 1 min), x, y, plane, onBoat: isOnBoat ?? false,
+ *   world: player.world ?? prev.world ?? null}.
  * - wealth: when BOTH inventory and equipment are present → {day: utcDay(recv), value: carriedValue}.
  * - session: open = state === 'LOGGED_IN'; extend = state in IN_GAME_STATES; world = player.world ?? null.
  * - A payload without a usable player (null) is planned as a player with no sections.
@@ -54,12 +70,16 @@ export function planSnapshot(
     xpGuardTripped: false,
     xpGuardSkill: null,
     equipmentChange: null,
-    locationSample: null,
+    locationPoints: [],
     wealth: null,
     session: { open: false, extend: inGame, world },
     latestPatch: null,
   };
-  if (stale) return plan;
+  if (stale) {
+    // Each trail point is sent once, so a snapshot that lost the race still has points to keep.
+    if (!special) plan.locationPoints = planTrail(prev, payload, ctx.recv, false);
+    return plan;
+  }
 
   plan.session.open = payload.state === 'LOGGED_IN';
 
@@ -116,14 +136,12 @@ export function planSnapshot(
   if (player.location !== undefined) {
     patch.location = player.location;
     patch.locationUpdatedAt = at;
-    plan.locationSample = {
-      ts: floorTo(ctx.recv, LOCATION_BUCKET_MS),
-      x: player.location.x,
-      y: player.location.y,
-      plane: player.location.plane,
-      onBoat: player.location.isOnBoat ?? false,
-      world: player.world ?? prev?.world ?? null,
-    };
+  }
+  if (player.locationTrail !== undefined) {
+    plan.locationPoints = planTrail(prev, payload, ctx.recv, true);
+  } else if (player.location !== undefined) {
+    const sample = floorTo(ctx.recv, LOCATION_BUCKET_MS);
+    plan.locationPoints = [toWrite(player.location, sample, player.world ?? prev?.world ?? null)];
   }
   if (player.skills !== undefined) {
     patch.skills = player.skills;
@@ -150,6 +168,74 @@ export function planSnapshot(
 
   plan.latestPatch = patch;
   return plan;
+}
+
+/**
+ * The location_samples rows of a 1.6 payload (D-102); [] for a payload without a trail.
+ *
+ * - The payload's own time is its root timestamp, else its newest point, else recv. When that is a
+ *   plausible clock (isPlausibleClock) every point keeps the plugin's timestamp, so the same payload
+ *   arriving twice gives the same rows. Otherwise the trail is moved as a whole so the payload's time
+ *   lands on recv.
+ * - Points after the payload's time or more than 15 minutes before it are dropped; the rest is
+ *   ordered by time with one point per timestamp.
+ * - `closing` (a snapshot that is applied): `location` is added at the payload's time when the trail
+ *   doesn't end there. With no point left that means: it isn't where the account was last seen, or
+ *   this is the first payload of a new receive-minute, so a player standing still keeps one point a
+ *   minute.
+ */
+function planTrail(
+  prev: PrevState | null,
+  payload: ParsedPayload,
+  recv: Date,
+  closing: boolean,
+): LocationWrite[] {
+  const player: PlayerSnapshot = payload.player ?? {};
+  const trail = player.locationTrail;
+  if (trail === undefined) return [];
+  const world = player.world ?? prev?.world ?? null;
+  const recvMs = recv.getTime();
+
+  const own = payload.timestamp ?? trail.reduce((max, p) => Math.max(max, p.timestamp), -Infinity);
+  const reference = Number.isFinite(own) ? own : recvMs;
+  const plausible = isPlausibleClock(reference, recv);
+  const end = plausible ? reference : recvMs;
+
+  const byTime = new Map<number, LocationWrite>();
+  for (const point of trail) {
+    const ms = plausible ? point.timestamp : Math.round(recvMs - (reference - point.timestamp));
+    if (ms > end || ms < end - EVENT_CLAMP_MS || byTime.has(ms)) continue;
+    byTime.set(ms, toWrite(point, new Date(ms), world));
+  }
+  const points = [...byTime.values()].sort((a, b) => a.ts.getTime() - b.ts.getTime());
+
+  const location = player.location;
+  if (!closing || location === undefined) return points;
+  const last = points.at(-1);
+  if (last !== undefined) {
+    if (!sameTile(last, location)) {
+      points.push(toWrite(location, new Date(Math.max(end, last.ts.getTime() + 1)), world));
+    }
+    return points;
+  }
+  const seen = prev?.location ?? null;
+  const seenAt = prev?.locationUpdatedAt ?? null;
+  const newMinute =
+    seenAt === null ||
+    floorTo(recv, LOCATION_BUCKET_MS).getTime() > floorTo(seenAt, LOCATION_BUCKET_MS).getTime();
+  if (seen === null || newMinute || !sameTile(toWrite(seen, recv, world), location)) {
+    points.push(toWrite(location, new Date(end), world));
+  }
+  return points;
+}
+
+function toWrite(at: Location, ts: Date, world: number | null): LocationWrite {
+  return { ts, x: at.x, y: at.y, plane: at.plane, onBoat: at.isOnBoat ?? false, world };
+}
+
+/** Same tile, plane and boat state: what the plugin calls not having moved. */
+function sameTile(a: LocationWrite, b: Location): boolean {
+  return a.x === b.x && a.y === b.y && a.plane === b.plane && a.onBoat === (b.isOnBoat ?? false);
 }
 
 type Skills = Record<string, { xp: number; level: number }>;

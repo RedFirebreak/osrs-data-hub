@@ -25,6 +25,8 @@ export {
 } from './events';
 export {
   HISTORY_DEFAULT_DAYS,
+  LOCATIONS_DEFAULT_HOURS,
+  MAX_LOCATION_POINTS_PER_RESPONSE,
   apiEquipmentHistory,
   apiLocations,
   apiLocationsMulti,

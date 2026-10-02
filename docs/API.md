@@ -381,23 +381,47 @@ days.
 
 ### GET /accounts/{id}/locations?from=&to=
 
-The location trail, at most one point per minute, oldest first (`location_history`, kept 30 days).
-Default: 30 days.
+The location trail, oldest first (`location_history`, kept 30 days). Default: the last **24 hours**
+(the other histories default to 30 days).
 
-    {"data":{"account":{…},"from":"…","to":"…","points":[{"at":"2026-09-29T13:24:00.000Z","x":3164,"y":3487,"plane":0,"world":302,"is_on_boat":false},…]},"meta":{…}}
+    {"data":{"account":{…},"from":"…","to":"…","truncated":false,"points":[
+      {"at":"2026-09-29T13:24:25.236Z","x":3164,"y":3487,"plane":0,"world":302,"is_on_boat":false},
+      {"at":"2026-09-29T13:24:25.832Z","x":3166,"y":3489,"plane":0,"world":302,"is_on_boat":false},…]},"meta":{…}}
+
+- **What a point is.** With plugin 1.6 or newer: every tile the player was on, one point per game
+  tick (0.6 s) on which the tile, plane or boat state changed, dated by the player's PC (D-102). With
+  an older plugin, and while a player stands still: one point a minute.
+- **Gaps are yours to judge.** Nothing marks a teleport. A player on foot moves at most 2 tiles per
+  tick, so two consecutive points much further apart were not walked: a teleport, a dungeon entrance,
+  a room change inside an instance such as a player-owned house (the coordinates there are those of
+  the map area the room was copied from), or a stretch that never reached the hub. Don't join them.
+  Allow a few tiles of margin (lag), and more for boats (`is_on_boat`).
+- **`world`** is the world of the message a point arrived in, so tiles walked just before a hop carry
+  the new world.
+- **Limit.** At most 20,000 points, the newest ones. `truncated: true` means older points in the
+  range were left out: ask again with `to` set to the first point's `at` (that point is returned
+  again, as the last one).
+- **Following a trail.** Ask with `from` set to the last point's `at`. A point can be dated up to 10 s
+  after the hub received it, and a late message can add points up to 15 minutes back, so overlap the
+  requests rather than assuming the trail only grows at its end.
 
 ### GET /locations?accounts=a,b&from=&to=
 
 The location trails of several accounts in one call (`location_history`), in request order, each
-exactly what `/accounts/{id}/locations` returns for the same range: at most one point per minute,
-oldest first, kept 30 days. 1–10 accounts with a user key, 1–50 with a service key (D-92). If any
-account isn't readable, the whole request is a 404 naming it. Default: 30 days.
+what `/accounts/{id}/locations` returns for the same range. 1–10 accounts with a user key, 1–50 with
+a service key (D-92). If any account isn't readable, the whole request is a 404 naming it. Default:
+the last 24 hours.
+
+One response holds at most 100,000 points, shared equally between its accounts: each trail gets
+`min(20,000, ⌊100,000 / accounts⌋)` points, so up to 5 accounts nothing differs from the per-account
+endpoint, 8 accounts get 12,500 each and 50 get 2,000. Each trail has its own `truncated`; page a
+truncated one with `to`, per account or in a call that names fewer accounts.
 
     GET /api/v1/locations?accounts=oC8RsqiTuyak,jHSfP5UICcQt
 
     {"data":{"from":"…","to":"…","accounts":[
-      {"account":{"id":"oC8RsqiTuyak","name":"Alpha Main"},"points":[{"at":"2026-09-29T13:24:00.000Z","x":3164,"y":3487,"plane":0,"world":302,"is_on_boat":false},…]},
-      {"account":{"id":"jHSfP5UICcQt","name":"Bravo Alt"},"points":[]}]},"meta":{…}}
+      {"account":{"id":"oC8RsqiTuyak","name":"Alpha Main"},"truncated":false,"points":[{"at":"2026-09-29T13:24:25.236Z","x":3164,"y":3487,"plane":0,"world":302,"is_on_boat":false},…]},
+      {"account":{"id":"jHSfP5UICcQt","name":"Bravo Alt"},"truncated":false,"points":[]}]},"meta":{…}}
 
 ### GET /leaderboards/gains?skill=&period=day|week|month
 
@@ -561,6 +585,9 @@ Other rules:
   - `owner.discord_id` and `account_hash` link a hub account to the player who paired with the map
     directly (D-90, D-91); `/xp?accounts=` and `/locations?accounts=` take 50 accounts per call
     (D-92).
+  - `/locations?accounts=&from=` (with `location_history`) for the trails: every tile since plugin
+    1.6 (D-102). Always send `from`, check `truncated`, and for a long window page backwards with
+    `to` or thin on your side; a week of play is far more than one response carries.
   - `game_state` on `/snapshot` (with `activity`) for its status panel, and `/leaderboards/loot`
     (with `events`) for its top-drops panel (D-94).
   - `/events?accounts=&from=&to=` (with `events`) for the events along a trail of 24 hours, 7 or 30

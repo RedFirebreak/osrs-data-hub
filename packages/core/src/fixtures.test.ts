@@ -55,6 +55,7 @@ interface WirePlayer {
   world?: string;
   worldTypes?: string[];
   location?: { x: number; y: number; plane: number; isOnBoat?: boolean };
+  locationTrail?: { x: number; y: number; plane: number; isOnBoat?: boolean; timestamp: number }[];
   health?: WireMeter;
   prayerPoints?: WireMeter;
   spellbook?: { id: number; name: string };
@@ -79,6 +80,7 @@ const WIRE_PLAYER_KEYS = [
   'world',
   'worldTypes',
   'location',
+  'locationTrail',
   'health',
   'prayerPoints',
   'spellbook',
@@ -130,6 +132,8 @@ const EMPTY_STATE: PrevState = {
   equipment: null,
   gameState: null,
   world: null,
+  location: null,
+  locationUpdatedAt: null,
 };
 
 interface Step {
@@ -160,6 +164,8 @@ function applyPlan(prev: PrevState | null, plan: SnapshotPlan, state: string | n
     equipment: patch.equipment ?? before.equipment,
     gameState: state ?? before.gameState,
     world: patch.world ?? before.world,
+    location: patch.location ?? before.location,
+    locationUpdatedAt: patch.locationUpdatedAt ?? before.locationUpdatedAt,
   };
 }
 
@@ -286,6 +292,7 @@ const EXPECTED: Record<FixtureName, Expected> = {
   'snapshot-combat-burst-1': snapshot('zezima'),
   'snapshot-combat-burst-2': snapshot('zezima'),
   'snapshot-combat-burst-3': snapshot('zezima'),
+  'snapshot-location-trail': snapshot('zezima'),
   'snapshot-no-sections': snapshot('zezima'),
   'snapshot-normal': snapshot('zezima'),
   'snapshot-world-hop': snapshot('zezima'),
@@ -428,17 +435,19 @@ describe('fixtures: every payload through parse → normalize → plan', () => {
     );
     expect(plan.equipmentChange).toEqual(derived && p.equipment ? p.equipment.items : null);
     const minute = recv.getTime() - (recv.getTime() % 60_000);
-    expect(plan.locationSample).toEqual(
-      derived && p.location
-        ? {
-            ts: new Date(minute),
-            x: p.location.x,
-            y: p.location.y,
-            plane: p.location.plane,
-            onBoat: p.location.isOnBoat ?? false,
-            world: p.world === undefined ? null : Number(p.world),
-          }
-        : null,
+    const row = (at: NonNullable<WirePlayer['location']>, ms: number) => ({
+      ts: new Date(ms),
+      x: at.x,
+      y: at.y,
+      plane: at.plane,
+      onBoat: at.isOnBoat ?? false,
+      world: p.world === undefined ? null : Number(p.world),
+    });
+    // A trail (plugin 1.6) is stored point by point at the plugin's times; without one, the
+    // location is sampled once per receive-minute.
+    const sampled = p.location ? [row(p.location, minute)] : [];
+    expect(plan.locationPoints).toEqual(
+      !derived ? [] : (p.locationTrail?.map((t) => row(t, t.timestamp)) ?? sampled),
     );
     expect(plan.wealth).toEqual(
       derived && p.inventory && p.equipment
@@ -624,7 +633,7 @@ describe('fixtures: players', () => {
     expect(filtered.plan).toMatchObject({
       xpWrites: [],
       equipmentChange: null,
-      locationSample: null,
+      locationPoints: [],
       wealth: null,
     });
     expect(filtered.after.equipment).toEqual(full.after.equipment);
@@ -669,6 +678,81 @@ describe('fixtures: players', () => {
   });
 });
 
+describe('fixtures: the location trail (snapshot-location-trail, plugin 1.6)', () => {
+  const trailOf = () => wire('snapshot-location-trail').player!.locationTrail!;
+
+  it('the data: ten tiles about a tick apart, the last one on `location` at the root timestamp', () => {
+    const w = wire('snapshot-location-trail');
+    const trail = trailOf();
+    expect(trail).toHaveLength(10);
+    const gaps = trail.slice(1).map((t, i) => t.timestamp - trail[i]!.timestamp);
+    expect(Math.min(...gaps)).toBeGreaterThan(400);
+    expect(Math.max(...gaps)).toBeLessThan(800);
+    const last = trail.at(-1)!;
+    expect({ ...last, timestamp: undefined }).toEqual({
+      ...w.player!.location,
+      timestamp: undefined,
+    });
+    expect(last.timestamp).toBe(w.timestamp);
+    // On foot: at most 2 tiles per tick in either direction, so nothing here reads as a jump.
+    for (const [i, t] of trail.slice(1).entries()) {
+      expect(Math.abs(t.x - trail[i]!.x)).toBeLessThanOrEqual(3);
+      expect(Math.abs(t.y - trail[i]!.y)).toBeLessThanOrEqual(3);
+    }
+  });
+
+  it('after snapshot-normal: ten rows at the plugin times, none for the minute, live location last', () => {
+    const [, walk] = replay(['snapshot-normal', 'snapshot-location-trail']);
+    expect(walk.plan.stale).toBe(false);
+    expect(walk.plan.locationPoints.map((r) => r.ts.getTime())).toEqual(
+      trailOf().map((t) => t.timestamp),
+    );
+    expect(walk.plan.locationPoints.at(-1)).toMatchObject({ x: 3176, y: 3499, world: 302 });
+    expect(walk.after.location).toEqual(wire('snapshot-location-trail').player!.location);
+  });
+
+  it('sent twice (two paired devices, or a resend): the same rows, so the second is a no-op', () => {
+    const [first, second] = replay(
+      ['snapshot-location-trail', 'snapshot-location-trail'],
+      [DEVICE, OTHER_DEVICE],
+    );
+    expect(second.plan.locationPoints).toEqual(first.plan.locationPoints);
+  });
+
+  it('overtaken by the next send of the same tick: stale, and the trail is still stored', () => {
+    // As combat-burst-1/2: a second send 1 ms later, whose trail is empty because the first took the
+    // points with it, arrives first.
+    const body = wire('snapshot-location-trail');
+    const next = {
+      ...body,
+      timestamp: body.timestamp! + 1,
+      player: { ...body.player!, locationTrail: [] },
+    };
+    const recv = recvFor('snapshot-location-trail');
+    const overtaking = ingestBody(JSON.stringify(next), recv);
+    // It knows no position yet, so it marks where the player stands.
+    expect(overtaking.plan.locationPoints).toMatchObject([
+      { ts: new Date(next.timestamp), x: 3176, y: 3499 },
+    ]);
+    const late = ingest('snapshot-location-trail', {
+      prev: overtaking.after,
+      recv: new Date(recv.getTime() + 20),
+    });
+    expect(late.plan.stale).toBe(true);
+    expect(late.plan.latestPatch).toBeNull();
+    expect(late.plan.locationPoints).toEqual(
+      trailOf().map((t) => ({
+        ts: new Date(t.timestamp),
+        x: t.x,
+        y: t.y,
+        plane: t.plane,
+        onBoat: false,
+        world: 302,
+      })),
+    );
+  });
+});
+
 describe('fixtures: the resend (retry-duplicate-a/b)', () => {
   it('is byte-identical and normalizes to identical rows, even received 40 s later', () => {
     expect(fixtureBody('retry-duplicate-b')).toBe(fixtureBody('retry-duplicate-a'));
@@ -694,7 +778,7 @@ describe('fixtures: the resend (retry-duplicate-a/b)', () => {
       xpGuardTripped: false,
       xpGuardSkill: null,
       equipmentChange: null,
-      locationSample: null,
+      locationPoints: [],
       wealth: null,
       session: { open: false, extend: true, world: 302 },
       latestPatch: null,
@@ -733,7 +817,7 @@ describe('fixtures: combat burst staleness (1 and 2 in one tick, 3 in the next)'
       { skill: 'Hitpoints', ...s3.Hitpoints },
       { skill: OVERALL, xp: 534_947_111, level: realTotal(s3) },
     ]);
-    expect(three.plan.locationSample).toMatchObject({ x: 3422, y: 3569, plane: 2 });
+    expect(three.plan.locationPoints).toMatchObject([{ x: 3422, y: 3569, plane: 2 }]);
     expect(three.after.sourceTs).toEqual(tsOf(burst3));
   });
 
@@ -745,7 +829,7 @@ describe('fixtures: combat burst staleness (1 and 2 in one tick, 3 in the next)'
       latestPatch: null,
       xpWrites: [],
       equipmentChange: null,
-      locationSample: null,
+      locationPoints: [],
       wealth: null,
       session: { open: false, extend: true, world: 302 },
     });
@@ -793,7 +877,7 @@ describe('fixtures: special worlds (handoff §7.1.9, D-45)', () => {
     xpGuardTripped: false,
     xpGuardSkill: null,
     equipmentChange: null,
-    locationSample: null,
+    locationPoints: [],
     wealth: null,
   };
 

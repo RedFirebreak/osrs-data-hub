@@ -15,6 +15,7 @@ import {
   stripNul,
   type ItemData,
   type LatestStatePatch,
+  type Location,
   type NormalizeResult,
   type NormalizedEvent,
   type ParsedPayload,
@@ -457,6 +458,8 @@ async function loadPrevState(tx: Tx, accountId: number): Promise<PrevState | nul
       equipment: latestState.equipment,
       gameState: latestState.gameState,
       world: latestState.world,
+      location: latestState.location,
+      locationUpdatedAt: latestState.locationUpdatedAt,
     })
     .from(latestState)
     .where(eq(latestState.accountId, accountId));
@@ -466,7 +469,17 @@ async function loadPrevState(tx: Tx, accountId: number): Promise<PrevState | nul
     // Written by this module from validated sections; the shape checks only guard against edits.
     skills: isRecord(row.skills) ? (row.skills as PrevState['skills']) : null,
     equipment: Array.isArray(row.equipment) ? (row.equipment as ItemData[]) : null,
+    location: isLocation(row.location) ? row.location : null,
   };
+}
+
+function isLocation(value: unknown): value is Location {
+  return (
+    isRecord(value) &&
+    typeof value.x === 'number' &&
+    typeof value.y === 'number' &&
+    typeof value.plane === 'number'
+  );
 }
 
 /**
@@ -576,7 +589,11 @@ async function writeXpSamples(
     });
 }
 
-/** Equipment change log, the 1-minute location sample and the day's carried wealth. */
+/**
+ * Equipment change log, the location points and the day's carried wealth. A point whose
+ * (account, ts) exists is left alone: the first sample of a minute wins, and a trail that arrives
+ * twice (a resend, a second paired device) is stored once (D-102).
+ */
 async function writeDerived(
   tx: Tx,
   accountId: number,
@@ -588,10 +605,10 @@ async function writeDerived(
       .insert(equipmentChanges)
       .values({ accountId, changedAt: recv, equipment: stripNul(plan.equipmentChange) });
   }
-  if (plan.locationSample !== null) {
+  if (plan.locationPoints.length > 0) {
     await tx
       .insert(locationSamples)
-      .values({ accountId, ...plan.locationSample })
+      .values(plan.locationPoints.map((point) => ({ accountId, ...point })))
       .onConflictDoNothing();
   }
   if (plan.wealth !== null) {

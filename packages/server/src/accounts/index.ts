@@ -17,12 +17,14 @@ export {
   type LeaderboardPeriod,
 } from './guild';
 export {
+  MAX_LOCATION_POINTS,
   getEquipmentHistory,
   getLocationHistory,
   getSessions,
   getWealthHistory,
   type EquipmentChange,
   type HistoryRange,
+  type LocationTrail,
   type PlaySession,
 } from './history';
 export { FEED_DEFAULT_LIMIT, FEED_MAX_LIMIT, listFeed } from './list-feed';

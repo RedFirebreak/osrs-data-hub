@@ -4,10 +4,15 @@
  * Each resolves the key's access to the account once (loadApiAccount, D-70), returns null when the
  * key can't read that category on it (the web answers 404), and otherwise reads the rows with the
  * account page's reader (accounts/history.ts read…), so the UI and the API return the same rows.
+ *
+ * The location trail has its own default range and limits (D-102): it holds a point per tile, not
+ * a row per day or per change.
  */
 import type { Category } from '@hub/core';
 import type { DbOrTx, SessionEndReason } from '@hub/db';
+import { DAY_MS } from '@hub/core';
 import {
+  MAX_LOCATION_POINTS,
   readEquipmentHistory,
   readLocationHistory,
   readSessions,
@@ -22,9 +27,24 @@ import { toApiItems, type ApiAccountRef, type ApiItem } from './types';
 
 /** The range of a history request without `from`: the last 30 days. */
 export const HISTORY_DEFAULT_DAYS = 30;
+/** … and of a location trail request: the last 24 hours (D-102). */
+export const LOCATIONS_DEFAULT_HOURS = 24;
+/** Most points one `/locations` response holds, shared equally between its accounts (D-102). */
+export const MAX_LOCATION_POINTS_PER_RESPONSE = 100_000;
+
+/**
+ * Most points per account when one response holds the trails of `accounts` accounts: the
+ * per-account limit, lowered so the response stays within MAX_LOCATION_POINTS_PER_RESPONSE.
+ */
+export function locationPointLimit(accounts: number): number {
+  return Math.min(
+    MAX_LOCATION_POINTS,
+    Math.floor(MAX_LOCATION_POINTS_PER_RESPONSE / Math.max(1, accounts)),
+  );
+}
 
 export interface ApiHistoryParams {
-  /** Default: `to` − 30 days. */
+  /** Default: `to` − 30 days (the location trail: `to` − 24 hours). */
   from?: Date;
   /** Default: now. */
   to?: Date;
@@ -90,20 +110,31 @@ export interface ApiLocationPoint {
   isOnBoat: boolean;
 }
 
-/**
- * The location trail in the range (at most one point per minute, kept 30 days), oldest first; when
- * the range holds more than 44,640 points, the newest ones.
- */
-export interface ApiLocations extends ApiHistory {
+interface ApiTrail {
+  /** Oldest first. */
   points: ApiLocationPoint[];
+  /**
+   * The range holds more points than the response may carry for this account, and these are the
+   * newest. Ask again with `to` set to the first point's `at` for the ones before.
+   */
+  truncated: boolean;
 }
+
+/**
+ * The location trail in the range (kept 30 days): every tile a 1.6 plugin reported, one point a
+ * minute from older plugins. At most 20,000 points, the newest (D-102).
+ */
+export interface ApiLocations extends ApiHistory, ApiTrail {}
 
 /** Several accounts' trails in one call (GET /locations?accounts=a,b, D-92). */
 export interface ApiLocationsMulti {
   from: string;
   to: string;
-  /** In request order, each with the same points as GET /accounts/{id}/locations. */
-  accounts: { account: ApiAccountRef; points: ApiLocationPoint[] }[];
+  /**
+   * In request order. Each is what GET /accounts/{id}/locations returns for the same range, with a
+   * lower limit per account when the request names more than 5 (locationPointLimit).
+   */
+  accounts: ({ account: ApiAccountRef } & ApiTrail)[];
 }
 
 function toLocationPoints(rows: readonly LocationPoint[]): ApiLocationPoint[] {
@@ -121,16 +152,17 @@ function toLocationPoints(rows: readonly LocationPoint[]): ApiLocationPoint[] {
  * Validates the range, resolves the key's access to `category` of the account (the request's one
  * permission check), and reads the rows of the account it resolved.
  */
-async function readHistory<T>(
+async function readHistory<R>(
   db: DbOrTx,
   principal: ApiPrincipal,
   id: string,
   params: ApiHistoryParams,
   now: Date,
   category: Category,
-  read: (db: DbOrTx, accountId: number, range: HistoryRange) => Promise<T[]>,
-): Promise<{ head: ApiHistory; rows: T[] } | null> {
-  const range = resolveRange(params, now, HISTORY_DEFAULT_DAYS);
+  read: (db: DbOrTx, accountId: number, range: HistoryRange) => Promise<R>,
+  defaultDays: number = HISTORY_DEFAULT_DAYS,
+): Promise<{ head: ApiHistory; rows: R } | null> {
+  const range = resolveRange(params, now, defaultDays);
   const entry = await loadApiAccount(db, principal, id, category);
   if (!entry) return null;
   const rows = await read(db, entry.account.id, range);
@@ -209,7 +241,12 @@ export async function apiWealth(
   );
 }
 
-/** The location trail (`location_history`); null when the key can't read it. */
+const LOCATIONS_DEFAULT_DAYS = (LOCATIONS_DEFAULT_HOURS * 60 * 60 * 1000) / DAY_MS;
+
+/**
+ * The location trail (`location_history`); null when the key can't read it. Default range: the
+ * last 24 hours. At most MAX_LOCATION_POINTS points, the newest, with `truncated` (D-102).
+ */
 export async function apiLocations(
   db: DbOrTx,
   principal: ApiPrincipal,
@@ -224,17 +261,25 @@ export async function apiLocations(
     params,
     now,
     'location_history',
-    readLocationHistory,
+    (tx, accountId, range) => readLocationHistory(tx, accountId, range),
+    LOCATIONS_DEFAULT_DAYS,
   );
-  return found && { ...found.head, points: toLocationPoints(found.rows) };
+  return (
+    found && {
+      ...found.head,
+      points: toLocationPoints(found.rows.points),
+      truncated: found.rows.truncated,
+    }
+  );
 }
 
 /**
  * The location trails of several accounts (GET /locations?accounts=a,b, D-92): at most
  * bulkAccountLimit(principal) accounts, each of which the key must be able to read
  * `location_history` of, else ApiError 'not_found' naming it (D-70). Access is resolved once for all
- * of them. Each trail is exactly what GET /accounts/{id}/locations returns for the same range (same
- * thinning and cap), in request order.
+ * of them. Each trail is what GET /accounts/{id}/locations returns for the same range, in request
+ * order, except that the points one response may hold are shared between its accounts
+ * (locationPointLimit, D-102): with more than 5 accounts a long trail is cut sooner, and says so.
  */
 export async function apiLocationsMulti(
   db: DbOrTx,
@@ -242,7 +287,7 @@ export async function apiLocationsMulti(
   params: ApiHistoryParams & { ids: string[] },
   now: Date = new Date(),
 ): Promise<ApiLocationsMulti> {
-  const range = resolveRange(params, now, HISTORY_DEFAULT_DAYS);
+  const range = resolveRange(params, now, LOCATIONS_DEFAULT_DAYS);
   const entries = await requireApiAccounts(
     db,
     principal,
@@ -251,10 +296,15 @@ export async function apiLocationsMulti(
     'accounts',
     bulkAccountLimit(principal),
   );
+  const limit = locationPointLimit(entries.length);
   const accounts: ApiLocationsMulti['accounts'] = [];
   for (const entry of entries) {
-    const rows = await readLocationHistory(db, entry.account.id, range);
-    accounts.push({ account: accountRef(entry), points: toLocationPoints(rows) });
+    const trail = await readLocationHistory(db, entry.account.id, range, limit);
+    accounts.push({
+      account: accountRef(entry),
+      points: toLocationPoints(trail.points),
+      truncated: trail.truncated,
+    });
   }
   return { from: range.from.toISOString(), to: range.to.toISOString(), accounts };
 }

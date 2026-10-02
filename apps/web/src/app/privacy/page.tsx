@@ -72,7 +72,7 @@ export default async function PrivacyPage() {
     },
     { data: 'Play sessions, equipment changes, daily wealth', kept: 'No expiry' },
     {
-      data: 'Location trail (at most one point per minute)',
+      data: 'Location trail: every tile you visit (one point a minute with a plugin before 1.6)',
       kept: formatDays(config.locationRetentionDays),
     },
     {

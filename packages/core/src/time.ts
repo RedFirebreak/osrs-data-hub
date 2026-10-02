@@ -7,6 +7,11 @@ export const XP_BUCKET_MS = 5 * 60 * 1000;
 export const LOCATION_BUCKET_MS = 60 * 1000;
 /** Events are clamped to [recv − 15 min, recv]: the plugin queue holds events ≤ 10 min, plus margin. */
 export const EVENT_CLAMP_MS = 15 * 60 * 1000;
+/**
+ * A payload dated up to this far after recv still has a clock the hub takes as it is (location trail,
+ * D-102). Latency only makes a payload older, so this is how far a PC clock may run ahead.
+ */
+export const TRAIL_CLOCK_TOLERANCE_MS = 10 * 1000;
 /** Toasts are skipped for events older than this (they still reach the feed). */
 export const TOAST_MAX_AGE_MS = 15 * 60 * 1000;
 /** Live location is considered stale after this long without an update. */
@@ -28,6 +33,16 @@ export function clampEventTime(ts: number | null | undefined, recv: Date): Date 
   const recvMs = recv.getTime();
   if (ts === null || ts === undefined || !Number.isFinite(ts)) return new Date(recvMs);
   return new Date(Math.min(Math.max(ts, recvMs - EVENT_CLAMP_MS), recvMs));
+}
+
+/**
+ * Whether a payload's own time (epoch ms on the player's clock) can be the time of what it reports:
+ * within [recv − 15 min, recv + 10 s]. Older than the plugin's queue holds anything, or further
+ * ahead than a drifting clock, means the clock is wrong. (D-102)
+ */
+export function isPlausibleClock(payloadMs: number, recv: Date): boolean {
+  const recvMs = recv.getTime();
+  return payloadMs >= recvMs - EVENT_CLAMP_MS && payloadMs <= recvMs + TRAIL_CLOCK_TOLERANCE_MS;
 }
 
 /** Floors to a multiple of `bucketMs` since the epoch (UTC). Throws on a non-positive bucket. */

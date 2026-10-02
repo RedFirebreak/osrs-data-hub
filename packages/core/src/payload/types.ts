@@ -1,5 +1,5 @@
 /**
- * Parsed HA Exporter v1.5 payload. Everything the plugin can omit is optional: Gson drops nulls, the
+ * Parsed HA Exporter payload (v1.5 and later). Everything the plugin can omit is optional: Gson drops nulls, the
  * player can filter sections, and some sends carry no (or a partial) `player` (PLUGIN-1).
  */
 
@@ -33,6 +33,12 @@ export interface Location {
   isOnBoat?: boolean;
 }
 
+/** One tile of `player.locationTrail`: where the player was seen, and when. */
+export interface TrailPoint extends Location {
+  /** Epoch ms from the player's PC clock. */
+  timestamp: number;
+}
+
 export interface Meter {
   /** Boosted current value; can exceed max (brews). */
   current: number;
@@ -56,6 +62,11 @@ export interface PlayerSnapshot {
   /** RuneLite WorldType names; [] on worlds without flags. */
   worldTypes?: string[];
   location?: Location;
+  /**
+   * Plugin 1.6: every tile visited since the previous message, oldest first, each sent once. [] when
+   * the player stood still; absent from older plugins.
+   */
+  locationTrail?: TrailPoint[];
   health?: Meter;
   prayer?: Meter;
   spellbook?: { id: number; name: string };

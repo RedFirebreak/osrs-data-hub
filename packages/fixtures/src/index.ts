@@ -1,6 +1,6 @@
 /**
- * HA Exporter v1.5 payload fixtures (wire-exact, anonymized). See ../README.md for what each file is
- * and which plugin code path produces it.
+ * HA Exporter payload fixtures (v1.5, and one of v1.6; wire-exact, anonymized). See ../README.md for
+ * what each file is and which plugin code path produces it.
  */
 import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
@@ -33,6 +33,7 @@ export const FIXTURES = [
   'snapshot-combat-burst-1',
   'snapshot-combat-burst-2',
   'snapshot-combat-burst-3',
+  'snapshot-location-trail',
   'snapshot-no-sections',
   'snapshot-normal',
   'snapshot-world-hop',

@@ -110,6 +110,8 @@ export async function applyTimescalePolicies(db: Db, c: PolicyConfig): Promise<s
     await refresh('xp_daily', start, '1 day', '1 hour');
     await compression('xp_samples', '7 days');
     await compression('raw_payloads', '6 hours');
+    // 1-day chunks: ingest writes at most 15 minutes back, and a 24-hour read stays uncompressed.
+    await compression('location_samples', '1 day');
     // Always explicit schedule_interval: the default is 1 day regardless of drop_after (TSDB-5).
     await retention('xp_samples', `${c.xpRawRetentionDays} days`, '1 day');
     await retention('location_samples', `${c.locationRetentionDays} days`, '1 hour');

@@ -469,7 +469,10 @@ type PointRow = {
   cursor: string;
 };
 
-/** `location_trail`: every location sample still kept (LOCATION_RETENTION_DAYS), oldest first. */
+/**
+ * `location_trail`: every point still kept (LOCATION_RETENTION_DAYS), oldest first. Not capped like
+ * the API: the export streams it in pages.
+ */
 function locationPages(ctx: AccountExportContext, accountId: number) {
   return keysetPages<PointRow>(
     (last, limit) =>

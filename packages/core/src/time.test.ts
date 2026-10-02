@@ -6,8 +6,10 @@ import {
   LOCATION_STALE_MS,
   TOAST_MAX_AGE_MS,
   XP_BUCKET_MS,
+  TRAIL_CLOCK_TOLERANCE_MS,
   clampEventTime,
   floorTo,
+  isPlausibleClock,
   isStaleSnapshot,
   payloadTime,
   utcDay,
@@ -23,6 +25,29 @@ describe('constants', () => {
     expect(EVENT_CLAMP_MS).toBe(15 * 60_000);
     expect(TOAST_MAX_AGE_MS).toBe(15 * 60_000);
     expect(LOCATION_STALE_MS).toBe(2 * 60_000);
+  });
+});
+
+describe('isPlausibleClock (D-102)', () => {
+  it('accepts a payload time from 15 minutes before recv to 10 s after it', () => {
+    expect(TRAIL_CLOCK_TOLERANCE_MS).toBe(10_000);
+    for (const ms of [R, R - 150, R - EVENT_CLAMP_MS, R + TRAIL_CLOCK_TOLERANCE_MS]) {
+      expect(isPlausibleClock(ms, recv)).toBe(true);
+    }
+  });
+
+  it('refuses anything older, further ahead, or not a time at all', () => {
+    for (const ms of [
+      R - EVENT_CLAMP_MS - 1,
+      R + TRAIL_CLOCK_TOLERANCE_MS + 1,
+      0,
+      -1e300,
+      1e300,
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+    ]) {
+      expect(isPlausibleClock(ms, recv)).toBe(false);
+    }
   });
 });
 

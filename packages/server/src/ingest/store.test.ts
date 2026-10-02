@@ -661,6 +661,153 @@ describe('staleness (D-17, D-33)', () => {
   });
 });
 
+// ---- the location trail --------------------------------------------------------------------------
+
+describe('the location trail (plugin 1.6, D-102)', () => {
+  type TrailPoint = { x: number; y: number; plane: number; isOnBoat?: boolean; timestamp: number };
+  const trailOf = (body: Wire) => (body.player as { locationTrail: TrailPoint[] }).locationTrail;
+
+  /** snapshot-location-trail for a fresh account, the payload and its points `offsetMs` later. */
+  function trailAt(hash: string, offsetMs = 0): Wire {
+    const body = wire('snapshot-location-trail', { hash });
+    body.timestamp = ts(body) + offsetMs;
+    for (const point of trailOf(body)) point.timestamp += offsetMs;
+    return body;
+  }
+  /** The payload a player who then stands still sends `offsetMs` after `body`: an empty trail. */
+  function standingStill(body: Wire, offsetMs: number): Wire {
+    const next = structuredClone(body);
+    next.timestamp = ts(body) + offsetMs;
+    (next.player as { locationTrail: TrailPoint[] }).locationTrail = [];
+    return next;
+  }
+  const points = (accountId: number) =>
+    t.db
+      .select()
+      .from(locationSamples)
+      .where(eq(locationSamples.accountId, accountId))
+      .orderBy(asc(locationSamples.ts));
+
+  it('stores every point at the time the plugin saw it, and none for the minute', async () => {
+    const device = await h.seedDevice();
+    const hash = newHash();
+    const body = trailAt(hash);
+    expect((await h.send(device, body)).status).toBe(200);
+
+    const { id } = await account(hash);
+    expect(await points(id)).toEqual(
+      trailOf(body).map((p) => ({
+        accountId: id,
+        ts: new Date(p.timestamp),
+        x: p.x,
+        y: p.y,
+        plane: p.plane,
+        world: 302,
+        onBoat: false,
+      })),
+    );
+    expect((await latest(id)).location).toEqual(playerOf(body).location);
+    expect((await lastArchive(device.id))?.meta).not.toHaveProperty('skippedSections');
+  });
+
+  it('the same payload again, from a second paired device 40 s later, adds no rows', async () => {
+    const userId = await h.seedUser();
+    const [a, b] = [await h.seedDevice(userId), await h.seedDevice(userId)];
+    const hash = newHash();
+    const body = trailAt(hash);
+    await h.send(a, body);
+    expect((await h.send(b, body, { at: ts(body) + 40_000 })).status).toBe(200);
+    expect(await points((await account(hash)).id)).toHaveLength(10);
+  });
+
+  it('a player standing still keeps one point a minute', async () => {
+    const device = await h.seedDevice();
+    const hash = newHash();
+    const body = trailAt(hash);
+    await h.send(device, body);
+    const { id } = await account(hash);
+
+    // Received 26.6 s into the minute: +6 s is the same minute, +60 s the next.
+    await h.send(device, standingStill(body, 6_000));
+    expect(await points(id)).toHaveLength(10);
+    const nextMinute = standingStill(body, 60_000);
+    await h.send(device, nextMinute);
+    await h.send(device, standingStill(body, 66_000));
+    const rows = await points(id);
+    expect(rows).toHaveLength(11);
+    expect(rows.at(-1)).toMatchObject({ ts: new Date(ts(nextMinute)), x: 3176, y: 3499 });
+  });
+
+  it('overtaken by the next send of the same tick: stale, and its trail is still stored', async () => {
+    const device = await h.seedDevice();
+    const hash = newHash();
+    const body = trailAt(hash);
+    const next = standingStill(body, 1);
+    await h.send(device, next);
+    const { id } = await account(hash);
+    // It found no position for the account, so it marked where the player stands.
+    expect(await points(id)).toMatchObject([{ ts: new Date(ts(next)), x: 3176, y: 3499 }]);
+
+    expect((await h.send(device, body, { at: ts(next) + 1_020 })).status).toBe(200);
+    expect(await lastArchive(device.id)).toMatchObject({ meta: { stale: true } });
+    expect((await points(id)).map((r) => r.ts.getTime())).toEqual([
+      ...trailOf(body).map((p) => p.timestamp),
+      ts(next),
+    ]);
+    expect((await latest(id)).sourceTs).toEqual(new Date(ts(next)));
+  });
+
+  it('a trail across midnight is stored on both days', async () => {
+    const device = await h.seedDevice();
+    const hash = newHash();
+    const fixture = trailOf(wire('snapshot-location-trail'));
+    const midnight = Date.UTC(2026, 8, 23);
+    // The fifth point lands exactly on midnight.
+    const body = trailAt(hash, midnight - fixture[4]!.timestamp);
+    expect((await h.send(device, body)).status).toBe(200);
+    const days = (await points((await account(hash)).id)).map((r) =>
+      r.ts.toISOString().slice(0, 10),
+    );
+    expect(days).toEqual([...Array(4).fill('2026-09-22'), ...Array(6).fill('2026-09-23')]);
+  });
+
+  it('a player clock a day behind: the trail is moved onto the receive time', async () => {
+    const device = await h.seedDevice();
+    const hash = newHash();
+    const body = trailAt(hash, -86_400_000);
+    const recv = ts(wire('snapshot-location-trail')) + 1_000;
+    expect((await h.send(device, body, { at: recv })).status).toBe(200);
+    const rows = await points((await account(hash)).id);
+    expect(rows.map((r) => r.ts.getTime())).toEqual(
+      trailOf(body).map((p) => recv - (ts(body) - p.timestamp)),
+    );
+    expect(rows.at(-1)!.ts).toEqual(new Date(recv));
+  });
+
+  it('one invalid point: the trail is skipped and the minute sample is written instead', async () => {
+    const device = await h.seedDevice();
+    const hash = newHash();
+    const body = trailAt(hash);
+    trailOf(body)[3]!.x = 1.5;
+    expect((await h.send(device, body)).status).toBe(200);
+    expect(await lastArchive(device.id)).toMatchObject({
+      meta: { skippedSections: ['player.locationTrail'] },
+    });
+    expect(await points((await account(hash)).id)).toMatchObject([
+      { ts: floorTo(new Date(ts(body) + 1_000), LOCATION_BUCKET_MS), x: 3176, y: 3499 },
+    ]);
+  });
+
+  it('a special world stores no point', async () => {
+    const device = await h.seedDevice();
+    const hash = newHash();
+    const body = trailAt(hash);
+    playerOf(body).worldTypes = ['MEMBERS', 'SEASONAL'];
+    expect((await h.send(device, body)).status).toBe(200);
+    expect(await points((await account(hash)).id)).toEqual([]);
+  });
+});
+
 // ---- special worlds and the XP guard -------------------------------------------------------------
 
 describe('special worlds (handoff §7.1.9) and the XP guard (D-24)', () => {

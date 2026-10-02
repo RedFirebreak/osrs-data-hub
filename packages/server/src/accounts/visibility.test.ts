@@ -142,7 +142,10 @@ describe('default audiences (every category → guild; D-96)', () => {
     expect(await getSessions(t.db, member.viewer, open.publicId, RANGE)).toEqual([]);
     expect(await getEquipmentHistory(t.db, member.viewer, open.publicId, RANGE)).toEqual([]);
     expect(await getWealthHistory(t.db, member.viewer, open.publicId, RANGE)).toEqual([]);
-    expect(await getLocationHistory(t.db, member.viewer, open.publicId, RANGE)).toEqual([]);
+    expect(await getLocationHistory(t.db, member.viewer, open.publicId, RANGE)).toEqual({
+      points: [],
+      truncated: false,
+    });
   });
 });
 
@@ -172,7 +175,10 @@ describe('private and selected audiences, grants', () => {
     expect(await getEquipmentHistory(t.db, member.viewer, restricted.publicId, RANGE)).toBeNull();
     expect(await getWealthHistory(t.db, member.viewer, restricted.publicId, RANGE)).toBeNull();
     expect(await getLocationHistory(t.db, member.viewer, restricted.publicId, RANGE)).toBeNull();
-    expect(await getLocationHistory(t.db, owner.viewer, restricted.publicId, RANGE)).toEqual([]);
+    expect(await getLocationHistory(t.db, owner.viewer, restricted.publicId, RANGE)).toEqual({
+      points: [],
+      truncated: false,
+    });
   });
 });
 
