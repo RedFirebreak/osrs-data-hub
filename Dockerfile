@@ -15,7 +15,7 @@ WORKDIR /repo
 # ---- deps: lockfile only, so the store fetch is cached until the lockfile changes
 FROM base AS deps
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
-RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store pnpm fetch --frozen-lockfile
+RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store pnpm fetch
 
 # ---- source: full tree + offline install from the fetched store
 FROM deps AS source

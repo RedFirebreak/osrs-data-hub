@@ -3,7 +3,8 @@
 ## Prerequisites
 
 - Node **24** (`.nvmrc`; 22.12+ works) with corepack, so `pnpm` resolves to the version pinned in
-  `package.json` (`packageManager`).
+  `package.json` (`packageManager`). pnpm 12 needs corepack 0.35 or newer (`corepack --version`); an
+  older one fails on every `pnpm` command (TOOL-13).
 - Docker, for the Postgres + TimescaleDB database.
 - Python 3, for the gotcha registry check.
 
