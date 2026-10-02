@@ -44,6 +44,28 @@ For Discord login in development, create a Discord application, add the redirect
 `http://localhost:3000/api/auth/callback/discord`, and fill in `DISCORD_CLIENT_ID`,
 `DISCORD_CLIENT_SECRET`, `DISCORD_GUILD_ID` and `AUTH_SECRET` in `.env`.
 
+### A stand-in for Discord
+
+A local hub can also be signed in to without Discord, through a small server that plays it. Two things
+make that work, and they go together:
+
+- `DISCORD_AUTHORIZE_URL` (D-101) is the page "Sign in with Discord" sends the browser to instead of
+  Discord's consent page. The stand-in redirects back to `/api/auth/callback/discord` with a code, as
+  Discord would. The hub logs a warning at the first sign-in when it is set.
+- The hub's own calls to Discord (the token exchange, the member lookups) have no setting: they go to
+  `discord.com`. A stand-in answers them from inside the process, with a module preloaded through
+  `node --import` that replaces `fetch` for `https://discord.com/*`, as `e2e/mock-discord.mjs` does
+  for the end-to-end test.
+
+The `osrs-dev-stack` repository (checked out next to this one; see its README) does both: it starts
+this checkout on port 3200 with its own database and a fake Discord, pairs a fake plugin that keeps a
+few made-up players alive, and can run the hub together with the live map and Home Assistant.
+
+Its smoke check and chain tests (`node ../osrs-dev-stack/stack.mjs smoke`, `… chain`) say whether what
+the plugin sends still arrives at the map and in Home Assistant, and whether rules that span the
+components still hold: who may sign in where, what a private category hides, when a silent client goes
+offline. `CLAUDE.md` lists which chain goes with which kind of change.
+
 To pair a RuneLite client with a local hub, install HA Exporter (1.5 or newer, served by the Plugin
 Hub since 2026-09-29) and use `http://localhost:3000` as the endpoint URL. Restarting RuneLite updates
 an older installed version; the hub refuses anything below `MIN_PLUGIN_VERSION`.

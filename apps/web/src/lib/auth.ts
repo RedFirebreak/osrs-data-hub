@@ -90,6 +90,13 @@ function createAuth(config: HubConfig) {
   const { db } = getDb(config.databaseUrl);
   const policy = guildPolicy(config);
   const log = getLogger();
+  const { authorizeUrl } = config.discord;
+  if (authorizeUrl) {
+    log.warn(
+      { authorizeUrl },
+      'sign-in sends the browser to DISCORD_AUTHORIZE_URL instead of Discord: local development only (D-101)',
+    );
+  }
 
   return betterAuth({
     appName: config.hubName,
@@ -104,6 +111,10 @@ function createAuth(config: HubConfig) {
       discord: {
         clientId: config.discord.clientId ?? '',
         clientSecret: config.discord.clientSecret ?? '',
+        // Only the page the browser is sent to (D-101). The token exchange and the membership
+        // lookups below still go to discord.com: a stand-in has to answer those inside the
+        // process, as e2e/mock-discord.mjs does.
+        ...(authorizeUrl ? { authorizationEndpoint: authorizeUrl } : {}),
         // Exactly `identify guilds.members.read`: the provider adds `email` unless told not to (AUTH-3).
         disableDefaultScope: true,
         scope: ['identify', 'guilds.members.read'],

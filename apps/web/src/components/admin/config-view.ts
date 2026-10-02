@@ -130,6 +130,11 @@ export function configSections(config: HubConfig): ConfigSection[] {
           value: secret(d.clientSecret),
         },
         {
+          name: 'DISCORD_AUTHORIZE_URL',
+          description: 'Sign-in page of a stand-in for Discord (D-101)',
+          value: optional(d.authorizeUrl),
+        },
+        {
           name: 'DISCORD_BOT_TOKEN',
           description: 'Bot for membership re-verification',
           value: secret(d.botToken),
