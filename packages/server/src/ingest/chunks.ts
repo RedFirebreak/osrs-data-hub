@@ -33,10 +33,8 @@ const g = globalThis as unknown as { __hubIngestKnownChunks?: WeakMap<object, Se
  * multiples of their interval since the epoch, so the index identifies the chunk.
  */
 export function chunkKeys(plan: SnapshotPlan, recv: Date): string[] {
-  const keys: string[] = [];
-  if (plan.locationSample !== null) {
-    keys.push(chunkKey('location_samples', plan.locationSample.ts));
-  }
+  // A location trail can cross midnight, so its points can be in two chunks.
+  const keys = [...new Set(plan.locationPoints.map((p) => chunkKey('location_samples', p.ts)))];
   if (plan.xpWrites.length > 0) {
     keys.push(chunkKey('xp_samples', floorTo(recv, XP_BUCKET_MS)));
   }
