@@ -67,10 +67,10 @@ deprecations into errors. Fix: pin `typescript` to exactly `6.0.3` (root package
 On 7.0.2 the lint step is the only one that fails: typescript-eslint throws while ESLint loads its
 config, so nothing is linted, while `tsc`, vitest, `next build` (16.3.8), both images and the wizard
 e2e pass. No typescript-eslint release takes TypeScript 7 yet (the canary peers `<6.1.0` too); upstream
-says to wait for the compiler API in 7.1. Renovate therefore holds the major (renovate.json). To lift
-it once typescript-eslint's peer range admits 7.x: remove that rule and tick the update on the
-Dependency Dashboard issue, because the closed "Update dependency typescript to v7" PR makes Renovate
-ignore the major. The side-by-side install TypeScript documents for this gap (`typescript` aliased to
+says to wait for the compiler API in 7.1. Renovate's "Update dependency typescript to v7" PR was closed
+unmerged for that reason, and that alone is the hold: Renovate ignores every 7.x release from then on,
+with nothing in renovate.json saying so. To lift it once typescript-eslint's peer range admits 7.x:
+rename that closed PR, and Renovate opens a fresh one. The side-by-side install TypeScript documents for this gap (`typescript` aliased to
 `@typescript/typescript6`, TypeScript 7 only for `tsc`) was not taken: it moves lint and the build to a
 6.0.2 compatibility package and checks types with a second compiler.
 
