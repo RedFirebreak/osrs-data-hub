@@ -43,7 +43,11 @@ export const xpSamples = pgTable(
   ],
 );
 
-/** At most one sample per account per minute (the bucket start), kept LOCATION_RETENTION_DAYS. */
+/**
+ * The location trail, kept LOCATION_RETENTION_DAYS: every tile a 1.6 plugin reports, at the time the
+ * plugin saw it; from older plugins one sample per account per minute, at the bucket start (D-102).
+ * At most one row per account and timestamp. Columnstore since 0009.
+ */
 export const locationSamples = pgTable(
   'location_samples',
   {

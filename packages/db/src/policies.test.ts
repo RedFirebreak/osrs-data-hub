@@ -15,16 +15,17 @@ afterAll(async () => {
 const base = { xpRawRetentionDays: 365, locationRetentionDays: 30, rawPayloadRetentionHours: 72 };
 
 describe('applyTimescalePolicies', () => {
-  it('adds all seven policies, then is a no-op, then replaces only what changed', async () => {
+  it('adds all eight policies, then is a no-op, then replaces only what changed', async () => {
     const first = await applyTimescalePolicies(t.db, base);
-    expect(first).toHaveLength(7);
+    expect(first).toHaveLength(8);
+    expect(first).toContain('compression location_samples 1 day');
     expect(await applyTimescalePolicies(t.db, base)).toEqual([]);
     const changed = await applyTimescalePolicies(t.db, { ...base, locationRetentionDays: 14 });
     expect(changed).toEqual(['retention location_samples 14 days']);
     const jobs = await t.db.execute<{ n: number }>(
       sql`SELECT count(*)::int AS n FROM timescaledb_information.jobs WHERE hypertable_schema = 'public'`,
     );
-    expect(jobs.rows[0]!.n).toBe(7);
+    expect(jobs.rows[0]!.n).toBe(8);
   });
 
   it('refuses a raw XP retention inside the aggregate refresh window', () => {

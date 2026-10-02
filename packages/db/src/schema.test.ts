@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { MIGRATIONS_DIR } from './migrate';
 import { createTestDatabase, type TestDatabase } from './testing';
 import * as schema from './schema';
-import { accountSharing, osrsAccounts, skills, xpSamples } from './schema';
+import { accountSharing, locationSamples, osrsAccounts, skills, xpSamples } from './schema';
 
 let t: TestDatabase;
 beforeAll(async () => {
@@ -201,5 +201,72 @@ describe('0007_sharing_keep_private (D-96)', () => {
       location_history: 'private',
       stats: 'private',
     });
+  });
+});
+
+describe('0009_location_samples_columnstore (D-102)', () => {
+  it('segments location_samples by account and orders it by time, like the trail is read', async () => {
+    const settings = await t.db.execute<{ segmentby: string; orderby: string }>(
+      sql`SELECT segmentby, orderby FROM timescaledb_information.hypertable_columnstore_settings
+          WHERE hypertable::text = 'location_samples'`,
+    );
+    expect(settings.rows).toEqual([{ segmentby: 'account_id', orderby: 'ts DESC' }]);
+  });
+
+  it('a compressed chunk still reads, dedupes a resent point and loses an account with its rows', async () => {
+    const account = (n: number) => ({
+      publicId: `trail${n}`,
+      accountHash: String(n).repeat(56),
+      currentName: `Trail ${n}`,
+      nameNormalized: `trail ${n}`,
+    });
+    const [a, b] = await t.db
+      .insert(osrsAccounts)
+      .values([account(7), account(8)])
+      .returning({ id: osrsAccounts.id });
+    const at = (ms: number) => new Date(Date.UTC(2026, 8, 20, 12, 0, 0, ms));
+    const point = (accountId: number, ms: number, x: number) => ({
+      accountId,
+      ts: at(ms),
+      x,
+      y: 3200,
+      plane: 0,
+      world: 302,
+    });
+    await t.db
+      .insert(locationSamples)
+      .values([
+        point(a!.id, 0, 1),
+        point(a!.id, 600, 2),
+        point(a!.id, 1200, 3),
+        point(b!.id, 0, 9),
+        point(b!.id, 600, 10),
+      ]);
+
+    await t.db.execute(sql`SELECT compress_chunk(c) FROM show_chunks('location_samples') c`);
+    const chunks = await t.db.execute<{ is_compressed: boolean }>(
+      sql`SELECT is_compressed FROM timescaledb_information.chunks
+          WHERE hypertable_name = 'location_samples'`,
+    );
+    expect(chunks.rows).toEqual([{ is_compressed: true }]);
+
+    const trail = (accountId: number) =>
+      t.db
+        .select({ ts: locationSamples.ts, x: locationSamples.x })
+        .from(locationSamples)
+        .where(eq(locationSamples.accountId, accountId))
+        .orderBy(asc(locationSamples.ts));
+    expect((await trail(a!.id)).map((r) => r.x)).toEqual([1, 2, 3]);
+
+    // The same point again (a resend) changes nothing; a new one is added.
+    await t.db
+      .insert(locationSamples)
+      .values([point(a!.id, 600, 77), point(a!.id, 1800, 4)])
+      .onConflictDoNothing();
+    expect((await trail(a!.id)).map((r) => r.x)).toEqual([1, 2, 3, 4]);
+
+    await t.db.delete(osrsAccounts).where(eq(osrsAccounts.id, a!.id));
+    expect(await trail(a!.id)).toEqual([]);
+    expect((await trail(b!.id)).map((r) => r.x)).toEqual([9, 10]);
   });
 });
