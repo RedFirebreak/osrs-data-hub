@@ -97,8 +97,8 @@ connection if your server isn't the dev compose one (default
 behind; list them with `psql … -c "select datname from pg_database where datname like 'hub_tpl_%'"` and
 drop them (`DROP DATABASE … WITH (FORCE)`) when no run is going.
 
-Plugin behaviour is tested against wire-exact v1.5 payloads in `packages/fixtures` (see its README for
-what each file is and which plugin code path produces it). Replace or extend them with captures from a
+Plugin behaviour is tested against wire-exact v1.5 payloads in `packages/fixtures`, and one of v1.6 for
+the location trail (see its README for what each file is and which plugin code path produces it). Replace or extend them with captures from a
 real client (the Plugin Hub serves 1.5 now; handoff M0).
 
 ### End-to-end test (Playwright)

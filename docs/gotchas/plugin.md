@@ -169,9 +169,12 @@ coordinates (LocationNotifier.java:25-28), and on a boat it is the boat's positi
 (`getLocalPlayer().getWorldLocation()`, DeathNotifier.java:175) and `superiorSpawn.location`
 (`npc.getWorldLocation()`, SuperiorNotifier.java:37-51) are raw instance coordinates. Fix: treat event
 locations as a different coordinate space from snapshot locations: don't join them, and don't plot them
-on the world map as if they were comparable.
+on the world map as if they were comparable. The points of plugin 1.6's `player.locationTrail` are made
+from the same `WorldPoint` as `player.location`, so they share its space; inside an instance built from
+copied rooms (a player-owned house) neighbouring rooms can then be far apart, and a walk through a
+doorway looks like a jump (D-102).
 
-*Source: `SOURCE` (LocationNotifier.java:13-31, DeathNotifier.java:175, SuperiorNotifier.java:37-51 @0ec2a36)*
+*Source: `SOURCE` (LocationNotifier.java:13-31, DeathNotifier.java:175, SuperiorNotifier.java:37-51 @0ec2a36; LocationNotifier.java:36-58 @2a5b33a, v1.6.0); the house doorway `OBSERVED` by the plugin's authors in a live client (plugin PR 42, 2026-10-02)*
 
 ### PLUGIN-13
 **In the plugin's pairing panel, Submit does nothing: no dialog, no request reaches the hub, and the button stays disabled.**

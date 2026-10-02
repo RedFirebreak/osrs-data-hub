@@ -144,7 +144,7 @@ policies, D-40):
 |---|---|---|
 | Raw XP samples (5-min) | 365 days | `XP_RAW_RETENTION_DAYS` (min 14) |
 | Hourly and daily XP | forever | — |
-| Location trail | 30 days | `LOCATION_RETENTION_DAYS` |
+| Location trail (every tile since plugin 1.6, compressed after a day) | 30 days | `LOCATION_RETENTION_DAYS` |
 | Raw ingest payloads | 72 hours | `RAW_PAYLOAD_RETENTION_HOURS` |
 | Audit log | 2 years | `AUDIT_LOG_RETENTION_DAYS` |
 | Events, sessions, equipment, wealth | forever | — |
