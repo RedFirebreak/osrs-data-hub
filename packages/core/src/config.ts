@@ -79,6 +79,38 @@ const iconsUrl = z
   });
 
 /**
+ * DISCORD_AUTHORIZE_URL (D-101): the page "Sign in with Discord" sends the browser to when a stand-in
+ * plays Discord in local development. Unset or empty → Discord's own consent page. An http(s) URL;
+ * the OAuth parameters are appended as its query, so it can't carry one itself.
+ */
+const authorizeUrl = z
+  .string()
+  .optional()
+  .transform((v, ctx) => {
+    const trimmed = v?.trim() ?? '';
+    if (trimmed === '') return undefined;
+    let url: URL;
+    try {
+      url = new URL(trimmed);
+    } catch {
+      ctx.addIssue({ code: 'custom', message: 'must be an absolute URL including http(s)://' });
+      return z.NEVER;
+    }
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+      ctx.addIssue({ code: 'custom', message: 'must start with https:// (or http://)' });
+      return z.NEVER;
+    }
+    if (url.search || url.hash || url.username || url.password) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'must be a plain URL, without ?query, #fragment or user:password@',
+      });
+      return z.NEVER;
+    }
+    return trimmed;
+  });
+
+/**
  * The lowest XP_RAW_RETENTION_DAYS: twice the 7 days the hourly and daily XP aggregates are refreshed
  * over (CAGG_REFRESH_START_DAYS in packages/db/src/policies.ts, whose validatePolicyConfig applies
  * this minimum too). A refresh over a range whose raw rows retention already dropped erases the
@@ -129,6 +161,7 @@ const EnvSchema = z.object({
   AUTH_SECRET: optionalString,
   DISCORD_CLIENT_ID: optionalString,
   DISCORD_CLIENT_SECRET: optionalString,
+  DISCORD_AUTHORIZE_URL: authorizeUrl,
   DISCORD_BOT_TOKEN: optionalString,
   DISCORD_GUILD_ID: optionalString,
   DISCORD_GUILD_NAME: optionalString,
@@ -168,6 +201,8 @@ function toConfig(e: z.output<typeof EnvSchema>) {
     discord: {
       clientId: e.DISCORD_CLIENT_ID,
       clientSecret: e.DISCORD_CLIENT_SECRET,
+      /** The consent page of a stand-in for Discord (D-101); undefined = Discord's own. */
+      authorizeUrl: e.DISCORD_AUTHORIZE_URL,
       botToken: e.DISCORD_BOT_TOKEN,
       guildId: e.DISCORD_GUILD_ID,
       guildName: e.DISCORD_GUILD_NAME ?? 'the guild',

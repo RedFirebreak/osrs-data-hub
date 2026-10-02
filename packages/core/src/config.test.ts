@@ -45,6 +45,36 @@ describe('LOG_LEVEL', () => {
   });
 });
 
+describe('DISCORD_AUTHORIZE_URL (D-101)', () => {
+  it("is unset by default and when empty, so sign-in goes to Discord's own page", () => {
+    expect(parseConfig(ENV).discord.authorizeUrl).toBeUndefined();
+    expect(
+      parseConfig({ ...ENV, DISCORD_AUTHORIZE_URL: ' ' }).discord.authorizeUrl,
+    ).toBeUndefined();
+  });
+
+  it('takes the page of a stand-in for Discord', () => {
+    expect(
+      parseConfig({ ...ENV, DISCORD_AUTHORIZE_URL: ' http://localhost:7071/api/oauth2/authorize ' })
+        .discord.authorizeUrl,
+    ).toBe('http://localhost:7071/api/oauth2/authorize');
+  });
+
+  it('rejects what is not an http(s) URL, and a query the OAuth parameters would replace', () => {
+    for (const value of [
+      'localhost:7071/authorize',
+      'ftp://localhost/authorize',
+      'http://localhost:7071/authorize?as=alice',
+      'http://localhost:7071/authorize#x',
+      'http://user:pass@localhost:7071/authorize',
+    ]) {
+      expect(() => parseConfig({ ...ENV, DISCORD_AUTHORIZE_URL: value }), value).toThrow(
+        'DISCORD_AUTHORIZE_URL',
+      );
+    }
+  });
+});
+
 describe('OSRS_ICONS_URL (D-95)', () => {
   it('defaults to the icon CDN, turns icons off when empty, and strips trailing slashes', () => {
     expect(parseConfig(ENV).osrsIconsUrl).toBe('https://icons.scapekeeper.com');
