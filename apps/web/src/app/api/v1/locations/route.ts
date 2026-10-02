@@ -1,9 +1,9 @@
 /**
  * GET /api/v1/locations?accounts=a,b&from=&to= (D-92): the location trails of several accounts in
- * one call, in request order, each exactly what /accounts/{id}/locations returns for the same range
- * (`location_history`, at most one point per minute, kept 30 days). Up to 10 accounts with a user
- * key, 50 with a service key; an account the key can't read makes the whole request the one 404
- * (D-70). Default: the last 30 days.
+ * one call, in request order, each what /accounts/{id}/locations returns for the same range
+ * (`location_history`, every tile visited, kept 30 days), within 100,000 points per response shared
+ * between the accounts (D-102). Up to 10 accounts with a user key, 50 with a service key; an account
+ * the key can't read makes the whole request the one 404 (D-70). Default: the last 24 hours.
  */
 import { apiLocationsMulti } from '@hub/server';
 import { preflight } from '@/lib/api-v1/cors';

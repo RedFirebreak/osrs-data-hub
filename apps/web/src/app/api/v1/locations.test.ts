@@ -84,7 +84,13 @@ describe('GET /api/v1/locations', () => {
     expect(data.accounts[1]?.points).toEqual(single.data.points);
     expect(single.data.points.length).toBeGreaterThanOrEqual(1);
     expect(data.accounts[0]?.points).toEqual([]);
-    expect(Date.parse(data.to) - Date.parse(data.from)).toBe(30 * 24 * 60 * 60 * 1000);
+    // Nothing was left out, and each trail says so (D-102).
+    expect(single.data.truncated).toBe(false);
+    expect(data.accounts.map((a) => a.truncated)).toEqual([false, false]);
+    // The last 24 hours by default, for both endpoints.
+    const day = 24 * 60 * 60 * 1000;
+    expect(Date.parse(data.to) - Date.parse(data.from)).toBe(day);
+    expect(Date.parse(single.data.to) - Date.parse(single.data.from)).toBe(day);
   });
 
   it('honours an explicit range', async () => {

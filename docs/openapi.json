@@ -1045,7 +1045,7 @@
           "Histories"
         ],
         "summary": "Location trail",
-        "description": "The location trail, at most one point per minute, oldest first (`location_history`; kept 30 days). Default: the last 30 days.",
+        "description": "The location trail, oldest first (`location_history`; kept 30 days): every tile the player visited, as plugin 1.6 reports them, and one point a minute from older plugins. At most 20,000 points, the newest ones; `truncated` says when older ones were left out, and `to` set to the first point’s `at` reads them. Default: the last 24 hours.",
         "security": [
           {
             "bearerAuth": []
@@ -1071,7 +1071,7 @@
               "type": "string",
               "format": "date-time"
             },
-            "description": "Start of the range (ISO-8601 date-time). Default: `to` − 30 days."
+            "description": "Start of the range (ISO-8601 date-time). Default: `to` − 24 hours."
           },
           {
             "name": "to",
@@ -1131,7 +1131,7 @@
           "Histories"
         ],
         "summary": "Location trails of several accounts",
-        "description": "The location trails of several accounts in one call, in request order (`location_history`): up to 10 accounts with a user key, 50 with a service key, each trail exactly what `/accounts/{id}/locations` returns for the same range (at most one point per minute, oldest first, kept 30 days). An account the key can’t read makes the whole request 404. Default: the last 30 days.",
+        "description": "The location trails of several accounts in one call, in request order (`location_history`): up to 10 accounts with a user key, 50 with a service key, each trail what `/accounts/{id}/locations` returns for the same range (every tile visited, oldest first, kept 30 days). One response holds at most 100,000 points, shared equally between its accounts, so with more than 5 accounts a long trail is `truncated` sooner. An account the key can’t read makes the whole request 404. Default: the last 24 hours.",
         "security": [
           {
             "bearerAuth": []
@@ -1155,7 +1155,7 @@
               "type": "string",
               "format": "date-time"
             },
-            "description": "Start of the range (ISO-8601 date-time). Default: `to` − 30 days."
+            "description": "Start of the range (ISO-8601 date-time). Default: `to` − 24 hours."
           },
           {
             "name": "to",
@@ -1547,12 +1547,17 @@
                 "is_on_boat"
               ]
             },
-            "description": "At most one point per minute, oldest first."
+            "description": "Oldest first. Every tile a 1.6 plugin reported, at the time the plugin saw it; from an older plugin, one point a minute. A player standing still has one point a minute. Two consecutive points far apart were not walked (a teleport, an instance, or a stretch that was never delivered): don’t join them."
+          },
+          "truncated": {
+            "type": "boolean",
+            "description": "True when the range holds more points than this trail may carry: these are the newest ones. Ask again with `to` set to the first point’s `at` for the ones before it."
           }
         },
         "required": [
           "account",
-          "points"
+          "points",
+          "truncated"
         ]
       },
       "Item": {
@@ -3377,14 +3382,19 @@
                     "is_on_boat"
                   ]
                 },
-                "description": "At most one point per minute, oldest first."
+                "description": "Oldest first. Every tile a 1.6 plugin reported, at the time the plugin saw it; from an older plugin, one point a minute. A player standing still has one point a minute. Two consecutive points far apart were not walked (a teleport, an instance, or a stretch that was never delivered): don’t join them."
+              },
+              "truncated": {
+                "type": "boolean",
+                "description": "True when the range holds more points than this trail may carry: these are the newest ones. Ask again with `to` set to the first point’s `at` for the ones before it."
               }
             },
             "required": [
               "account",
               "from",
               "to",
-              "points"
+              "points",
+              "truncated"
             ]
           },
           "meta": {
@@ -3427,7 +3437,7 @@
                 "items": {
                   "$ref": "#/components/schemas/AccountLocations"
                 },
-                "description": "In request order; each trail is what `/accounts/{id}/locations` returns."
+                "description": "In request order; each trail is what `/accounts/{id}/locations` returns, except that one response holds at most 100,000 points, shared equally between its accounts: with more than 5 accounts a long trail is cut sooner."
               }
             },
             "required": [

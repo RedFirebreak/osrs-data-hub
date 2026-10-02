@@ -168,24 +168,27 @@ describe('GET /api/app/accounts/[publicId]/locations', () => {
     expect((await call(getLocations, account.publicId, '')).status).toBe(401);
   });
 
-  it('the trail of the last 30 days by default, oldest first', async () => {
+  it('the trail of the last 24 hours by default, oldest first', async () => {
+    type Body = { from: string; to: string; points: unknown[]; truncated: boolean };
     const res = await call(getLocations, account.publicId, '', owner.cookie);
     expect(res.status).toBe(200);
     expect(res.headers.get('cache-control')).toBe('no-store');
-    const body = (await res.json()) as { from: string; to: string; points: unknown[] };
-    expect(Date.parse(body.to) - Date.parse(body.from)).toBe(30 * 24 * HOUR_MS);
-    expect(body.points).toMatchObject([
-      { x: 3100, y: 3100 },
-      { x: 3222, y: 3218, plane: 0, world: 302, onBoat: false },
-    ]);
+    const body = (await res.json()) as Body;
+    expect(Date.parse(body.to) - Date.parse(body.from)).toBe(24 * HOUR_MS);
+    expect(body.points).toMatchObject([{ x: 3222, y: 3218, plane: 0, world: 302, onBoat: false }]);
+    expect(body.truncated).toBe(false);
 
-    const narrow = await call(
+    // The point of 20 days ago needs a range that reaches it.
+    const wide = await call(
       getLocations,
       account.publicId,
-      `?from=${new Date(now - HOUR_MS).toISOString()}`,
+      `?from=${new Date(now - 30 * 24 * HOUR_MS).toISOString()}`,
       owner.cookie,
     );
-    expect(((await narrow.json()) as { points: unknown[] }).points).toHaveLength(1);
+    expect(((await wide.json()) as Body).points).toMatchObject([
+      { x: 3100, y: 3100 },
+      { x: 3222, y: 3218 },
+    ]);
   });
 
   it('is gated by location_history: private is 404 for a member, not for the owner', async () => {

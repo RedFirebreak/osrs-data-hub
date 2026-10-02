@@ -3,7 +3,7 @@ import { createTestDatabase, type TestDatabase } from '@hub/db/testing';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
-  MAX_LOCATION_SAMPLES,
+  MAX_LOCATION_POINTS,
   getEquipmentHistory,
   getLocationHistory,
   getSessions,
@@ -147,32 +147,46 @@ describe('getWealthHistory', () => {
 describe('getLocationHistory', () => {
   it('returns the trail in the range, oldest first', async () => {
     const trail = await getLocationHistory(t.db, owner.viewer, account.publicId, RANGE);
-    expect(trail).toEqual([
-      { ts: '2026-09-01T00:00:00.000Z', x: 3, y: 3, plane: 1, world: null, onBoat: true },
-      { ts: '2026-09-02T00:00:00.000Z', x: 2, y: 2, plane: 0, world: 302, onBoat: false },
-    ]);
+    expect(trail).toEqual({
+      points: [
+        { ts: '2026-09-01T00:00:00.000Z', x: 3, y: 3, plane: 1, world: null, onBoat: true },
+        { ts: '2026-09-02T00:00:00.000Z', x: 2, y: 2, plane: 0, world: 302, onBoat: false },
+      ],
+      truncated: false,
+    });
   });
 
   it('needs location_history (not location_live)', async () => {
     await seedSharing(t.db, account.id, 'location_live', 'guild');
     expect(await getLocationHistory(t.db, member.viewer, account.publicId, RANGE)).toBeNull();
     await seedSharing(t.db, account.id, 'location_history', 'guild');
-    expect(await getLocationHistory(t.db, member.viewer, account.publicId, RANGE)).toHaveLength(2);
+    const shared = await getLocationHistory(t.db, member.viewer, account.publicId, RANGE);
+    expect(shared?.points).toHaveLength(2);
   });
 
-  it('returns the newest samples when there are too many', async () => {
+  it('returns the newest points when there are more than the limit, and says so', async () => {
     const busy = await seedAccount(t.db, { owner: owner.id });
-    const count = MAX_LOCATION_SAMPLES + 10;
+    // A point per game tick: a little over three hours of running without a stop.
+    const count = MAX_LOCATION_POINTS + 10;
     await t.db.execute(sql`
       INSERT INTO location_samples (account_id, ts, x, y, plane)
-      SELECT ${busy.id}, '2026-09-01T00:00:00Z'::timestamptz + g * interval '1 minute', g, 0, 0
+      SELECT ${busy.id}, '2026-09-01T00:00:00Z'::timestamptz + g * interval '600 milliseconds', g, 0, 0
       FROM generate_series(1, ${count}) g`);
-    const trail = await getLocationHistory(t.db, owner.viewer, busy.publicId, {
-      from: d('2026-01-01T00:00:00Z'),
-      to: d('2027-01-01T00:00:00Z'),
+    const year = { from: d('2026-01-01T00:00:00Z'), to: d('2027-01-01T00:00:00Z') };
+    const trail = await getLocationHistory(t.db, owner.viewer, busy.publicId, year);
+    expect(trail?.truncated).toBe(true);
+    expect(trail?.points).toHaveLength(MAX_LOCATION_POINTS);
+    expect(trail?.points[0]?.x).toBe(11);
+    expect(trail?.points.at(-1)?.x).toBe(count);
+
+    // A caller's own, lower limit; a range holding exactly the limit is not cut.
+    const few = await getLocationHistory(t.db, owner.viewer, busy.publicId, year, 3);
+    expect(few).toMatchObject({ truncated: true });
+    expect(few?.points.map((p) => p.x)).toEqual([count - 2, count - 1, count]);
+    const lastThree = { from: d(few!.points[0]!.ts), to: year.to };
+    expect(await getLocationHistory(t.db, owner.viewer, busy.publicId, lastThree, 3)).toEqual({
+      points: few!.points,
+      truncated: false,
     });
-    expect(trail).toHaveLength(MAX_LOCATION_SAMPLES);
-    expect(trail?.[0]?.x).toBe(11);
-    expect(trail?.at(-1)?.x).toBe(count);
   });
 });

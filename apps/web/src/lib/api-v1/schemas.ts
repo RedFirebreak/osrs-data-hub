@@ -21,11 +21,14 @@ import {
   GAINS_PERIODS,
   HISTORY_DEFAULT_DAYS,
   LEADERBOARD_PERIODS,
+  LOCATIONS_DEFAULT_HOURS,
   LOOT_LEADERBOARD_DEFAULT_LIMIT,
   LOOT_LEADERBOARD_MAX_LIMIT,
   MAX_BULK_ACCOUNTS,
   MAX_BULK_ACCOUNTS_SERVICE,
   MAX_LIST_PARAM,
+  MAX_LOCATION_POINTS,
+  MAX_LOCATION_POINTS_PER_RESPONSE,
   MAX_SERIES_POINTS,
   MAX_XP_SKILLS,
   SNAPSHOT_SINCE_OVERLAP_MS,
@@ -87,10 +90,10 @@ function wholeNumber(min: number, max: number) {
 const from = instant.optional();
 const to = instant.optional();
 
-function rangeShape(defaultDays: number) {
+function rangeShape(defaultDays: number, span = `${defaultDays} days`) {
   return {
     from: from.meta({
-      description: `Start of the range (ISO-8601 date-time). Default: \`to\` − ${defaultDays} days.`,
+      description: `Start of the range (ISO-8601 date-time). Default: \`to\` − ${span}.`,
     }),
     to: to.meta({ description: 'End of the range (ISO-8601 date-time). Default: now.' }),
   };
@@ -216,13 +219,19 @@ export const EventsQuery = z.object({
   to: to.meta({ description: 'End of the range (ISO-8601 date-time). Default: now.' }),
 });
 
-/** GET /accounts/{id}/sessions, /equipment-history, /wealth, /locations. */
+/** GET /accounts/{id}/sessions, /equipment-history, /wealth. */
 export const HistoryQuery = z.object(rangeShape(HISTORY_DEFAULT_DAYS));
+
+/** The trail's own default range: it holds a point per tile, so 24 hours instead of 30 days (D-102). */
+const locationsRange = rangeShape(LOCATIONS_DEFAULT_HOURS / 24, `${LOCATIONS_DEFAULT_HOURS} hours`);
+
+/** GET /accounts/{id}/locations. */
+export const LocationsQuery = z.object(locationsRange);
 
 /** GET /locations. */
 export const LocationsMultiQuery = z.object({
   accounts: bulkAccountsParam('location_history'),
-  ...rangeShape(HISTORY_DEFAULT_DAYS),
+  ...locationsRange,
 });
 
 /** The `period` of both leaderboards (/leaderboards/gains and /leaderboards/loot). */
@@ -623,22 +632,26 @@ const LocationPoint = z.object({
   is_on_boat: z.boolean(),
 });
 
-const locationPoints = z
-  .array(LocationPoint)
-  .meta({ description: 'At most one point per minute, oldest first.' });
+const trailShape = {
+  points: z.array(LocationPoint).meta({
+    description:
+      'Oldest first. Every tile a 1.6 plugin reported, at the time the plugin saw it; from an older plugin, one point a minute. A player standing still has one point a minute. Two consecutive points far apart were not walked (a teleport, an instance, or a stretch that was never delivered): don’t join them.',
+  }),
+  truncated: z.boolean().meta({
+    description:
+      'True when the range holds more points than this trail may carry: these are the newest ones. Ask again with `to` set to the first point’s `at` for the ones before it.',
+  }),
+};
 
-const LocationsData = z.object({
-  ...historyHead,
-  points: locationPoints,
-});
+const LocationsData = z.object({ ...historyHead, ...trailShape });
 
 // GET /locations
-export const AccountLocations = z.object({ account: AccountRef, points: locationPoints });
+export const AccountLocations = z.object({ account: AccountRef, ...trailShape });
 const LocationsMultiData = z.object({
   from: timestamp,
   to: timestamp,
   accounts: z.array(AccountLocations).meta({
-    description: 'In request order; each trail is what `/accounts/{id}/locations` returns.',
+    description: `In request order; each trail is what \`/accounts/{id}/locations\` returns, except that one response holds at most ${MAX_LOCATION_POINTS_PER_RESPONSE.toLocaleString('en-US')} points, shared equally between its accounts: with more than ${MAX_LOCATION_POINTS_PER_RESPONSE / MAX_LOCATION_POINTS} accounts a long trail is cut sooner.`,
   }),
 });
 

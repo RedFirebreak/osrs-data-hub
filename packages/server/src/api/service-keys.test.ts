@@ -7,7 +7,7 @@
 import { CATEGORIES } from '@hub/core';
 import { apiKeys, auditLog, locationSamples, users } from '@hub/db';
 import { createTestDatabase, type TestDatabase } from '@hub/db/testing';
-import { desc, eq } from 'drizzle-orm';
+import { desc, eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   seedAccount,
@@ -19,12 +19,18 @@ import {
   type SeededAccount,
   type SeededUser,
 } from '../accounts/test-support';
+import { MAX_LOCATION_POINTS } from '../accounts/history';
 import { AdminError } from '../admin/errors';
 import { offboardUser } from '../offboarding/offboard';
 import { MAX_BULK_ACCOUNTS, MAX_BULK_ACCOUNTS_SERVICE, loadApiAccounts } from './access';
 import { apiGetAccount, apiListAccounts } from './accounts';
 import { ApiError } from './errors';
-import { apiLocations, apiLocationsMulti } from './history';
+import {
+  MAX_LOCATION_POINTS_PER_RESPONSE,
+  apiLocations,
+  apiLocationsMulti,
+  locationPointLimit,
+} from './history';
 import { authenticateApiKey, type ApiPrincipal } from './key-auth';
 import { ApiKeyError, MAX_ACTIVE_KEYS, createApiKey, listApiKeys, revokeApiKey } from './keys';
 import { MAX_KEY_RATE_LIMIT, SERVICE_KEY_RATE_LIMIT } from './limits';
@@ -468,6 +474,80 @@ describe('bulk history (D-92)', () => {
     expect(multi.accounts.map((a) => a.account.id)).toEqual([hidden.publicId, shared.publicId]);
     expect(multi.accounts[1]?.points).toEqual(single.points);
     expect(single.points).toHaveLength(1);
+    expect(single.truncated).toBe(false);
+    expect(multi.accounts.map((a) => a.truncated)).toEqual([false, false]);
+  });
+
+  it('reads the last 24 hours of the trail by default, where the other histories read 30 days', async () => {
+    const ownerKey = await makeKey(t.db, owner.id, {}, NOW);
+    const day = 24 * 60 * 60 * 1000;
+    const dayAgo = new Date(NOW.getTime() - day).toISOString();
+    const single = present(await apiLocations(t.db, ownerKey.principal, shared.publicId, {}, NOW));
+    expect([single.from, single.to]).toEqual([dayAgo, NOW.toISOString()]);
+    const multi = await apiLocationsMulti(
+      t.db,
+      ownerKey.principal,
+      { ids: [shared.publicId] },
+      NOW,
+    );
+    expect([multi.from, multi.to]).toEqual([dayAgo, NOW.toISOString()]);
+    // With `to` alone, the 24 hours before it.
+    const to = new Date(NOW.getTime() - 3 * day);
+    const earlier = present(
+      await apiLocations(t.db, ownerKey.principal, shared.publicId, { to }, NOW),
+    );
+    expect(earlier.from).toBe(new Date(to.getTime() - day).toISOString());
+    expect(earlier.points).toEqual([]);
+  });
+
+  it('caps a trail at 20,000 points, and a bulk response at 100,000 shared between its accounts', () => {
+    expect(MAX_LOCATION_POINTS).toBe(20_000);
+    expect(MAX_LOCATION_POINTS_PER_RESPONSE).toBe(100_000);
+    expect([1, 5, 6, 8, 50].map(locationPointLimit)).toEqual([
+      20_000, 20_000, 16_666, 12_500, 2_000,
+    ]);
+  });
+
+  it('cuts a longer trail to its newest points and flags it, per account', async () => {
+    const ownerKey = await makeKey(t.db, owner.id, {}, NOW);
+    // 20,005 points ending two minutes ago, a game tick apart, on the account whose one seeded point
+    // is a minute old: 20,006 in the last 24 hours.
+    await t.db.execute(sql`
+      INSERT INTO location_samples (account_id, ts, x, y, plane)
+      SELECT ${selected.id}, ${NOW.toISOString()}::timestamptz - interval '2 minutes'
+               - (20005 - g) * interval '600 milliseconds', g, 0, 0
+      FROM generate_series(1, 20005) g`);
+    const single = present(
+      await apiLocations(t.db, ownerKey.principal, selected.publicId, {}, NOW),
+    );
+    expect(single.truncated).toBe(true);
+    expect(single.points).toHaveLength(20_000);
+    // Oldest first, the six oldest dropped; the seeded point (x 1) is the newest.
+    expect(single.points[0]?.x).toBe(7);
+    expect(single.points.at(-1)?.x).toBe(1);
+
+    const multi = await apiLocationsMulti(
+      t.db,
+      ownerKey.principal,
+      { ids: [shared.publicId, selected.publicId] },
+      NOW,
+    );
+    expect(multi.accounts.map((a) => [a.points.length, a.truncated])).toEqual([
+      [1, false],
+      [20_000, true],
+    ]);
+    // The next page: everything up to the oldest point served.
+    const older = present(
+      await apiLocations(
+        t.db,
+        ownerKey.principal,
+        selected.publicId,
+        { to: new Date(single.points[0]!.at) },
+        NOW,
+      ),
+    );
+    expect(older.truncated).toBe(false);
+    expect(older.points.map((p) => p.x)).toEqual([1, 2, 3, 4, 5, 6, 7]);
   });
 
   it('is gated by location_history: a service key gets the one 404 for accounts that keep it private', async () => {

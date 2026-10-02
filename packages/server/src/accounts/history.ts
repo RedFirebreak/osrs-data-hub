@@ -24,8 +24,11 @@ import { assertValidDate } from './xp';
 /** Most rows a history returns (the newest ones win). */
 export const MAX_SESSIONS = 1000;
 export const MAX_EQUIPMENT_CHANGES = 500;
-/** 31 days of 1-minute samples: the whole 30-day trail fits. */
-export const MAX_LOCATION_SAMPLES = 31 * 24 * 60;
+/**
+ * Most points of one account's trail in one read (D-102): a little over three hours of running
+ * without a stop, at a point per game tick. A longer trail is read in pages, see LocationTrail.
+ */
+export const MAX_LOCATION_POINTS = 20_000;
 
 export interface HistoryRange {
   from: Date;
@@ -200,20 +203,32 @@ export async function readWealthHistory(
     .orderBy(asc(wealthDaily.day));
 }
 
+export interface LocationTrail {
+  /** Oldest first. */
+  points: LocationPoint[];
+  /**
+   * The range holds more points than the limit and only the newest are here. The rest is read by
+   * asking again with `to` set to the oldest point's time.
+   */
+  truncated: boolean;
+}
+
 /**
- * The location trail (at most one sample per minute, kept LOCATION_RETENTION_DAYS) in [from, to],
- * oldest first; when there are more than MAX_LOCATION_SAMPLES the newest ones are returned. Gated by
- * `location_history`. Snapshot coordinates only: event locations are another coordinate space
- * (PLUGIN-12) and are never mixed in.
+ * The location trail in [from, to], oldest first: every tile a 1.6 plugin reported, at the time the
+ * plugin saw it, and one sample a minute from older plugins (D-102; kept LOCATION_RETENTION_DAYS).
+ * At most `limit` points, the newest ones, with `truncated` saying that older ones were left out.
+ * Gated by `location_history`. Snapshot coordinates only: event locations are another coordinate
+ * space (PLUGIN-12) and are never mixed in.
  */
 export async function getLocationHistory(
   db: DbOrTx,
   viewer: Principal,
   publicId: string,
   range: HistoryRange,
-): Promise<LocationPoint[] | null> {
+  limit: number = MAX_LOCATION_POINTS,
+): Promise<LocationTrail | null> {
   const accountId = await gate(db, viewer, publicId, 'location_history', range);
-  return accountId === null ? null : readLocationHistory(db, accountId, range);
+  return accountId === null ? null : readLocationHistory(db, accountId, range, limit);
 }
 
 /**
@@ -224,7 +239,8 @@ export async function readLocationHistory(
   db: DbOrTx,
   accountId: number,
   range: HistoryRange,
-): Promise<LocationPoint[]> {
+  limit: number = MAX_LOCATION_POINTS,
+): Promise<LocationTrail> {
   const rows = await db
     .select({
       ts: locationSamples.ts,
@@ -245,8 +261,14 @@ export async function readLocationHistory(
     // Plain DESC on purpose: the order is read backward off location_samples_account_ts_uq (a plain
     // ascending index), which NULLS LAST would not match (DB-15 is about `.desc()` indexes).
     .orderBy(desc(locationSamples.ts))
-    .limit(MAX_LOCATION_SAMPLES);
-  return rows.reverse().map((r) => ({ ...r, ts: r.ts.toISOString() }));
+    // One more than asked for: whether anything older was left out, without a second query.
+    .limit(limit + 1);
+  const truncated = rows.length > limit;
+  const points = rows
+    .slice(0, limit)
+    .reverse()
+    .map((r) => ({ ...r, ts: r.ts.toISOString() }));
+  return { points, truncated };
 }
 
 /**
