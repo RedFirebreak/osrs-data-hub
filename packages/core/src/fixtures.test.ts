@@ -55,6 +55,7 @@ interface WirePlayer {
   world?: string;
   worldTypes?: string[];
   location?: { x: number; y: number; plane: number; isOnBoat?: boolean };
+  locationTrail?: { x: number; y: number; plane: number; isOnBoat?: boolean; timestamp: number }[];
   health?: WireMeter;
   prayerPoints?: WireMeter;
   spellbook?: { id: number; name: string };
@@ -79,6 +80,7 @@ const WIRE_PLAYER_KEYS = [
   'world',
   'worldTypes',
   'location',
+  'locationTrail',
   'health',
   'prayerPoints',
   'spellbook',
@@ -286,6 +288,7 @@ const EXPECTED: Record<FixtureName, Expected> = {
   'snapshot-combat-burst-1': snapshot('zezima'),
   'snapshot-combat-burst-2': snapshot('zezima'),
   'snapshot-combat-burst-3': snapshot('zezima'),
+  'snapshot-location-trail': snapshot('zezima'),
   'snapshot-no-sections': snapshot('zezima'),
   'snapshot-normal': snapshot('zezima'),
   'snapshot-world-hop': snapshot('zezima'),
