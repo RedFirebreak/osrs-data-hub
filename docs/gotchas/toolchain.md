@@ -18,6 +18,8 @@ Build, lint, test and package tooling (TypeScript, ESLint, Prettier, pnpm, tsup,
 | [TOOL-9](#tool-9) | On a Windows clone `pnpm format:check` flags nearly every file (`Code style issues found in 548 files`), untouched ones like `apps/web/tsconfig.json` included, while the same content with the CRs stripped passes; or it still fails that way after pulling the commit that adds `.gitattributes`, with `git ls-files --eol` still showing `w/crlf`. |
 | [TOOL-10](#tool-10) | On Windows `pnpm test:e2e` never starts the server: `e2e: next build failed (spawnSync pnpm ENOENT)`, or with `E2E_SKIP_BUILD=1` `Error [ERR_UNSUPPORTED_ESM_URL_SCHEME]: … Received protocol 'e:'`. |
 | [TOOL-11](#tool-11) | On Windows every `docker` command fails with `failed to connect to the docker API at npipe:////./pipe/dockerDesktopLinuxEngine` (or hangs), `pnpm test` reports `Cannot reach the test database`, and Docker Desktop shows a crash dialog on start instead of its dashboard. |
+| [TOOL-12](#tool-12) | `pnpm install` fails with `ERR_PNPM_IGNORED_BUILDS … Ignored build scripts: esbuild@…, unrs-resolver@…` although `pnpm-workspace.yaml` names those packages, or a Docker build stops at `pnpm fetch --frozen-lockfile` with `error: unexpected argument '--frozen-lockfile' found`. |
+| [TOOL-13](#tool-13) | Every `pnpm` command dies with `Error: Cannot find module '…\corepack\v1\pnpm\12.7.0\bin\pnpm.cjs'` (`MODULE_NOT_FOUND`), and still does after corepack or Node is updated. |
 | [ZOD-1](#zod-1) | Unknown or new fields in a plugin payload vanish after parsing: stored event data lacks keys the plugin sent. |
 
 ### PGBOSS-1
@@ -200,6 +202,35 @@ it recreates `run` and the engine is up within seconds. Then `docker compose -f 
 The `wsl -l -v` state `docker-desktop  Stopped` is a consequence, not the cause.
 
 *Source: `OBSERVED` (Docker Desktop 4.79.0 on Windows 11, 2026-10-01)*
+
+### TOOL-12
+**`pnpm install` fails with `ERR_PNPM_IGNORED_BUILDS … Ignored build scripts: esbuild@…, unrs-resolver@…` although `pnpm-workspace.yaml` names those packages, or a Docker build stops at `pnpm fetch --frozen-lockfile` with `error: unexpected argument '--frozen-lockfile' found`.**
+pnpm 12 (the native rewrite) no longer reads `onlyBuiltDependencies` and `ignoredBuiltDependencies`, and
+says nothing about finding them: the only setting that decides build scripts is the `allowBuilds` map
+(`name: true | false`, there since pnpm 10.26). A dependency with a build script and no line in that map
+counts as unreviewed, and `strictDepBuilds` (default `true`) fails the install after everything is
+linked. Its CLI also rejects a flag the command doesn't define, where pnpm 10 took any install flag:
+`fetch` reads only the lockfile and has no `--frozen-lockfile`. Fix: `allowBuilds` in
+pnpm-workspace.yaml, `true` for what must build (`esbuild`) and `false` for a reviewed "no" (`sharp`,
+`unrs-resolver`); plain `pnpm fetch` in the Dockerfile (`pnpm install --frozen-lockfile --offline` after
+it is still valid). A new dependency with a build script fails every install until it has a line there;
+`pnpm approve-builds` writes one.
+
+*Source: `OBSERVED` (CI of the pnpm 12 update and this repository, pnpm 12.7.0 coming from 10.34.5, 2026-10-02), `DOCS` (pnpm.io/settings/build)*
+
+### TOOL-13
+**Every `pnpm` command dies with `Error: Cannot find module '…\corepack\v1\pnpm\12.7.0\bin\pnpm.cjs'` (`MODULE_NOT_FOUND`), and still does after corepack or Node is updated.**
+pnpm 12 is a native binary: the npm package's entry is `bin/pnpm.mjs`, which downloads the binary for the
+platform on first use. corepack up to 0.34.0 doesn't read the package's `bin` field for pnpm: it assumes
+`bin/pnpm.cjs` and writes that path into the `.corepack` file of its cache entry. Node 22.14 bundles
+corepack 0.31.0; 0.35.0 and 0.36.0 start pnpm 12 (`node:24-alpine` has 0.36.0 ([TOOL-6](#tool-6)), which
+is why CI and the Docker build never show this). A newer corepack reuses the cache entry the old one
+wrote, wrong path included. Fix: a Node whose `corepack --version` is 0.35 or higher (or
+`npm install -g corepack@latest`), then delete the entry the old one left,
+`%LOCALAPPDATA%\node\corepack\v1\pnpm\<version>` (`~/.cache/node/corepack/v1/pnpm/<version>` elsewhere),
+and run `pnpm` again.
+
+*Source: `OBSERVED` (Windows 11, Node 22.14.0, corepack 0.31.0 to 0.36.0 each with its own `COREPACK_HOME`, pnpm 12.7.0, 2026-10-02)*
 
 ### ZOD-1
 **Unknown or new fields in a plugin payload vanish after parsing: stored event data lacks keys the plugin sent.**
