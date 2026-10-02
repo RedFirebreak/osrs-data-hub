@@ -7,7 +7,7 @@ Build, lint, test and package tooling (TypeScript, ESLint, Prettier, pnpm, tsup,
 | [PGBOSS-1](#pgboss-1) | pg-boss throws `Queue <name> does not exist` (or `not found`) on send or schedule, a worker never runs while `error` events repeat every poll, or a handler finds `job.data` undefined. |
 | [PGBOSS-2](#pgboss-2) | After changing a queue's `policy` in code, `getQueue()` still reports the old one, and `updateQueue(name, { policy })` throws `queue policy cannot be changed after creation`. |
 | [PROM-1](#prom-1) | A counter-based alert or `increase()` panel misses the first event after a restart (the first job failure, the first breaker trip), while `/metrics` does show the series at 1. |
-| [TOOL-1](#tool-1) | After `pnpm add -D typescript`, typescript-eslint or Next's type check breaks; or `tsc` fails with `TS2591 Cannot find name 'node:crypto'`, `TS5101` (baseUrl) or `TS5107` (moduleResolution node). |
+| [TOOL-1](#tool-1) | After `pnpm add -D typescript` or an update to TypeScript 7, `pnpm lint` dies with `Error: typescript-eslint does not support TS 7.0` or Next's type check breaks; or `tsc` fails with `TS2591 Cannot find name 'node:crypto'`, `TS5101` (baseUrl) or `TS5107` (moduleResolution node). |
 | [TOOL-2](#tool-2) | `shadcn init` in a script exits 0 having created nothing, or `next build` fails offline with `next/font: error … fonts.googleapis.com`. |
 | [TOOL-3](#tool-3) | ESLint crashes with `TypeError: Error while loading rule 'react/display-name': contextOrFilename.getFilename is not a function`. |
 | [TOOL-4](#tool-4) | The tsup-bundled worker crashes at start with `Error: Dynamic require of "events" is not supported`, or with `ReferenceError: __dirname is not defined in ES module scope` from pino. |
@@ -59,14 +59,24 @@ pre-created; don't alert on their first appearance.
 *Source: `DOCS` (Prometheus querying functions: `increase`; prom-client 15.1.3 README, "Labels"); `OBSERVED` (hub worker `/metrics`, 2026-09-29: `hub_job_runs_total{…,result="failure"}` absent until the first failure)*
 
 ### TOOL-1
-**After `pnpm add -D typescript`, typescript-eslint or Next's type check breaks; or `tsc` fails with `TS2591 Cannot find name 'node:crypto'`, `TS5101` (baseUrl) or `TS5107` (moduleResolution node).**
+**After `pnpm add -D typescript` or an update to TypeScript 7, `pnpm lint` dies with `Error: typescript-eslint does not support TS 7.0` or Next's type check breaks; or `tsc` fails with `TS2591 Cannot find name 'node:crypto'`, `TS5101` (baseUrl) or `TS5107` (moduleResolution node).**
 The npm `latest` of typescript is 7.x, the native compiler, whose package exports no classic JS compiler
 API; typescript-eslint 8.71 peers `>=4.8.4 <6.1.0`. TypeScript 6 in turn defaults `types` to `[]`, so
 Node's types are missing unless listed, and turns the `baseUrl` and `moduleResolution: node`
 deprecations into errors. Fix: pin `typescript` to exactly `6.0.3` (root package.json);
 `"types": ["node"]`, `moduleResolution: "bundler"` and `paths` without `baseUrl` (tsconfig.base.json).
 
-*Source: `OBSERVED` (research sandbox, `npm view typescript` = 7.0.2 and tsc 6.0.3, 2026-09-28)*
+On 7.0.2 the lint step is the only one that fails: typescript-eslint throws while ESLint loads its
+config, so nothing is linted, while `tsc`, vitest, `next build` (16.3.8), both images and the wizard
+e2e pass. No typescript-eslint release takes TypeScript 7 yet (the canary peers `<6.1.0` too); upstream
+says to wait for the compiler API in 7.1. Renovate's "Update dependency typescript to v7" PR was closed
+unmerged for that reason, and that alone is the hold: Renovate ignores every 7.x release from then on,
+with nothing in renovate.json saying so. To lift it once typescript-eslint's peer range admits 7.x:
+rename that closed PR, and Renovate opens a fresh one. The side-by-side install TypeScript documents for this gap (`typescript` aliased to
+`@typescript/typescript6`, TypeScript 7 only for `tsc`) was not taken: it moves lint and the build to a
+6.0.2 compatibility package and checks types with a second compiler.
+
+*Source: `OBSERVED` (research sandbox, `npm view typescript` = 7.0.2 and tsc 6.0.3, 2026-09-28; CI of the TypeScript 7 update, 2026-10-02)*
 
 ### TOOL-2
 **`shadcn init` in a script exits 0 having created nothing, or `next build` fails offline with `next/font: error … fonts.googleapis.com`.**
