@@ -21,6 +21,7 @@ Plugin paths are relative to `src/main/java/haexporterplugin/` in
 | [PLUGIN-11](#plugin-11) | Carried wealth or item counts are off: five sharks arrive as five entries of `quantity: 1`, and inventory, kept and lost items don't add up the same way. |
 | [PLUGIN-12](#plugin-12) | Deaths and superior spawns inside raids and other instances have coordinates nowhere near the player's live location in the same instance. |
 | [PLUGIN-13](#plugin-13) | In the plugin's pairing panel, Submit does nothing: no dialog, no request reaches the hub, and the button stays disabled. |
+| [PLUGIN-14](#plugin-14) | One player's location trail holds a stretch twice, the same tiles again some seconds later, although it was walked once; or the stretch walked during an outage lies some seconds late in the trail, interleaved with what was walked after it. |
 
 ### PLUGIN-1
 **Ingest answers 400 to payloads sent at client start and right after login, or a player shows offline for a moment during loading screens and world hops.**
@@ -186,3 +187,44 @@ disabled until a field is edited. Fix: the wizard shows the full URL including `
 button, and the troubleshooting text tells players to paste it exactly.
 
 *Source: `OBSERVED` (research sandbox: OkHttp 3.14.9 `Request.Builder.url` on scheme-less input, 2026-09-28); `SOURCE` (HAExporterPanel.java:570-581,741-743 @0ec2a36)*
+
+### PLUGIN-14
+**One player's location trail holds a stretch twice, the same tiles again some seconds later, although it was walked once; or the stretch walked during an outage lies some seconds late in the trail, interleaved with what was walked after it.**
+That player's PC clock runs more than 10 s ahead. The hub knows a trail point it already has only by its
+time: points are inserted with `ON CONFLICT DO NOTHING` on `(account_id, ts)` (`writeDerived`,
+packages/server/src/ingest/store.ts). And a message keeps the plugin's per-point times only when its own
+time is plausible on arrival, within [receive time − 15 min, receive time + 10 s] (`isPlausibleClock`,
+packages/core/src/time.ts); any other message is re-dated as a whole so that it ends at the receive time
+(`planTrail`, packages/core/src/ingest/plan.ts). With such a clock a message that arrives on time is
+re-dated, while one that arrives late (sent again after a timeout, [PLUGIN-4](#plugin-4), or held in the
+retry queue) can look plausible and is then stored as sent; with a clock so far ahead that the late one
+is not plausible either, it is re-dated to its own, later receive time. So when the hub had already
+stored the first copy of a resend, the second gets different times and both stay.
+
+Seen with a clock 30 s ahead: three tiles (x 3300 to 3302, y 3320) walked once were stored at
+05:33:52.2Z to 05:33:53.4Z (re-dated) and, from the unchanged resend 25.8 s later, again at 05:34:22.2Z to
+05:34:23.4Z (as sent). `/locations` returned them twice, 30 s apart, all `move`, and the map drew them.
+With a correct clock the same sequence stores every point once. Other faces of the same split:
+
+- An outage interleaves: the messages delivered on time are re-dated to the true time, the queued ones
+  arrive late and are stored 30 s ahead.
+- A clock that is behind is taken as it is for longer. Up to 15 min behind, everything keeps the plugin's
+  (shifted) times; only a message that also waited in the plugin's queue, so that lag plus wait exceeds
+  15 min, is re-dated instead.
+- Two connections on one PC ([PLUGIN-10](#plugin-10)) each get their copy on time, so each copy is
+  re-dated to its own receive time and every point is stored twice, milliseconds apart (worked out with
+  `planTrail`, not seen live).
+
+It takes a resend or a late delivery of a message with trail points. Up to plugin 1.6.1 that is only the
+points riding in a queued event payload. Plugin PR 45 ("Keep location trail points until they are
+delivered", unmerged on 2026-10-06) queues and resends every message with trail points, and its README
+tells receivers to de-duplicate on `timestamp`. Fix: none in the hub. The owner left it as it is on
+2026-10-06 (D-102), so the PC clock has to be right. Considered and not done: remembering a clock offset
+per device once a message proves the clock is ahead; having the plugin send its clock at send time;
+storing the plugin's own time per point and de-duplicating on that.
+
+When testing this, wait before reading: a point dated a few seconds ahead of the hub's clock is returned
+by `/locations` only once that time has passed (the default `to` is now), so a read right after the
+resend still shows the stretch once.
+
+*Source: `OBSERVED` (dev stack, a sender with its clock 30 s ahead, 2026-10-06); `SOURCE` (`isPlausibleClock`, `planTrail` and `writeDerived` in this repository; plugin PR 45: README "Location trail" and "Delivery & Backoff", HomeAssistUtils.java:81-126,186-200,394-419 @a7b1f3c)*

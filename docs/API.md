@@ -427,6 +427,18 @@ The location trail, oldest first (`location_history`, kept 30 days). Default: th
 - **Following a trail.** Ask with `from` set to the last point's `at`. A point can be dated up to 10 s
   after the hub received it, and a late message can add points up to 15 minutes back, so overlap the
   requests rather than assuming the trail only grows at its end.
+- **The same stretch twice.** The hub knows a point it already has by its time. It keeps the
+  plugin's times only for a message dated between 15 minutes before and 10 s after the moment it
+  arrives; a message from a PC whose clock runs further ahead is dated by its arrival instead. When
+  the plugin sends such a message a second time although the first copy arrived (after a timeout,
+  for one), the two copies are dated differently and the trail holds that stretch twice: the same
+  tiles again some seconds later, 30 s later in a test with a clock 30 s ahead. A stretch that
+  waited in the plugin's queue during an outage arrives late and is dated differently from the
+  messages that arrived on time: it lies some seconds late in the trail, mixed with what was
+  walked after it. A correct clock gives every point once. Up to plugin 1.6.1 only a message with
+  an event in it is sent again; HA Exporter pull request 45 (unmerged on 2026-10-06) sends every
+  message with trail points again. The hub leaves this as it is (D-102,
+  [PLUGIN-14](gotchas/plugin.md#plugin-14)).
 
 ### GET /locations?accounts=a,b&from=&to=
 
