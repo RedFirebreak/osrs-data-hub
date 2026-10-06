@@ -396,19 +396,26 @@ The location trail, oldest first (`location_history`, kept 30 days). Default: th
 
   | `via` | What happened |
   | --- | --- |
-  | `move` | Walked, ran or sailed: the point is within reach in the time since the one before. Stairs are a move to another `plane`. |
+  | `move` | Walked, ran or sailed: the point is within reach of the one before. Stairs are a move to another `plane`. |
   | `entrance` | Into or out of the underground (a cave, a dungeon, a basement), which lies 6400 tiles north of the surface. The player went through an entrance at this spot. |
   | `house` | From one room of a player-owned house to the next. The player walked, but the coordinates are those of the map area each room was copied from, so they jump. |
-  | `teleport` | Anything else that wasn't walked: a teleport, including into or out of the house. |
+  | `instance` | The same between two rooms of the Gauntlet, the Corrupted Gauntlet or the Chambers of Xeric, which the game also builds from copied rooms. |
+  | `teleport` | Anything else that wasn't walked: a teleport, including into or out of the house or an instance. |
   | `gap` | More than 5 minutes since the point before: offline, not sharing, or a stretch that never reached the hub. Nothing is known about what happened in between. |
   | `null` | The first point of the trail, when the point before it lies before `from`. |
 
-  - Reach is 2 tiles per game tick (0.6 s) plus 6 tiles of margin for lag, and 4 tiles per tick
-    while both points are on a boat (`is_on_boat`).
+  - Reach is one game tick's run: 2 tiles plus 6 of margin for lag, 8 in all, and 4 plus 6 while
+    both points are on a boat (`is_on_boat`). The time since the point before plays no part: a
+    point is the tick on which the tile changed, so a player who stood for 40 seconds and is then
+    110 tiles away didn't walk there.
+  - More labels may be added. Treat one you don't know as "not walked".
   - The label belongs to the pair of points, so it is only right on the trail as the hub returns it.
     When you thin a trail, keep both points of every step that isn't a `move`.
-  - With one point a minute (an older plugin) a minute's run is within reach, so a teleport of
+  - A point a minute from an older plugin (its `at` is a whole minute) is judged by the time since
+    the point before instead, 2 tiles per 0.6 s: a minute's run is within reach, so a teleport of
     under 200 tiles reads as a `move`.
+  - A stretch of a 1.6 trail that never reached the hub and was walked reads as a `teleport` when
+    it is shorter than 5 minutes: the hub can't tell it from one.
   - A late message can add a point between two you already have, which changes the label of the
     point after it.
   - When `truncated` is true the first point has its label too: the hub knows the point it left out.
