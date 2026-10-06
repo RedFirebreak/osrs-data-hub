@@ -629,6 +629,9 @@ Other rules:
     (with `events`) for its top-drops panel (D-94).
   - `/events?accounts=&from=&to=` (with `events`) for the events along a trail: the last 24 hours or
     7 days, or one play session of the player it is watching (D-98).
+  - `/accounts/{id}/sessions?from=` (with `activity`) for that player's play sessions of the last 7
+    days, which its trail length menu offers next to 24 hours and 7 days. A session that is still
+    going on has no `ended_at`; the map then asks for the trail from its start with no `to`.
   - `/members/{discord_id}` to decide who may sign in to the map and who is an admin there (D-100): the
     map signs people in with Discord itself and asks the hub about their Discord user id. It keeps no
     accounts of its own. A 404 tells it the hub is too old to have the endpoint.

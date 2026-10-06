@@ -52,6 +52,7 @@ Before calling a change done, run the chain that follows what you changed:
 | `/api/v1` (`/snapshot`, `/events`, `/members`), API keys | `up full`, `smoke`, then look at the map | The map still gets positions, events and logins from this hub |
 | Sharing, audiences, what a key may read | `chain privacy` | What an owner hides is gone for a service key, and nothing sent meanwhile reaches the map |
 | Sign-in, the guild gate, membership, admin flags | `chain auth` | Who gets into the hub and, through `/members`, into the map |
+| The location trail: what is stored of it, its times and its labels (`packages/core/src/ingest/plan.ts`, `packages/core/src/trail.ts`, `/locations`) | `chain delivery` and `chain trail`, then `smoke` | A walk whose messages came late, combined, out of order or twice is stored once and is the same walk on the map, and the label of every step of a journey reaches the map |
 | Presence, sessions, timeouts | `chain presence` | A client that stops without a logout goes offline on hub, map and Home Assistant |
 | Pairing, devices, tokens | `chain revoke` | A revoked device gets 401, which is what turns the plugin's connection off |
 

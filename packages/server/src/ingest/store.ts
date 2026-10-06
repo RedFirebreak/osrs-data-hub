@@ -592,7 +592,8 @@ async function writeXpSamples(
 /**
  * Equipment change log, the location points and the day's carried wealth. A point whose
  * (account, ts) exists is left alone: the first sample of a minute wins, and a trail that arrives
- * twice (a resend, a second paired device) is stored once (D-102).
+ * twice (a resend, a second paired device) is stored once (D-102). That takes both copies getting
+ * the same times, which a PC clock more than 10 s ahead undoes (PLUGIN-14).
  */
 async function writeDerived(
   tx: Tx,
