@@ -456,7 +456,7 @@ truncated one with `to`, per account or in a call that names fewer accounts.
     GET /api/v1/locations?accounts=oC8RsqiTuyak,jHSfP5UICcQt
 
     {"data":{"from":"…","to":"…","accounts":[
-      {"account":{"id":"oC8RsqiTuyak","name":"Alpha Main"},"truncated":false,"points":[{"at":"2026-09-29T13:24:25.236Z","x":3164,"y":3487,"plane":0,"world":302,"is_on_boat":false},…]},
+      {"account":{"id":"oC8RsqiTuyak","name":"Alpha Main"},"truncated":false,"points":[{"at":"2026-09-29T13:24:25.236Z","x":3164,"y":3487,"plane":0,"world":302,"is_on_boat":false,"via":null},…]},
       {"account":{"id":"jHSfP5UICcQt","name":"Bravo Alt"},"truncated":false,"points":[]}]},"meta":{…}}
 
 ### GET /leaderboards/gains?skill=&period=day|week|month
@@ -627,8 +627,8 @@ Other rules:
     point says whether to draw a line to it, a teleport, an entrance or nothing (D-103).
   - `game_state` on `/snapshot` (with `activity`) for its status panel, and `/leaderboards/loot`
     (with `events`) for its top-drops panel (D-94).
-  - `/events?accounts=&from=&to=` (with `events`) for the events along a trail of 24 hours, 7 or 30
-    days (D-98).
+  - `/events?accounts=&from=&to=` (with `events`) for the events along a trail: the last 24 hours or
+    7 days, or one play session of the player it is watching (D-98).
   - `/members/{discord_id}` to decide who may sign in to the map and who is an admin there (D-100): the
     map signs people in with Discord itself and asks the hub about their Discord user id. It keeps no
     accounts of its own. A 404 tells it the hub is too old to have the endpoint.

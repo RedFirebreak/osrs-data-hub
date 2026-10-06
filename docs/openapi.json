@@ -1554,7 +1554,7 @@
                       "type": "null"
                     }
                   ],
-                  "description": "How the player got here from the point before. `move`: walked, ran or sailed, within reach of the point before (stairs are a move to another plane). `entrance`: into or out of the underground, which lies 6400 tiles north of the surface. `house`: from one room of a player-owned house to another, walked although the coordinates jump. `instance`: the same between two rooms of the Gauntlet or the Chambers of Xeric. `teleport`: anything else that wasn’t walked. `gap`: more than 5 minutes since the point before (offline, not sharing, or never delivered). Null on the first point of a trail when the point before it lies outside the range. Only `move` is a line to draw."
+                  "description": "How the player got here from the point before. `move`: walked, ran or sailed, within reach of the point before (stairs are a move to another plane). `entrance`: into or out of the underground, which lies 6400 tiles north of the surface. `house`: from one room of a player-owned house to another, walked although the coordinates jump. `instance`: the same between two rooms of the Gauntlet, the Corrupted Gauntlet or the Chambers of Xeric. `teleport`: anything else that wasn’t walked. `gap`: more than 5 minutes since the point before (offline, not sharing, or never delivered). Null on the first point of a trail when the point before it lies outside the range. Only `move` is a line to draw."
                 }
               },
               "required": [
@@ -3409,7 +3409,7 @@
                           "type": "null"
                         }
                       ],
-                      "description": "How the player got here from the point before. `move`: walked, ran or sailed, within reach of the point before (stairs are a move to another plane). `entrance`: into or out of the underground, which lies 6400 tiles north of the surface. `house`: from one room of a player-owned house to another, walked although the coordinates jump. `instance`: the same between two rooms of the Gauntlet or the Chambers of Xeric. `teleport`: anything else that wasn’t walked. `gap`: more than 5 minutes since the point before (offline, not sharing, or never delivered). Null on the first point of a trail when the point before it lies outside the range. Only `move` is a line to draw."
+                      "description": "How the player got here from the point before. `move`: walked, ran or sailed, within reach of the point before (stairs are a move to another plane). `entrance`: into or out of the underground, which lies 6400 tiles north of the surface. `house`: from one room of a player-owned house to another, walked although the coordinates jump. `instance`: the same between two rooms of the Gauntlet, the Corrupted Gauntlet or the Chambers of Xeric. `teleport`: anything else that wasn’t walked. `gap`: more than 5 minutes since the point before (offline, not sharing, or never delivered). Null on the first point of a trail when the point before it lies outside the range. Only `move` is a line to draw."
                     }
                   },
                   "required": [
