@@ -12,8 +12,12 @@ const INGEST_BUCKET_CAPACITY = 30;
 const INGEST_REFILL_PER_SECOND = 5;
 /**
  * Shortest pause asked of a rate-limited device (handoff §7.6, ARCHITECTURE §6: "429 + Retry-After:
- * 3"). At 5/s the bucket has a token back after 0.2 s, which would say 1; the plugin drops snapshots
- * while paused, so a 3 s pause is what actually relieves a noisy device.
+ * 3"). At 5/s the bucket has a token back after 0.2 s, which would say 1; the plugin sends nothing
+ * while paused, so a 3 s pause is what actually relieves a noisy device. What becomes of the
+ * snapshots of those 3 s depends on the plugin: up to 1.6.1 it drops them, HA Exporter PR 45
+ * (unmerged on 2026-10-06) keeps the ones that carry trail points for after the pause. That plugin's
+ * retry queue drains through this bucket too: more than about 30 queued payloads without events in
+ * a row empty it, the next one gets the 429, and the drain goes on after the pause; nothing is lost.
  */
 export const INGEST_MIN_RETRY_AFTER_SECONDS = 3;
 

@@ -1,6 +1,6 @@
 # Gotchas
 
-89 traps, grouped into five files, found while building osrs-data-hub. Each is written up
+90 traps, grouped into five files, found while building osrs-data-hub. Each is written up
 once under a stable ID and referenced by ID from everywhere else, so there is exactly one place to edit
 when something changes. Package-agnostic: things that are true of the shared layer (the HA Exporter
 plugin protocol, Next.js, Better Auth, Drizzle, Postgres/TimescaleDB, pg-boss, the Discord API, and the
@@ -25,7 +25,7 @@ defeats the point of them being separate.
 | [auth.md](auth.md) | `AUTH`, `DISCORD` — Better Auth 1.7 (Discord provider, Drizzle adapter, hooks, sessions, endpoints) and the Discord HTTP API (OAuth, guild member lookups) | 14 |
 | [database.md](database.md) | `DB`, `TSDB` — Postgres behaviour, drizzle-orm 0.45 and drizzle-kit 0.31 (queries, errors, the migrator), and TimescaleDB 2.30 (hypertables, compression, continuous aggregates, policies, the Docker image) | 28 |
 | [nextjs.md](nextjs.md) | `NEXT` — Next.js 16 (route handlers, server actions, RSC, proxy.ts, instrumentation, basePath, standalone output, the dev and build CLI) | 17 |
-| [plugin.md](plugin.md) | `PLUGIN` — the HA Exporter v1.5 wire protocol as seen from the hub (payload shapes, Gson serialization, the OkHttp transport, status handling, the retry queue, the pairing panel) | 13 |
+| [plugin.md](plugin.md) | `PLUGIN` — the HA Exporter v1.5 wire protocol as seen from the hub (payload shapes, Gson serialization, the OkHttp transport, status handling, the retry queue, the pairing panel) | 14 |
 | [toolchain.md](toolchain.md) | `PGBOSS`, `PROM`, `TOOL`, `ZOD` — build, lint, test and package tooling (TypeScript, ESLint, Prettier, pnpm, tsup, shadcn, Playwright, Docker base images, Git line endings) and the pg-boss, prom-client and zod libraries | 17 |
 | [open-questions.md](open-questions.md) | read from docs, not yet observed — no IDs, not in the index | — |
 
@@ -120,6 +120,7 @@ The `gotcha` skill walks this, including a trap that fits no existing file.
 | [PLUGIN-11](plugin.md#plugin-11) | Plugin | Carried wealth or item counts are off: five sharks arrive as five entries of `quantity: 1`, and inventory, kept and lost items don't add up the same way. |
 | [PLUGIN-12](plugin.md#plugin-12) | Plugin | Deaths and superior spawns inside raids and other instances have coordinates nowhere near the player's live location in the same instance. |
 | [PLUGIN-13](plugin.md#plugin-13) | Plugin | In the plugin's pairing panel, Submit does nothing: no dialog, no request reaches the hub, and the button stays disabled. |
+| [PLUGIN-14](plugin.md#plugin-14) | Plugin | One player's location trail holds a stretch twice, the same tiles again some seconds later, although it was walked once; or the stretch walked during an outage lies some seconds late in the trail, interleaved with what was walked after it. |
 | **[toolchain.md](toolchain.md)** | | |
 | [PGBOSS-1](toolchain.md#pgboss-1) | pg-boss | pg-boss throws `Queue <name> does not exist` (or `not found`) on send or schedule, a worker never runs while `error` events repeat every poll, or a handler finds `job.data` undefined. |
 | [PGBOSS-2](toolchain.md#pgboss-2) | pg-boss | After changing a queue's `policy` in code, `getQueue()` still reports the old one, and `updateQueue(name, { policy })` throws `queue policy cannot be changed after creation`. |

@@ -76,7 +76,8 @@ export function planSnapshot(
     latestPatch: null,
   };
   if (stale) {
-    // Each trail point is sent once, so a snapshot that lost the race still has points to keep.
+    // Once a snapshot is answered 200 the plugin never sends its trail points again, so one that
+    // lost the race still has points to keep.
     if (!special) plan.locationPoints = planTrail(prev, payload, ctx.recv, false);
     return plan;
   }

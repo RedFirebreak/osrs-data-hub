@@ -949,7 +949,7 @@ describe('planSnapshot: location trail (plugin 1.6)', () => {
       sourceTs: new Date(ROOT + 1),
     };
 
-    it('still stores its trail points: each point is sent only once', () => {
+    it('still stores its trail points: the plugin will not send them again', () => {
       const plan = planAt(newer, sent([at(1, 1, ROOT - 600), at(2, 2, ROOT - 5)]));
       expect(plan.stale).toBe(true);
       expect(plan.latestPatch).toBeNull();
