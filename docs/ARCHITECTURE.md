@@ -347,6 +347,7 @@ configuration to `showEventToast`, which provides it again around `EventGameIcon
 | `/api-keys` | The user's API keys (name, `ohub_<prefix>_…`, categories, scope, created, last used, expiry, status) with Revoke, and "Create key" (categories, every visible account or picked ones, expiry; the key shown once with Copy). D-69, D-76. |
 | `/docs/api` | Public: the interactive API reference (Scalar from jsDelivr at a pinned version with SRI) over `/api/v1/openapi.json` (D-75). |
 | `/privacy` | Public: what is stored and for how long (from the configuration), the sharing defaults, what admins can see, what returning to the guild restores. What the export holds and leaves out, and the 7-day undo of Delete my data. |
+| `/icon.svg` | Public: the favicon, the header's mark (`HubMark`) as an SVG. It is `app/icon.svg`, Next's file convention, which also links it from every page. It lies outside `(app)` and no middleware or proxy runs in front of the routes, so the sign-in page gets it without a session. |
 | `/admin/*` | Users (offboard, restore), devices (revoke), integrations (the service keys of the public API, D-88: name, `ohub_<prefix>_…`, categories, rate limit, creator, status; Revoke, and "Create integration key" with the key shown once), ingest health (rates, with rejected payloads per minute, D-83; rejections since start), raw payloads (filters and an audited viewer), audit log, settings (the guild feed filter, D-81), configuration (secrets redacted), decommission switch. |
 
 Rules every page and route follows:
