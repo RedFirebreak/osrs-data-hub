@@ -63,8 +63,9 @@ export interface PlayerSnapshot {
   worldTypes?: string[];
   location?: Location;
   /**
-   * Plugin 1.6: every tile visited since the previous message, oldest first, each sent once. [] when
-   * the player stood still; absent from older plugins.
+   * Plugin 1.6: every tile visited since the previous message, oldest first, each put in one message.
+   * The plugin can send a message again after a failed delivery, so a point can arrive twice. []
+   * when the player stood still; absent from older plugins.
    */
   locationTrail?: TrailPoint[];
   health?: Meter;

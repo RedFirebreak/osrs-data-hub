@@ -42,9 +42,13 @@ packages/core/src/presence.ts); `tickDelay: 0` means unknown.
 **A player's data silently stops arriving (no error on either side) and the access log shows a 3xx on `/api/osrs-data/*`, or a body-less `GET /api/osrs-data/events` carrying `X-Osrs-Token`.**
 RuneLite's OkHttp 3.14.9 follows redirects: a 301/302/303 on the POST becomes a GET with no body that
 still sends `X-Osrs-Token` (in clear text on an http hop), and 307/308 on a POST are not followed at all.
-The plugin classifies the resulting 3xx, 404 or 405 as REJECTED (ConnectionBackoff.java:64-81): the
+The plugin classifies the resulting 3xx or 405 as REJECTED (ConnectionBackoff.java:64-81): the
 payload is dropped, with no pause, no retry and nothing shown to the player, for every payload from then
-on. Typical triggers: the player typed `http://` and the proxy upgrades to https, a www/apex redirect, or
+on. A 404 is treated the same up to plugin 1.6.1; plugin PR 45 (unmerged on 2026-10-06) backs off on it
+as on a 5xx instead (ConnectionBackoff.java:66-87 @61523b0): the connection pauses and the panel shows
+it, a payload that carries events or trail points waits in the retry queue, and the address is tried
+again once per pause (30 s doubling to 10 min). The data still doesn't arrive, but no longer silently.
+Typical triggers: the player typed `http://` and the proxy upgrades to https, a www/apex redirect, or
 Next's `trailingSlash: true` (`POST /api/osrs-data/events/` → 308). `trailingSlash: false` doesn't remove
 Next's own redirect either: it answers `POST /api/osrs-data/events/` with a 308 to the slash-less path.
 The plugin never sends that itself (it strips the base URL's trailing `/` and appends fixed paths), so only
@@ -54,7 +58,7 @@ Fix: never redirect `/api/osrs-data/*` at the proxy (docs/OPERATIONS.md §3); `t
 https:// URL (the pairing dialog shows that text), and count token-bearing GETs per device as a
 misconfigured URL (apps/web logs them with the device id).
 
-*Source: `OBSERVED` (research sandbox: OkHttp 3.14.9 against a capture server, `fixtures/redirect-301-downgraded-get.http`; Next 16.3.6 standalone, 2026-09-28; the 308 with `trailingSlash: false`, apps/web standalone, 2026-09-29); `SOURCE` (ConnectionBackoff.java:64-81 @0ec2a36)*
+*Source: `OBSERVED` (research sandbox: OkHttp 3.14.9 against a capture server, `fixtures/redirect-301-downgraded-get.http`; Next 16.3.6 standalone, 2026-09-28; the 308 with `trailingSlash: false`, apps/web standalone, 2026-09-29); `SOURCE` (ConnectionBackoff.java:64-81 @0ec2a36; the 404 of plugin PR 45: ConnectionBackoff.java:66-87 and README "Delivery & Backoff" @61523b0)*
 
 ### PLUGIN-3
 **After the hub answers one payload with a 5xx, that player's events from the next ~5.5 minutes never arrive and no snapshots arrive for ~15 minutes, while other players are fine.**
@@ -62,26 +66,33 @@ On a 5xx the plugin backs off exponentially (30, 60, 120, 240, 480 s; Connection
 and queues payloads that carry events. A failed resend stays at the head of the queue (:206-217,
 HomeAssistUtils.java:320-334), so a payload that fails every time is retried at t ≈ 30, 90, 210 and 450 s
 and blocks everything behind it. At t ≈ 930 s it is pruned (10 min after enqueue, :227-232) together with
-every event queued before t ≈ 330 s; snapshot-only payloads are dropped during the whole pause. Fix: 5xx
-only for transient faults (`isTransientDbError` → 503 + `Retry-After`); anything the payload itself
+every event queued before t ≈ 330 s. Up to plugin 1.6.1 every snapshot-only payload is dropped during
+the whole pause, its trail points with it. Plugin PR 45 (unmerged on 2026-10-06) drops only the ones
+without trail points: a snapshot that carries some is queued as an event payload is (those queued within
+a minute of each other are combined into one) and waits behind the same head, pruned by the same rule.
+Fix: 5xx only for transient faults (`isTransientDbError` → 503 + `Retry-After`); anything the payload itself
 causes (SQLSTATE class 22 or 23 other than a racing 23505, a jsonb reject, a parser bug) is answered 400,
 so the plugin drops just that payload (`isDataDbError`, packages/db/src/errors.ts). See
 ([DB-1](database.md#db-1)), ([DB-9](database.md#db-9)).
 
-*Source: `SOURCE` (ConnectionBackoff.java:146-157,206-232, HomeAssistUtils.java:320-334 @0ec2a36)*
+*Source: `SOURCE` (ConnectionBackoff.java:146-157,206-232, HomeAssistUtils.java:320-334 @0ec2a36; plugin PR 45: HomeAssistUtils.java:81-126,186-243, ConnectionBackoff.java:197-232 @a7b1f3c)*
 
 ### PLUGIN-4
 **The plugin pauses and later resends payloads the hub had already committed; the original requests took 10 s or longer.**
 RuneLite's shared OkHttp client sets no timeouts (RuneLite.java:416-440), so OkHttp's defaults apply:
 connect, read and write 10 s each. A response slower than that is an `onFailure` in the plugin, handled
-like a 5xx: a 30 s+ pause, snapshots dropped, event payloads queued and later resent byte-identical, while
-the hub may already have committed the first attempt. Fix: keep every request well under 10 s. The pool
+like a 5xx: a 30 s+ pause, and a payload with events is queued and later resent byte-identical, while
+the hub may already have committed the first attempt. A snapshot without events is dropped up to plugin
+1.6.1. Plugin PR 45 (unmerged on 2026-10-06) also queues one that carries trail points, and what it
+sends later can be several queued snapshots combined into one: the newest, with the trail points of all
+of them, so not a copy of any request the hub has seen. Fix: keep every request well under 10 s. The pool
 gives up connecting after 5 s (`connectionTimeoutMillis`, packages/db/src/client.ts), the per-account
 advisory lock waits under a transaction-local `lock_timeout` (55P03 → 503), and an early
 `503 Retry-After` beats a slow 200. Resends are absorbed by the unique event key
-([DB-2](database.md#db-2)).
+([DB-2](database.md#db-2)), and their trail points by `(account_id, ts)` while the PC clock is right
+([PLUGIN-14](#plugin-14)).
 
-*Source: `SOURCE` (RuneLite client 1.13.0 RuneLite.java:416-440); `OBSERVED` (research sandbox, OkHttp 3.14.9 default timeouts, 2026-09-28)*
+*Source: `SOURCE` (RuneLite client 1.13.0 RuneLite.java:416-440; plugin PR 45: `combineTrailSnapshots`, HomeAssistUtils.java:211-243 @a7b1f3c); `OBSERVED` (research sandbox, OkHttp 3.14.9 default timeouts, 2026-09-28)*
 
 ### PLUGIN-5
 **The plugin ignores the hub's `Retry-After` and waits 30 s, 60 s, 120 s… instead.**

@@ -425,7 +425,8 @@ The location trail, oldest first (`location_history`, kept 30 days). Default: th
   range were left out: ask again with `to` set to the first point's `at` (that point is returned
   again, as the last one).
 - **Following a trail.** Ask with `from` set to the last point's `at`. A point can be dated up to 10 s
-  after the hub received it, and a late message can add points up to 15 minutes back, so overlap the
+  after the hub received it, and a late message can add points up to 30 minutes back: a message up to
+  15 minutes old keeps its own times, and its points may lie up to 15 minutes before it. So overlap the
   requests rather than assuming the trail only grows at its end.
 - **The same stretch twice.** The hub knows a point it already has by its time. It keeps the
   plugin's times only for a message dated between 15 minutes before and 10 s after the moment it

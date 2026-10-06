@@ -238,9 +238,12 @@ async function rejectUnparsable(
 
 /**
  * Per-device token bucket (handoff §7.6). Every payload takes a token, but only payloads without
- * events are refused, with a whole-second Retry-After of at least 3 (PLUGIN-5): the plugin drops
- * snapshots while paused and the next snapshot carries the full state, whereas event payloads must
- * never be refused (they would only queue). Null = go on.
+ * events are refused, with a whole-second Retry-After of at least 3 (PLUGIN-5). A refused snapshot
+ * costs the state nothing: the next one carries all of it. Only its trail points are not repeated
+ * (D-102). A plugin up to 1.6.1 drops the refused snapshot and every snapshot it builds during the
+ * pause, so that part of the trail is gone; HA Exporter PR 45 (unmerged on 2026-10-06) keeps the
+ * ones that carry trail points and sends them after the pause. Event payloads must never be refused
+ * (they would only queue). Null = go on.
  */
 function checkRate(
   run: IngestRun,
