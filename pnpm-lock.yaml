@@ -309,8 +309,8 @@ importers:
         specifier: 0.45.3
         version: 0.45.3(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(kysely@0.29.6)(pg@8.23.1)
       pg-boss:
-        specifier: 12.35.0
-        version: 12.35.0
+        specifier: 12.35.1
+        version: 12.35.1
       pino:
         specifier: 10.3.1
         version: 10.3.1
@@ -4772,8 +4772,8 @@ packages:
   pathe@2.0.3:
     resolution: {integrity: sha512-WUjGcAqP1gQacoQe+OBJsFA7Ld4DyXuUIjZ5cc75cLHvJ7dtNsTugphxIADwspS+AraAUePCKrSVtPLFj/F88w==}
 
-  pg-boss@12.35.0:
-    resolution: {integrity: sha512-4dHoJcbeTVdUHZiCkJDMSAgoCuxbXRCeG+Ik98IqXwXNIMNnEu7MbzgwuEj9IfbYCAeovE4EOdpFRv9K6RLM8g==}
+  pg-boss@12.35.1:
+    resolution: {integrity: sha512-2eGu2HhelLE0jaifdEMMtuy1pgoF9fycs5deHEwQiaXUcxuPQ9udNxb27VquNO8XgYTM3b1cWnsfSuc8RzXuWw==}
     engines: {node: '>=22.12.0'}
     hasBin: true
 
@@ -9741,7 +9741,7 @@ snapshots:
 
   pathe@2.0.3: {}
 
-  pg-boss@12.35.0:
+  pg-boss@12.35.1:
     dependencies:
       cron-parser: 5.10.1
       pg: 8.23.1
