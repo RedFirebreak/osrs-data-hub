@@ -96,8 +96,9 @@ export default async function LoginPage(props: PageProps<'/login'>) {
             never your email or messages.
           </p>
           <p>
-            The hub never asks for your RuneScape or Jagex login. Game data comes from the HA
-            Exporter plugin in RuneLite, which you pair with a code after signing in.
+            The hub never asks for your RuneScape or Jagex login. Sharing game data is opt-in only:
+            nothing is sent until you install the HA Exporter plugin in RuneLite and pair it with a
+            code after signing in.
           </p>
         </div>
       </CardContent>

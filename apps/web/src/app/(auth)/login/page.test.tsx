@@ -77,6 +77,7 @@ describe('login page', () => {
     expect(text).toContain('You sign in at discord.com.');
     expect(text).toContain('never your email or messages');
     expect(text).toContain('The hub never asks for your RuneScape or Jagex login.');
+    expect(text).toContain('Sharing game data is opt-in only:');
     expect(text).toContain('HA Exporter plugin in RuneLite');
   });
 
