@@ -3,11 +3,12 @@
  * headers, like lib/session-pages.test.ts): who gets redirected, who sees the button, and the
  * markup (one h1, the mapped error text).
  */
+import { getConfig, setConfigForTests } from '@hub/core';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { withTestDb, type WebTestContext } from '@/lib/test-utils';
-import LoginPage from './page';
+import LoginPage, { generateMetadata } from './page';
 
 const page = vi.hoisted(() => ({ headers: new Headers() }));
 
@@ -20,7 +21,7 @@ vi.mock('next/headers', () => ({
 let ctx: WebTestContext;
 
 beforeAll(async () => {
-  ctx = await withTestDb({ label: 'loginpage' });
+  ctx = await withTestDb({ label: 'loginpage', env: { DISCORD_GUILD_NAME: 'Iron Lads' } });
 });
 beforeEach(() => {
   page.headers = new Headers();
@@ -47,6 +48,14 @@ async function render(
   }
 }
 
+/** Text only, so assertions don't depend on markup between words. */
+function textOf(html: string): string {
+  return html
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&#x27;/g, "'")
+    .replace(/\s+/g, ' ');
+}
+
 async function signIn(opts: Parameters<WebTestContext['seedUser']>[0] = {}): Promise<void> {
   const userId = await ctx.seedUser(opts);
   page.headers = new Headers({ cookie: await ctx.signIn(userId) });
@@ -59,6 +68,38 @@ describe('login page', () => {
     expect(html.match(/<h1/g)).toHaveLength(1);
     expect(html).toContain('Sign in with Discord');
     expect(html).not.toContain('role="alert"');
+  });
+
+  it('says who the page is for, where the sign-in happens and that no game login is asked', async () => {
+    const text = textOf(await render());
+    expect(text).toContain('For members of Iron Lads only.');
+    expect(text).toContain("If you're not in that server, you can't sign in here.");
+    expect(text).toContain('You sign in at discord.com.');
+    expect(text).toContain('never your email or messages');
+    expect(text).toContain('The hub never asks for your RuneScape or Jagex login.');
+    expect(text).toContain('Sharing game data is opt-in only:');
+    expect(text).toContain('HA Exporter plugin in RuneLite');
+  });
+
+  it('names the stand-in instead of discord.com when local development uses one (D-101)', async () => {
+    const config = getConfig();
+    setConfigForTests({
+      ...config,
+      discord: { ...config.discord, authorizeUrl: 'http://localhost:4010/oauth2/authorize' },
+    });
+    try {
+      expect(textOf(await render())).toContain('You sign in at localhost:4010.');
+    } finally {
+      setConfigForTests(config);
+    }
+  });
+
+  it('describes itself to search engines and link previews the same way', () => {
+    const { title, description } = generateMetadata();
+    expect(title).toBe('Sign in · Test Hub');
+    expect(description).toContain('members of Iron Lads');
+    expect(description).toContain('Discord');
+    expect(description).toContain('never asks for a RuneScape or Jagex login');
   });
 
   it('sends an active user to the dashboard', async () => {

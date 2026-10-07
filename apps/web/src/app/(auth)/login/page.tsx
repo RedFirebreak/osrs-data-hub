@@ -1,5 +1,7 @@
 /**
- * Login (handoff §12 "Login / not allowed"): the hub's name and one "Sign in with Discord" button.
+ * Login (handoff §12 "Login / not allowed"): the hub's name and one "Sign in with Discord" button,
+ * with who the page is for, where the sign-in happens and that the hub never asks for a game login,
+ * so a visitor who doesn't belong here (or who checks whether this is a phishing page) can tell.
  * A refused sign-in comes back as /login?error=<code> (lib/auth.ts, AUTH-6) and gets a clear
  * explanation (login-messages.ts). "Delete my data" (D-78) lands on /login?deleted=<date>, which
  * says when the data goes and that signing in cancels it (deleted-notice.ts; only a parsed date is
@@ -19,7 +21,14 @@ import { loginErrorMessage } from './login-messages';
 import { SignInButton } from './sign-in-button';
 
 export function generateMetadata(): Metadata {
-  return { title: `Sign in · ${getConfig().hubName}` };
+  const config = getConfig();
+  return {
+    title: `Sign in · ${config.hubName}`,
+    description:
+      `Sign-in for members of ${config.discord.guildName}: XP, loot and live events from the ` +
+      'HA Exporter RuneLite plugin. You sign in with Discord; the hub never asks for a RuneScape ' +
+      'or Jagex login.',
+  };
 }
 
 export default async function LoginPage(props: PageProps<'/login'>) {
@@ -31,6 +40,10 @@ export default async function LoginPage(props: PageProps<'/login'>) {
   const guildName = config.discord.guildName;
   const problem = loginErrorMessage(error, guildName);
   const deletion = deletedNotice(deleted);
+  // Where the button sends the browser: Discord, or the stand-in of local development (D-101).
+  const signInHost = config.discord.authorizeUrl
+    ? new URL(config.discord.authorizeUrl).host
+    : 'discord.com';
 
   return (
     <Card className="w-full max-w-sm">
@@ -71,11 +84,23 @@ export default async function LoginPage(props: PageProps<'/login'>) {
             <AlertDescription>{problem.message}</AlertDescription>
           </Alert>
         )}
-        <SignInButton />
-        <p className="text-center text-xs text-balance text-muted-foreground">
-          Only members of {guildName} can sign in. The hub reads your Discord name, avatar and
-          server roles — never your email or messages.
+        <p className="text-center text-sm text-balance">
+          <strong className="font-medium">For members of {guildName} only.</strong> Sign in with the
+          Discord account you use in its Discord server. If you&apos;re not in that server, you
+          can&apos;t sign in here.
         </p>
+        <SignInButton />
+        <div className="flex flex-col gap-2 text-center text-xs text-balance text-muted-foreground">
+          <p>
+            You sign in at {signInHost}. The hub reads your Discord name, avatar and server roles —
+            never your email or messages.
+          </p>
+          <p>
+            The hub never asks for your RuneScape or Jagex login. Sharing game data is opt-in only:
+            nothing is sent until you install the HA Exporter plugin in RuneLite and pair it with a
+            code after signing in.
+          </p>
+        </div>
       </CardContent>
     </Card>
   );
