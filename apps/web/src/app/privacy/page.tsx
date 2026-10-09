@@ -189,7 +189,9 @@ export default async function PrivacyPage() {
             <strong>Guild</strong> (every active member) or <strong>Selected people</strong>. A new
             account starts with the defaults below; its owner sees them, and can change them, on the
             last step of pairing and on the account&apos;s page. An account the hub knew before a
-            default changed keeps what it had until its owner changes it.
+            default changed keeps what it had until its owner changes it. The owner can also hide an
+            account from the guild altogether: then only its players see it, whatever the categories
+            say, and it is left out of the guild page and of what connected services read.
           </p>
           <div className="overflow-x-auto rounded-lg ring-1 ring-foreground/10">
             <Table>
@@ -225,12 +227,13 @@ export default async function PrivacyPage() {
           <p className="text-muted-foreground">
             Where a death or a superior spawn happened is hidden from anyone who may not see the
             account&apos;s location. Admins of {guild} see that every account exists (also accounts
-            hidden while their owner is away) and can change its sharing settings; their own view of
-            each section follows the same rules as everyone else&apos;s. To troubleshoot, admins can
-            open the raw plugin messages of the last {formatHours(config.rawPayloadRetentionHours)},
-            which contain everything the plugin sent; every message an admin opens is recorded in
-            the audit log. Services an admin connects to the hub, such as the guild&apos;s live map,
-            can ask whether a Discord account is a member of the hub and an admin.
+            hidden while their owner is away or hidden from the guild) and can change its sharing
+            settings; their own view of each section follows the same rules as everyone else&apos;s.
+            To troubleshoot, admins can open the raw plugin messages of the last{' '}
+            {formatHours(config.rawPayloadRetentionHours)}, which contain everything the plugin
+            sent; every message an admin opens is recorded in the audit log. Services an admin
+            connects to the hub, such as the guild&apos;s live map, can ask whether a Discord
+            account is a member of the hub and an admin.
           </p>
         </Section>
 

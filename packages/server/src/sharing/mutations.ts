@@ -278,6 +278,31 @@ async function inTransaction(db: Db, fn: (tx: Tx) => Promise<void>): Promise<voi
 }
 
 /**
+ * Hides the account from the guild, or shows it again (D-104). While hidden, only its owner and
+ * contributors see it (admins keep the override to manage it); the audiences and grants are kept as
+ * they are and apply again once it is shown. Setting the current value is a no-op.
+ */
+export async function setHiddenFromGuild(
+  db: Db,
+  actor: Viewer,
+  publicId: string,
+  hidden: boolean,
+): Promise<void> {
+  if (typeof hidden !== 'boolean') throw new SharingError('invalid', 'hidden must be a boolean');
+  await managed(db, actor, publicId, async (tx, { account, raw, asAdmin }) => {
+    if (raw.hiddenFromGuild === hidden) return;
+    await tx
+      .update(osrsAccounts)
+      .set({ hiddenFromGuild: hidden })
+      .where(eq(osrsAccounts.id, account.id));
+    await auditChange(tx, actor, asAdmin, account.publicId, 'sharing.hidden_from_guild_changed', {
+      from: raw.hiddenFromGuild,
+      to: hidden,
+    });
+  });
+}
+
+/**
  * Takes ingest's per-account advisory lock, then the account row, and resolves the actor's access
  * under both. An account the actor may not see is reported as not found.
  *

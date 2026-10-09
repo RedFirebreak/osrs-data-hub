@@ -100,6 +100,11 @@ export interface AccountAccess {
   /** Explicit audiences; missing categories use DEFAULT_AUDIENCE. */
   sharing: Readonly<Partial<Record<Category, Audience>>>;
   grants: readonly { category: Category; userId: string }[];
+  /**
+   * The owner hid the account from the guild (D-104): nobody but its owner and contributors may see
+   * it, whatever its audiences and grants say. Only `false` means shown (fails closed).
+   */
+  hiddenFromGuild: boolean;
 }
 
 export type Relation = 'owner' | 'contributor' | 'member' | 'none';
@@ -129,6 +134,10 @@ export interface ResolvedAccess {
  * - Hidden accounts (owner in grace, no transfer) are invisible to everyone except admins: for a
  *   non-admin, visible false, no categories, canManage false and relation 'none', even for
  *   contributors (and an owner). Admins get the normal rules.
+ * - An account hidden from the guild (hiddenFromGuild, D-104) keeps its owner and contributors as
+ *   they are, and gives everyone else no category at all: audiences and grants don't apply. So a
+ *   member sees nothing (relation 'none'), the guild audience too, and an admin keeps only the
+ *   admin override (visible, canManage, no categories).
  * - visible = relation is owner/contributor, OR at least one category is allowed, OR (admin).
  * - canManage = viewer is owner or viewer.isAdmin (and the viewer is active).
  * So relation 'none' means "sees nothing"; owner/contributor always imply visible, and canManage
@@ -146,6 +155,8 @@ export function resolveAccess(principal: Principal, account: AccountAccess): Res
   const categories = new Set<Category>();
   if (relation === 'owner' || relation === 'contributor') {
     for (const c of CATEGORIES) categories.add(c);
+  } else if (isHiddenFromGuild(account)) {
+    if (!isAdmin) return noAccess();
   } else {
     for (const c of CATEGORIES) {
       const audience = effectiveAudience(account, c);
@@ -163,10 +174,15 @@ export function resolveAccess(principal: Principal, account: AccountAccess): Res
 
 /** The guild audience's access (D-89): the `guild` categories of an active account, nothing else. */
 function resolveGuildAudience(account: AccountAccess): ResolvedAccess {
-  if (account.status !== 'active') return noAccess();
+  if (account.status !== 'active' || isHiddenFromGuild(account)) return noAccess();
   const categories = new Set<Category>();
   for (const c of CATEGORIES) if (effectiveAudience(account, c) === 'guild') categories.add(c);
   return { visible: categories.size > 0, categories, relation: 'member', canManage: false };
+}
+
+/** The account is hidden from the guild (D-104); anything but an explicit `false` counts as hidden. */
+export function isHiddenFromGuild(account: Pick<AccountAccess, 'hiddenFromGuild'>): boolean {
+  return account.hiddenFromGuild !== false;
 }
 
 function noAccess(): ResolvedAccess {

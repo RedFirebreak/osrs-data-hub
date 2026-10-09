@@ -9,6 +9,7 @@
  *     { action: 'grant' | 'revoke', category, userId }     addGrant / removeGrant
  *     { action: 'transfer', userId }                       transferOwnership
  *     { action: 'claim' }                                  claimOwnership
+ *     { action: 'hide', hidden }                           setHiddenFromGuild (D-104)
  *     { action: 'block' | 'unblock' | 'remove', userId }   setContributorBlocked / removeContributor
  *   → 200 `{ sharing }` as it is after the change (null when the actor may no longer read it).
  *   Refusals from the mutation: 404 not_found (invisible), 403 forbidden (not the owner or an
@@ -29,6 +30,7 @@ import {
   removeGrant,
   setAudience,
   setContributorBlocked,
+  setHiddenFromGuild,
   transferOwnership,
 } from '@hub/server';
 import { accountNotFound, assertSameOrigin, handleApi, json, readJson } from '@/lib/http';
@@ -83,6 +85,8 @@ async function applyChange(
       return transferOwnership(db, viewer, publicId, change.userId);
     case 'claim':
       return claimOwnership(db, viewer, publicId);
+    case 'hide':
+      return setHiddenFromGuild(db, viewer, publicId, change.hidden);
     case 'block':
     case 'unblock':
       return setContributorBlocked(db, viewer, publicId, change.userId, change.action === 'block');

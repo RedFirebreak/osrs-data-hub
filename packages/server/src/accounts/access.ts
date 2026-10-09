@@ -43,6 +43,7 @@ export async function loadAccountAccess(
       id: osrsAccounts.id,
       status: osrsAccounts.status,
       ownerUserId: osrsAccounts.ownerUserId,
+      hiddenFromGuild: osrsAccounts.hiddenFromGuild,
     })
     .from(osrsAccounts)
     .where(inArray(osrsAccounts.id, ids));
@@ -78,6 +79,7 @@ export async function loadAccountAccess(
       links: [],
       sharing: {},
       grants: [],
+      hiddenFromGuild: a.hiddenFromGuild,
     });
   }
   for (const l of links) {

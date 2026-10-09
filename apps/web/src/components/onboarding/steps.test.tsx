@@ -264,6 +264,7 @@ describe('DoneSharingControls', () => {
   function settings(over: Partial<Record<Category, Audience>> = {}): SharingSettings {
     return {
       canManage: true,
+      hiddenFromGuild: false,
       categories: CATEGORIES.map((category) => ({
         category,
         audience: over[category] ?? 'guild',

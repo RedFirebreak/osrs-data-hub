@@ -44,7 +44,8 @@ For the guild's own services (its live map, a shared bot) an admin creates a **s
   and it counts towards nobody's limit of 10 keys;
 - it reads what the **guild audience** sees (D-89): the accounts and categories whose sharing audience is
   *guild*. Accounts and categories set to *private* or *selected* stay hidden, exactly as for a member
-  who is neither owner, contributor nor grantee. There is no admin override;
+  who is neither owner, contributor nor grantee, and so does an account its owner hid from the guild
+  (D-104), which is left out whole as if it didn't exist. There is no admin override;
 - its rate limit is its own: **600 requests per minute** unless the admin set another (1–6000);
   `/snapshot` stays at 1 per second;
 - it alone sees `account_hash` (D-91), and it may name 50 accounts per bulk request instead of 10 (D-92);

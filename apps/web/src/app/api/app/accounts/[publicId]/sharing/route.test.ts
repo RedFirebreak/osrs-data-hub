@@ -319,6 +319,33 @@ describe('PATCH /api/app/accounts/[publicId]/sharing', () => {
     expect(rows).toEqual([{ audience: 'private' }]);
   });
 
+  it('hide: only the players see the account until it is shown again (D-104), audited once each', async () => {
+    const owner = await signedIn();
+    const contributor = await signedIn();
+    const member = await signedIn();
+    const account = await seed.account({ owner: owner.userId, contributors: [contributor.userId] });
+    const hidden = await sharingOf(
+      await patch(account.publicId, owner.cookie, { action: 'hide', hidden: true }),
+    );
+    expect(hidden.hiddenFromGuild).toBe(true);
+    await sharingOf(await patch(account.publicId, owner.cookie, { action: 'hide', hidden: true }));
+    expect((await sharingOf(await get(account.publicId, contributor.cookie))).hiddenFromGuild).toBe(
+      true,
+    );
+    // A contributor may not change it; a member doesn't learn the account exists.
+    expect(
+      (await patch(account.publicId, contributor.cookie, { action: 'hide', hidden: false })).status,
+    ).toBe(403);
+    expect(
+      (await patch(account.publicId, member.cookie, { action: 'hide', hidden: false })).status,
+    ).toBe(404);
+    const shown = await sharingOf(
+      await patch(account.publicId, owner.cookie, { action: 'hide', hidden: false }),
+    );
+    expect(shown.hiddenFromGuild).toBe(false);
+    expect(await audits(account.publicId, 'sharing.hidden_from_guild_changed')).toBe(2);
+  });
+
   it('400 invalid_request for malformed bodies, and nothing changes', async () => {
     const owner = await signedIn();
     const account = await seed.account({ owner: owner.userId });
@@ -328,6 +355,8 @@ describe('PATCH /api/app/accounts/[publicId]/sharing', () => {
       [{ action: 'grant', category: 'stats' }, 'userId'],
       [{ action: 'transfer', userId: '' }, 'userId'],
       [{ action: 'claim', userId: 'x' }, ''],
+      [{ action: 'hide' }, 'hidden'],
+      [{ action: 'hide', hidden: 'yes' }, 'hidden'],
       [{ action: 'explode' }, 'action'],
       [{}, 'action'],
     ];

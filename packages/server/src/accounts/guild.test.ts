@@ -5,6 +5,7 @@ import { LEADERBOARD_SIZE, getGuildOverview } from './guild';
 import {
   seedAccount,
   seedEvent,
+  seedGrant,
   seedLatestState,
   seedLink,
   seedSharing,
@@ -27,6 +28,7 @@ let yankee: SeededAccount;
 let xray: SeededAccount;
 let whiskey: SeededAccount;
 let zuluEvents: number[];
+let victorEvent: number;
 
 async function withSkills(
   account: SeededAccount,
@@ -98,6 +100,22 @@ beforeAll(async () => {
 
   const hidden = await seedAccount(t.db, { name: 'Hidden', owner: alice.id, status: 'hidden' });
   await seedEvent(t.db, hidden.id, { type: 'loot' });
+
+  // Hidden from the guild by its owner (D-104), shared with the guild and granted to the viewer
+  // anyway: only alice and her contributor Bob see it, however big its gains.
+  const victor = await seedAccount(t.db, {
+    name: 'Victor',
+    owner: alice.id,
+    contributors: [bob.id],
+    hiddenFromGuild: true,
+  });
+  for (const c of CATEGORIES) {
+    await seedSharing(t.db, victor.id, c, 'guild');
+    await seedGrant(t.db, victor.id, c, viewer.id);
+  }
+  await withSkills(victor, { Attack: [1e9, 99] }, online);
+  await seedXp(t.db, victor.id, [['Attack', '2026-09-28T01:00:00Z', 1]]);
+  victorEvent = (await seedEvent(t.db, victor.id, { type: 'loot' })).seq;
 
   // Twelve fishers for the top-10 cut.
   for (let i = 1; i <= 12; i++) {
@@ -212,6 +230,37 @@ describe('getGuildOverview', () => {
       ['Yankee', 2000],
       ['Xray', 800],
     ]);
+  });
+
+  it('shows an account hidden from the guild to its players only (D-104)', async () => {
+    const names = (guild: Awaited<ReturnType<typeof getGuildOverview>>) =>
+      guild.members.flatMap((m) => m.accounts.map((a) => a.name));
+    const attack = (guild: Awaited<ReturnType<typeof getGuildOverview>>) =>
+      guild.leaderboards.day.find((b) => b.skill === 'Attack')?.entries.map((e) => e.name);
+
+    for (const player of [alice, bob]) {
+      const guild = await getGuildOverview(t.db, player.viewer, { now: NOW });
+      expect(names(guild)).toContain('Victor');
+      expect(guild.feed.map((e) => e.seq)).toContain(victorEvent);
+      expect(attack(guild)).toContain('Victor');
+    }
+
+    const asMember = await getGuildOverview(t.db, viewer.viewer, { now: NOW });
+    expect(names(asMember)).not.toContain('Victor');
+    expect(asMember.feed.map((e) => e.seq)).not.toContain(victorEvent);
+    expect(attack(asMember)).toEqual(['Zulu', 'Yankee']);
+  });
+
+  it("doesn't list an account to an admin who sees it only through the override", async () => {
+    const asAdmin = await getGuildOverview(t.db, { ...viewer.viewer, isAdmin: true }, { now: NOW });
+    const names = asAdmin.members.flatMap((m) => m.accounts.map((a) => a.name));
+    // Hidden from the guild, and every category private: nothing of either is the admin's to read.
+    expect(names).not.toContain('Victor');
+    expect(names).not.toContain('Uniform');
+    // What the guild sees stays listed, and so does an account hidden while its owner is in grace,
+    // whose data an admin may read (the account is shared with the guild).
+    expect(names).toEqual(expect.arrayContaining(['Zulu', 'Yankee', 'Whiskey', 'Hidden']));
+    expect(asAdmin.feed.map((e) => e.seq)).not.toContain(victorEvent);
   });
 
   it('cuts the day at local midnight', async () => {

@@ -11,6 +11,7 @@ import {
   isAdminPrincipal,
   isCategory,
   isGuildAudience,
+  isHiddenFromGuild,
   redactEventData,
   resolveAccess,
   type AccountAccess,
@@ -38,6 +39,7 @@ function account(over: Partial<AccountAccess> = {}): AccountAccess {
     ],
     sharing: {},
     grants: [],
+    hiddenFromGuild: false,
     ...over,
   };
 }
@@ -791,5 +793,71 @@ describe('redactEventData', () => {
     // By default a member gets both location categories (D-96), so the coordinates are kept.
     const byDefault = resolveAccess(viewer(MEMBER), account());
     expect(redactEventData(ev, byDefault.categories)).toBe(ev);
+  });
+});
+
+describe('resolveAccess: hidden from the guild (D-104)', () => {
+  // Shared with everyone and granted to the member: the flag must win over both.
+  const hidden = account({
+    hiddenFromGuild: true,
+    sharing: all('guild'),
+    grants: CATEGORIES.map((category) => ({ category, userId: MEMBER })),
+  });
+
+  it('leaves the owner and contributors everything', () => {
+    for (const id of [OWNER, CONTRIB]) {
+      const r = resolveAccess(viewer(id), hidden);
+      expect(r.visible).toBe(true);
+      expect(sorted(r.categories)).toEqual(ALL);
+    }
+    expect(resolveAccess(viewer(OWNER), hidden).canManage).toBe(true);
+  });
+
+  it('shows a member nothing, guild audiences and grants included', () => {
+    expect(resolveAccess(viewer(MEMBER), hidden)).toEqual({
+      visible: false,
+      categories: new Set(),
+      relation: 'none',
+      canManage: false,
+    });
+  });
+
+  it('shows the guild audience (service keys) nothing', () => {
+    const r = resolveAccess(GUILD_AUDIENCE, hidden);
+    expect(r.visible).toBe(false);
+    expect(r.categories.size).toBe(0);
+  });
+
+  it('treats a blocked contributor as a member', () => {
+    const blocked = account({
+      hiddenFromGuild: true,
+      sharing: all('guild'),
+      links: [{ userId: CONTRIB, role: 'contributor', blocked: true }],
+    });
+    expect(resolveAccess(viewer(CONTRIB), blocked).visible).toBe(false);
+  });
+
+  it('keeps the admin override (to manage it) but no category', () => {
+    const r = resolveAccess(viewer(ADMIN, { isAdmin: true }), hidden);
+    expect(r).toEqual({
+      visible: true,
+      categories: new Set(),
+      relation: 'member',
+      canManage: true,
+    });
+  });
+
+  it('fails closed: anything but false is hidden', () => {
+    expect(isHiddenFromGuild({ hiddenFromGuild: false })).toBe(false);
+    expect(isHiddenFromGuild({ hiddenFromGuild: true })).toBe(true);
+    const odd = { ...account({ sharing: all('guild') }), hiddenFromGuild: undefined };
+    expect(isHiddenFromGuild(odd as unknown as AccountAccess)).toBe(true);
+    expect(resolveAccess(viewer(MEMBER), odd as unknown as AccountAccess).visible).toBe(false);
+  });
+
+  it('changes nothing while off', () => {
+    const shown = account({ sharing: all('guild') });
+    expect(sorted(resolveAccess(viewer(MEMBER), shown).categories)).toEqual(ALL);
+    expect(sorted(resolveAccess(GUILD_AUDIENCE, shown).categories)).toEqual(ALL);
   });
 });
