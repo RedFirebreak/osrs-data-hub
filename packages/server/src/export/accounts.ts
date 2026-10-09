@@ -21,6 +21,7 @@ import {
 import { and, asc, desc, eq, gt, min, ne, sql, type SQL } from 'drizzle-orm';
 import type { AccountWithAccess } from '../accounts/load';
 import { loadAccountSections } from '../api/state';
+import { readGoals } from '../account-metrics/goals';
 import { loadHiscoresViews } from '../hiscores/read';
 import { toApiItems } from '../api/types';
 import { EVENT_ROW_COLUMNS, toFeedEvent } from '../feed';
@@ -210,6 +211,20 @@ async function* historyFields(
     const exact = can('activity');
     yield ['hiscores', await hiscoresField(ctx.db, entry, exact)];
     yield ['activity_scores', streamed(() => jsonArray(scorePages(ctx, id), wireScore(exact)))];
+  }
+  // Goals go with the account (D-109), each only when its category is readable (readGoals).
+  const goals = await readGoals(ctx.db, entry);
+  if (goals.length > 0) {
+    const exact = can('activity');
+    yield [
+      'goals',
+      goals.map((g) => ({
+        kind: g.kind,
+        target: g.target,
+        value: g.value,
+        created_at: stamp(new Date(g.createdAt), exact),
+      })),
+    ];
   }
 }
 

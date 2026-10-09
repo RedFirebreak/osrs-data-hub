@@ -85,6 +85,13 @@
       "when": 1791584611655,
       "tag": "0011_hiscores",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1791585466958,
+      "tag": "0012_account_goals",
+      "breakpoints": true
     }
   ]
 }

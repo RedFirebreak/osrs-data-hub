@@ -5,6 +5,7 @@
  */
 import type { Category } from '@hub/core';
 import {
+  accountGoals,
   accountHiscores,
   accountNames,
   activityScores,
@@ -700,6 +701,44 @@ describe('accountDocument', () => {
       { activity: 'Zulrah', read_at: iso(RECENT), score: 5, baseline: true },
       { activity: 'Zulrah', read_at: iso(RECENT), score: 12, baseline: false },
     ]);
+  });
+
+  it('writes the goals whose category the user can see, with the day only without activity', async () => {
+    await t.db.insert(accountGoals).values([
+      {
+        accountId: mine.id,
+        kind: 'level',
+        target: 'Attack',
+        value: 99,
+        createdAt: new Date(RECENT),
+      },
+      {
+        accountId: mine.id,
+        kind: 'kc',
+        target: 'Zulrah',
+        value: 500,
+        createdAt: new Date(RECENT + MIN),
+      },
+    ]);
+    try {
+      const goalsOf = async (categories: Category[]) =>
+        (
+          JSON.parse(
+            (await collect(accountDocument(await ctx(), await owned(categories)))).text,
+          ) as {
+            goals?: unknown;
+          }
+        ).goals;
+      expect(await goalsOf(['stats', 'activity'])).toEqual([
+        { kind: 'level', target: 'Attack', value: 99, created_at: iso(RECENT) },
+      ]);
+      expect(await goalsOf(['hiscores'])).toEqual([
+        { kind: 'kc', target: 'Zulrah', value: 500, created_at: iso(RECENT) },
+      ]);
+      expect(await goalsOf(['events'])).toBeUndefined();
+    } finally {
+      await t.db.delete(accountGoals).where(eq(accountGoals.accountId, mine.id));
+    }
   });
 
   it('redacts event locations exactly as the feed does without a location category', async () => {
