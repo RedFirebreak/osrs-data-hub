@@ -64,6 +64,7 @@ For the guild's own services (its live map, a shared bot) an admin creates a **s
 | `location_history` | the 30-day trail |
 | `equipment` | current gear and its change log |
 | `inventory` | current inventory and wealth history |
+| `hiscores` | ranks, boss kill counts, clues and minigames from the official hiscores (D-105) |
 
 ## Conventions
 
@@ -501,6 +502,44 @@ The period's most valuable drops over accounts whose `events` the key reads (D-9
         "title":"Loot","line":"Alpha Main received Armadyl chestplate (35.2M) from Kree'arra"}},
       {"rank":2,"event":{"id":"…","type":"pk_loot","account":{"id":"jHSfP5UICcQt","name":"Bravo Alt"},"value_gp":1250000,…}}]},
      "meta":{"generated_at":"…"}}
+
+### GET /accounts/{id}/hiscores
+
+What the hub last read from the official OSRS hiscores for the account (`hiscores`, D-105). The hub
+looks an account up about 10 minutes after a session ends, once a day otherwise, and at once when it
+is new or renamed, so polling every few minutes is plenty. Not part of `/snapshot`.
+
+    {"data":{"account":{"id":"oC8RsqiTuyak","name":"Alpha Main"},"status":"ok","fetched_at":"2026-10-09T21:40:00.000Z",
+     "mode":"ironman",
+     "skills":[{"skill":"Overall","level":2277,"xp":312000000,"rank":91000,"mode_rank":4100},
+       {"skill":"Attack","level":99,"xp":13034431,"rank":120000,"mode_rank":5100},…],
+     "activities":[{"activity":"Zulrah","kind":"boss","score":512,"rank":12000,"mode_rank":800},
+       {"activity":"Clue Scrolls (all)","kind":"clue","score":340,"rank":50000,"mode_rank":null},…]},"meta":{…}}
+
+- `status`: `ok`; `pending` (not looked up yet); `not_found` (the name isn't on the hiscores: renamed,
+  or too low to be ranked); `mismatch` (the hiscores showed less XP than the plugin already reported:
+  they lag, or the name is someone else's now). For the last two, the data is the last ok lookup's.
+- `fetched_at`: when the data was read; `null` if never (then both lists are empty). Without
+  `activity` on the account, cut to the start of its UTC day (D-50): lookups follow the end of a
+  session.
+- `mode`: `regular`, `ironman`, `hardcore_ironman` or `ultimate_ironman`, from the account type. Group
+  irons are `regular`.
+- `skills`: every skill, Overall first, names as Jagex writes them. `level` is the real level (the
+  total level for Overall); `xp` and `rank` are `null` where the hiscores list none.
+- `activities`: only scores above 0, in Jagex's order, names as Jagex writes them. A missing one is
+  below the hiscores' threshold (5 kills for most bosses) or never done. `kind` is `boss`, `clue` or
+  `activity` (minigames, points, Collections Logged); a name the hub doesn't know counts as `boss`.
+- `rank` is on the main hiscores, `mode_rank` on the account's own iron table (`null` for `regular`
+  and where it isn't listed).
+
+### GET /hiscores?accounts=a,b
+
+The same for several accounts, in request order: at most 10 with a user key, 50 with a service key
+(D-92), each of which the key must read `hiscores` of (else 404 naming it). Without `accounts`, every
+visible account whose `hiscores` the key reads, by name.
+
+    {"data":[{"account":{…},"status":"ok","fetched_at":"…","mode":"regular","skills":[…],"activities":[…]},…],
+     "meta":{"generated_at":"…","count":2}}
 
 ### GET /members/{discord_id}
 

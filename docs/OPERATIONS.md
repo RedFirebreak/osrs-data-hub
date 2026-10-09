@@ -28,6 +28,13 @@ its default is listed in `.env.example`.
   load, browser-cached). For an offline or privacy-minded install, set it to empty (names only) or to a
   mirror: extract an osrs-icons release tarball into any static web root that sends
   `Access-Control-Allow-Origin: *`. It is read at runtime, so no image rebuild is needed.
+- **Official hiscores** (`HISCORES_URL`, D-105): the worker looks each account up on
+  `https://secure.runescape.com` by its in-game name, about 10 minutes after a session ends and once a
+  day, at most one request every `HISCORES_REQUEST_INTERVAL_MS` (3 s). It pauses on anything but a
+  clean answer (from a minute up to an hour), so a blocked server IP shows as
+  `hub_hiscore_lookups_total{result="throttled"}` climbing and stale hiscores, never as errors for
+  players. Set it to empty to turn the lookups off; a development or test stack should, or point it
+  at a fake.
 
 ## 2. Start
 
@@ -148,6 +155,7 @@ policies, D-40):
 | Raw ingest payloads | 72 hours | `RAW_PAYLOAD_RETENTION_HOURS` |
 | Audit log | 2 years | `AUDIT_LOG_RETENTION_DAYS` |
 | Events, sessions, equipment, wealth | forever | — |
+| Official hiscores: latest lookup, score changes, XP filled from them | forever (the latest while the account exists) | — |
 
 Never run `refresh_continuous_aggregate` by hand with a NULL start on `xp_hourly`/`xp_daily`: refreshing
 a range whose raw data retention already dropped erases the aggregated history (TSDB-1).
@@ -162,7 +170,8 @@ a range whose raw data retention already dropped erases the aggregated history (
     group and status, latency, 429s by limit, failed key authentications) and data exports;
   - the worker's `GET /metrics` on port `WORKER_METRICS_PORT` (9464): job durations, runs and last
     success, Discord re-verification (checks, failures, circuit-breaker trips), open play sessions,
-    grace expiries and deleted accounts (D-84).
+    grace expiries and deleted accounts (D-84), official hiscores lookups by result and XP fills
+    (D-105).
 
   The full list is in [ARCHITECTURE.md §13](ARCHITECTURE.md#13-configuration-and-operations). Labels
   are fixed sets: no user, account or device ids, names, IP addresses or coordinates.

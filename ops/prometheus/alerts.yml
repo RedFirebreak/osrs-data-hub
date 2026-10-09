@@ -76,6 +76,8 @@ groups:
           (time() - max by (job_name) (hub_job_last_success_timestamp_seconds{job_name="expire-grace"})) > 10800
           or
           (time() - max by (job_name) (hub_job_last_success_timestamp_seconds{job_name="prune-audit-log"})) > 93600
+          or
+          (time() - max by (job_name) (hub_job_last_success_timestamp_seconds{job_name="sync-hiscores"})) > 600
         labels:
           severity: warning
         annotations:
@@ -83,3 +85,20 @@ groups:
           description: >-
             {{ $labels.job_name }} last succeeded {{ $value | humanizeDuration }} ago. Check that the
             worker is running and the job's schedule, and the worker logs.
+
+      - alert: HubHiscoresBlocked
+        # D-105: the worker pauses every lookup on a push-back, so nothing fails loudly; the hiscores
+        # only go stale.
+        expr: |
+          sum(increase(hub_hiscore_lookups_total{result="throttled"}[6h])) > 0
+          and on ()
+          sum(increase(hub_hiscore_lookups_total{result=~"ok|not_found|mismatch"}[6h])) < 1
+        labels:
+          severity: warning
+        annotations:
+          summary: 'The official hiscores have refused every lookup for 6 hours'
+          description: >-
+            The worker's hiscores lookups were throttled or blocked (429, 403, a Cloudflare challenge)
+            and none got through in 6 hours, so ranks and kill counts are going stale. Usually the
+            server's IP is rate limited or blocked by Jagex: raise HISCORES_REQUEST_INTERVAL_MS, or
+            set HISCORES_URL empty to stop asking.

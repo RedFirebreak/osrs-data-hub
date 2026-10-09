@@ -8,6 +8,7 @@ import {
   DISCORD_VERIFY_BREAKER_RULES,
   DISCORD_VERIFY_FAILURE_KINDS,
   DISCORD_VERIFY_VERDICTS,
+  HISCORE_LOOKUP_RESULTS,
   INGEST_IGNORED_REASONS,
   JOB_NAMES,
   JOB_RESULTS,
@@ -112,6 +113,7 @@ describe('metrics at startup', () => {
       DATA_EXPORT_RESULTS.length +
       API_RATE_LIMITS.length +
       API_AUTH_FAILURES.length +
+      HISCORE_LOOKUP_RESULTS.length +
       // Per job: one counter per result, plus the histogram's _sum and _count.
       JOB_NAMES.length * (JOB_RESULTS.length + 2);
 

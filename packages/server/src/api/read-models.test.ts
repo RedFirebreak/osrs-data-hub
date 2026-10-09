@@ -251,6 +251,7 @@ describe('apiGetAccount', () => {
         'location_history',
         'equipment',
         'inventory',
+        'hiscores',
       ],
       presence: {
         shared: true,
@@ -376,7 +377,7 @@ describe('apiSnapshot', () => {
       type: 1,
       typeLabel: 'Ironman',
       owner: { name: ironId, discordId: null },
-      categories: ['stats', 'events', 'activity'],
+      categories: ['stats', 'events', 'activity', 'hiscores'],
       online: false,
       world: 319,
       specialWorld: false,

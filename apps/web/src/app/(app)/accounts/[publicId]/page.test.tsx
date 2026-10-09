@@ -199,6 +199,7 @@ describe('account page', () => {
       'XP history',
       'Sessions &amp; playtime',
       'Events',
+      'Hiscores',
       'Vitals',
       'Location',
       'Equipment',
@@ -245,6 +246,7 @@ describe('account page', () => {
       'XP history',
       'Sessions &amp; playtime',
       'Events',
+      'Hiscores',
       'Vitals',
       'Location',
     ]);

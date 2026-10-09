@@ -124,7 +124,7 @@ describe('a service key on /api/v1', () => {
     expect(body.data[0]).toMatchObject({
       account_hash: world.main.hash,
       owner: { name: 'Owner', discord_id: OWNER_DISCORD_ID },
-      categories: ['stats', 'events', 'activity', 'location_live'],
+      categories: ['stats', 'events', 'activity', 'location_live', 'hiscores'],
       online: true,
       location: { x: 3164, y: 3487 },
     });
