@@ -1,8 +1,8 @@
 'use client';
 /**
- * The one ECharts wrapper. Registers only what the hub's charts use (line and bar series, grid,
- * legend, tooltip, the canvas renderer) from the modular `echarts/*` entry points, so the bundle
- * stays small; resizes with its container (ResizeObserver); follows light/dark mode by resolving the
+ * The one ECharts wrapper. Registers only what the hub's charts use (line, bar, scatter and heatmap
+ * series; grid, legend, tooltip, visual map, mark areas and lines, the brush; the canvas renderer)
+ * from the modular `echarts/*` entry points, so the bundle stays small; resizes with its container (ResizeObserver); follows light/dark mode by resolving the
  * page's CSS variables and re-resolving them when the theme changes (the `.dark` class or other
  * attribute on <html>, or the OS colour scheme); disposes the instance on unmount.
  *
@@ -13,9 +13,22 @@
  *
  * `option` is a function of the resolved theme; pass a memoized one (useCallback/useMemo) so the
  * chart is only re-set when its data or the theme changes.
+ *
+ * `onEvents` listens to the chart's own events (a click on a mark, the end of a brush); `brush`
+ * turns the pointer into a horizontal brush on the x-axis (the option must have a `brush`
+ * component), so a drag selects a span instead of needing a toolbox button first.
  */
-import { BarChart, LineChart } from 'echarts/charts';
-import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components';
+import { BarChart, HeatmapChart, LineChart, ScatterChart } from 'echarts/charts';
+import {
+  BrushComponent,
+  GridComponent,
+  LegendComponent,
+  MarkAreaComponent,
+  MarkLineComponent,
+  ToolboxComponent,
+  TooltipComponent,
+  VisualMapContinuousComponent,
+} from 'echarts/components';
 import { init, use as registerParts, type EChartsType } from 'echarts/core';
 import { CanvasRenderer } from 'echarts/renderers';
 import { useEffect, useRef, useSyncExternalStore } from 'react';
@@ -32,11 +45,23 @@ import {
 registerParts([
   BarChart,
   LineChart,
+  ScatterChart,
+  HeatmapChart,
   GridComponent,
   LegendComponent,
   TooltipComponent,
+  VisualMapContinuousComponent,
+  MarkAreaComponent,
+  MarkLineComponent,
+  BrushComponent,
+  // The brush component reads its buttons from the toolbox and warns without it; no toolbox is shown.
+  ToolboxComponent,
   CanvasRenderer,
 ]);
+
+/** The chart events a caller may listen to. */
+export type EChartEventName = 'click' | 'brushEnd';
+export type EChartEvents = Partial<Record<EChartEventName, (params: unknown) => void>>;
 
 export interface EChartProps {
   option: (theme: ChartTheme) => ChartOption;
@@ -46,18 +71,41 @@ export interface EChartProps {
   busy?: boolean;
   /** Sizing (default h-64 w-full). */
   className?: string;
+  /** Handlers of the chart's events (see the file comment). */
+  onEvents?: EChartEvents;
+  /** Dragging across the plot brushes a span of the x-axis (see the file comment). */
+  brush?: boolean;
 }
 
-export function EChart({ option, label, busy = false, className }: EChartProps) {
+const EVENT_NAMES: readonly EChartEventName[] = ['click', 'brushEnd'];
+
+export function EChart({
+  option,
+  label,
+  busy = false,
+  className,
+  onEvents,
+  brush = false,
+}: EChartProps) {
   const container = useRef<HTMLDivElement>(null);
   const chart = useRef<EChartsType | null>(null);
   const theme = useChartTheme();
+  // The latest handlers, so a new render's closures are used without rebinding.
+  const handlers = useRef(onEvents);
+  useEffect(() => {
+    handlers.current = onEvents;
+  });
 
   useEffect(() => {
     const el = container.current;
     if (!el) return;
     const instance = init(el, undefined, { renderer: 'canvas' });
     chart.current = instance;
+    for (const name of EVENT_NAMES) {
+      instance.on(name, (...args: unknown[]) => {
+        handlers.current?.[name]?.(args[0]);
+      });
+    }
     const observer = new ResizeObserver(() => instance.resize());
     observer.observe(el);
     return () => {
@@ -68,8 +116,17 @@ export function EChart({ option, label, busy = false, className }: EChartProps) 
   }, []);
 
   useEffect(() => {
-    chart.current?.setOption(option(theme), { notMerge: true, lazyUpdate: true });
-  }, [option, theme]);
+    const instance = chart.current;
+    if (!instance) return;
+    instance.setOption(option(theme), { notMerge: true, lazyUpdate: true });
+    if (brush) {
+      instance.dispatchAction({
+        type: 'takeGlobalCursor',
+        key: 'brush',
+        brushOption: { brushType: 'lineX', brushMode: 'single' },
+      });
+    }
+  }, [option, theme, brush]);
 
   return (
     <div
