@@ -55,7 +55,7 @@ Before calling a change done, run the chain that follows what you changed:
 | The location trail: what is stored of it, its times and its labels (`packages/core/src/ingest/plan.ts`, `packages/core/src/trail.ts`, `/locations`) | `chain delivery` and `chain trail`, then `smoke` | A walk whose messages came late, combined, out of order or twice is stored once and is the same walk on the map, and the label of every step of a journey reaches the map |
 | Presence, sessions, timeouts | `chain presence` | A client that stops without a logout goes offline on hub, map and Home Assistant |
 | Pairing, devices, tokens | `chain revoke` | A revoked device gets 401, which is what turns the plugin's connection off |
-| The hiscores lookups, what is stored of them and what they add (`packages/server/src/hiscores`, `packages/core/src/hiscores.ts`, `/hiscores`) | `up full --worker`, then `chain hiscores` | A player's scores and the XP made outside RuneLite reach the hub from the (fake) hiscores, hiscores that show less than the plugin reported add nothing, and a private `hiscores` category is gone for a service key |
+| The hiscores lookups, what is stored of them and what they add (`packages/server/src/hiscores`, `packages/core/src/hiscores.ts`, `/hiscores`) | `up full --worker`, then `chain hiscores` | A player's kill count goes from the (fake) hiscores to the hub and the map, and is gone from both when made private; XP made outside RuneLite reaches the hub, and hiscores that show less than the plugin reported add nothing |
 
 - A `FAIL` is yours to explain before you go on: either the change broke something downstream, or the
   chain needs to change with it (`../osrs-dev-stack/lib/chains.mjs`). A `KNOWN` line is a gap that is

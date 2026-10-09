@@ -277,6 +277,9 @@ changed after it.
 - Accounts that changed up to 30 s before `since` are sent again; merge them by `id`.
 - Accounts whose `activity` the key can't read are always sent.
 - An account that leaves the key's reach simply stops appearing, so fetch without `since` now and then.
+- A sharing change alone is no new data: an account whose `categories` changed (a category made private
+  or shared again, `hiscores` included) is not sent with `since` until something else about it changes.
+  The next read without `since` has the new `categories`.
 
 ### GET /accounts/{id}/xp?skills=&from=&to=&resolution=
 
