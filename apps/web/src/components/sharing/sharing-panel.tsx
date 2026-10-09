@@ -2,6 +2,8 @@
 /**
  * The sharing panel of an account page (handoff §10, §12), for its owner, its players (read-only)
  * and admins (who may override):
+ * - "Hide from the guild" (D-104): one switch that leaves the account to its players only, whatever
+ *   the categories below say (they are kept for when it is shown again);
  * - per category an audience (Private / Guild / Selected people), the default marked, and for
  *   "Selected people" the members granted it with an "Add person" picker (CategoryAudiences);
  * - the account's players (owner and contributors) with block / unblock / remove, and handing
@@ -43,6 +45,8 @@ import {
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -148,13 +152,31 @@ export function SharingPanel({ publicId, initial, hasOwner, relation, now }: Sha
         </Alert>
       )}
 
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex flex-col gap-1">
+          <Label htmlFor={`${id}-hidden`}>Hide from the guild</Label>
+          <p id={`${id}-hidden-help`} className="text-xs text-muted-foreground">
+            Only this account&apos;s players see it: it leaves the guild page, the leaderboards, the
+            activity feed and what connected services such as the live map can read.
+          </p>
+        </div>
+        <Switch
+          id={`${id}-hidden`}
+          checked={settings.hiddenFromGuild}
+          disabled={!canManage || pending}
+          onCheckedChange={(hidden) => void apply({ action: 'hide', hidden }, {}, `${id}-hidden`)}
+          aria-describedby={`${id}-hidden-help`}
+        />
+      </div>
+
       <section aria-labelledby={`${id}-categories`} className="flex flex-col gap-2">
         <h3 id={`${id}-categories`} className="text-sm font-semibold">
           Who can see what
         </h3>
         <p className="text-xs text-muted-foreground">
-          The account&apos;s players always see everything. The plugin decides what reaches the hub
-          at all.
+          {settings.hiddenFromGuild
+            ? 'Hidden from the guild: nobody but the players sees any of this. These choices apply again once the account is shown.'
+            : "The account's players always see everything. The plugin decides what reaches the hub at all."}
         </p>
         <CategoryAudiences idPrefix={id} sharing={sharing} />
       </section>

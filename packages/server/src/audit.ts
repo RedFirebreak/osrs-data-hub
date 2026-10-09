@@ -22,6 +22,7 @@ export const AUDIT_ACTIONS = [
   'sharing.audience_changed',
   'sharing.grant_added',
   'sharing.grant_removed',
+  'sharing.hidden_from_guild_changed',
   'api_key.created',
   'api_key.revoked',
   'service_key.created',

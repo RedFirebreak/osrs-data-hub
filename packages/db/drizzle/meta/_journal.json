@@ -71,6 +71,13 @@
       "when": 1790953412894,
       "tag": "0009_location_samples_columnstore",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1791569555528,
+      "tag": "0010_account_hidden_from_guild",
+      "breakpoints": true
     }
   ]
 }

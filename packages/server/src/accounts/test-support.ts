@@ -63,6 +63,8 @@ export async function seedAccount(
     owner?: string | null;
     contributors?: string[];
     status?: AccountStatus;
+    /** D-104. */
+    hiddenFromGuild?: boolean;
     accountType?: number | null;
     firstSeen?: Date;
     lastSeen?: Date;
@@ -81,6 +83,7 @@ export async function seedAccount(
       ownerUserId: opts.owner ?? null,
       status: opts.status ?? 'active',
       hiddenAt: opts.status === 'hidden' ? new Date() : null,
+      hiddenFromGuild: opts.hiddenFromGuild ?? false,
       ...(opts.firstSeen ? { firstSeen: opts.firstSeen } : {}),
       ...(opts.lastSeen ? { lastSeen: opts.lastSeen } : {}),
     })

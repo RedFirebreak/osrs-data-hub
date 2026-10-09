@@ -21,6 +21,7 @@ const AUDIT_ACTION_LABELS: Readonly<Record<AuditAction, string>> = {
   'sharing.audience_changed': 'Sharing audience changed',
   'sharing.grant_added': 'Sharing grant added',
   'sharing.grant_removed': 'Sharing grant removed',
+  'sharing.hidden_from_guild_changed': 'Hidden from the guild changed',
   'raw_payload.viewed': 'Raw payload viewed',
   'hub.decommissioned': 'Decommission switch',
   'hub.guild_feed_changed': 'Guild feed settings changed',

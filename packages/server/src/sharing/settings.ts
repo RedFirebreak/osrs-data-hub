@@ -36,6 +36,11 @@ export interface SharingContributor {
 export interface SharingSettings {
   /** The viewer may change these settings (the owner, or an admin override). */
   canManage: boolean;
+  /**
+   * The account is hidden from the guild (D-104): only its players see it, whatever `categories`
+   * say. The categories keep their audiences and grants for when it is shown again.
+   */
+  hiddenFromGuild: boolean;
   /** Every category, in CATEGORIES order. */
   categories: SharingCategory[];
   /** Every linked user, blocked ones included; the owner first, then by first report. */
@@ -93,6 +98,7 @@ export async function getSharingSettings(
   const isOwner = (userId: string) => userId === account.ownerUserId;
   return {
     canManage: access.canManage,
+    hiddenFromGuild: raw.hiddenFromGuild,
     categories: CATEGORIES.map((category) => ({
       category,
       audience: effectiveAudience(raw, category),

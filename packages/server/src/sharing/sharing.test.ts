@@ -4,6 +4,8 @@ import { createTestDatabase, type TestDatabase } from '@hub/db/testing';
 import { and, asc, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { listFeed } from '../accounts/list-feed';
+import { loadVisibleAccount } from '../accounts/load';
+import { GUILD_AUDIENCE } from '@hub/core';
 import {
   seedAccount,
   seedEvent,
@@ -22,6 +24,7 @@ import {
   removeGrant,
   setAudience,
   setContributorBlocked,
+  setHiddenFromGuild,
   transferOwnership,
 } from './mutations';
 import { getSharingSettings, listActiveMembers } from './settings';
@@ -250,6 +253,93 @@ describe('setAudience', () => {
       setAudience(t.db, owner.viewer, account.publicId, 'toString' as 'stats', 'guild'),
       'invalid',
     );
+  });
+});
+
+describe('setHiddenFromGuild (D-104)', () => {
+  it('hides the account from everyone but its players and shows it again, audited once each', async () => {
+    const account = await sharedAccount();
+    await seedEvent(t.db, account.id, { type: 'loot' });
+    // A grant too: hiding wins over it.
+    await seedSharing(t.db, account.id, 'stats', 'selected');
+    await seedGrant(t.db, account.id, 'stats', member.id);
+    const feed = (viewer: SeededUser['viewer']) =>
+      listFeed(t.db, viewer, { accountPublicId: account.publicId });
+
+    await setHiddenFromGuild(t.db, owner.viewer, account.publicId, true);
+    await setHiddenFromGuild(t.db, owner.viewer, account.publicId, true);
+
+    expect(await loadVisibleAccount(t.db, member.viewer, account.publicId)).toBeNull();
+    expect(await loadVisibleAccount(t.db, GUILD_AUDIENCE, account.publicId)).toBeNull();
+    expect(await feed(member.viewer)).toEqual([]);
+    expect(await feed(owner.viewer)).toHaveLength(1);
+    expect(await feed(contributor.viewer)).toHaveLength(1);
+    const settings = await getSharingSettings(t.db, owner.viewer, account.publicId);
+    expect(settings?.hiddenFromGuild).toBe(true);
+    // The audiences and grants stay for when it is shown again.
+    expect(settings?.categories.find((c) => c.category === 'stats')).toMatchObject({
+      audience: 'selected',
+      grants: [{ userId: member.id, name: 'Member' }],
+    });
+
+    await setHiddenFromGuild(t.db, owner.viewer, account.publicId, false);
+    expect(await feed(member.viewer)).toHaveLength(1);
+    expect((await getSharingSettings(t.db, owner.viewer, account.publicId))?.hiddenFromGuild).toBe(
+      false,
+    );
+    expect(
+      (await auditRows(account.publicId)).filter(
+        (r) => r.action === 'sharing.hidden_from_guild_changed',
+      ),
+    ).toEqual([
+      {
+        actorUserId: owner.id,
+        action: 'sharing.hidden_from_guild_changed',
+        targetType: 'osrs_account',
+        targetId: account.publicId,
+        meta: { from: false, to: true, asAdmin: false },
+      },
+      {
+        actorUserId: owner.id,
+        action: 'sharing.hidden_from_guild_changed',
+        targetType: 'osrs_account',
+        targetId: account.publicId,
+        meta: { from: true, to: false, asAdmin: false },
+      },
+    ]);
+  });
+
+  it('lets an admin hide it and still manage it, flagged in the audit entry', async () => {
+    const account = await sharedAccount();
+    await setHiddenFromGuild(t.db, admin.viewer, account.publicId, true);
+    const [row] = await auditRows(account.publicId);
+    expect(row).toMatchObject({ actorUserId: admin.id, meta: { asAdmin: true, to: true } });
+    const settings = await getSharingSettings(t.db, admin.viewer, account.publicId);
+    expect(settings).toMatchObject({ canManage: true, hiddenFromGuild: true });
+    await setHiddenFromGuild(t.db, admin.viewer, account.publicId, false);
+  });
+
+  it('refuses contributors (forbidden) and those who may not see it (not_found)', async () => {
+    const account = await sharedAccount();
+    await expectRefused(
+      setHiddenFromGuild(t.db, contributor.viewer, account.publicId, true),
+      'forbidden',
+    );
+    await expectRefused(
+      setHiddenFromGuild(t.db, member.viewer, account.publicId, true),
+      'forbidden',
+    );
+    await setHiddenFromGuild(t.db, owner.viewer, account.publicId, true);
+    // Hidden, the member can't even learn it exists, so can't show it again either.
+    await expectRefused(
+      setHiddenFromGuild(t.db, member.viewer, account.publicId, false),
+      'not_found',
+    );
+    await expectRefused(
+      setHiddenFromGuild(t.db, owner.viewer, account.publicId, 'yes' as unknown as boolean),
+      'invalid',
+    );
+    expect(await auditRows(account.publicId)).toHaveLength(1);
   });
 });
 

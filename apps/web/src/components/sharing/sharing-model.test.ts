@@ -82,6 +82,12 @@ describe('messages', () => {
       ),
     ).toBe('Zed can now see inventory');
     expect(successMessage({ action: 'claim' })).toBe('You now own this account');
+    expect(successMessage({ action: 'hide', hidden: true })).toBe(
+      'Hidden from the guild: only its players see this account',
+    );
+    expect(successMessage({ action: 'hide', hidden: false })).toBe(
+      'Shown to the guild again, as set below',
+    );
     expect(audienceLabel('guild')).toBe('Guild');
   });
 

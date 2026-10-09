@@ -53,7 +53,9 @@ export interface GuildOverview {
  *   those accounts sorted by name. An account appears under its owner; it appears under its
  *   (non-blocked) contributors too only for viewers who may read its contributor list, i.e. the same
  *   rule as the sharing settings (owner, contributors, admins; D-68). A plain member can't learn from
- *   this page who else plays an account;
+ *   this page who else plays an account. An account the viewer sees only through the admin override
+ *   (nothing of it is theirs to read: every category private, or hidden from the guild, D-104) isn't
+ *   listed: this page shows what the guild sees, and the account page is where an admin manages it;
  * - feed: the newest GUILD_FEED_EVENTS events the viewer may see (listFeed rules, redacted) that
  *   pass the admin's guild feed filter (D-81);
  * - leaderboards: per period (day = since local midnight in `timezone`, week = 7 days, month = 30
@@ -84,7 +86,7 @@ async function loadMembers(
   now: Date,
 ): Promise<GuildMember[]> {
   const accountsByUser = new Map<string, AccountWithAccess[]>();
-  for (const entry of visible) {
+  for (const entry of visible.filter(isGuildListed)) {
     // Contributors are listed only to viewers who may read them in the sharing settings (D-68).
     const seesContributors =
       entry.access.relation === 'owner' ||
@@ -125,6 +127,16 @@ async function loadMembers(
         .sort((a, b) => byName(a.name, b.name)),
     }))
     .sort((a, b) => byName(a.name, b.name) || a.userId.localeCompare(b.userId));
+}
+
+/**
+ * Whether the guild page lists the account for its viewer: one of its players, or someone who may read
+ * at least one of its categories; not an admin who sees it only through the override (D-104).
+ */
+function isGuildListed({ access }: AccountWithAccess): boolean {
+  return (
+    access.relation === 'owner' || access.relation === 'contributor' || access.categories.size > 0
+  );
 }
 
 async function loadLeaderboards(

@@ -81,6 +81,10 @@ export function successMessage(
       return `${who} is unblocked`;
     case 'remove':
       return `${who} was removed from this account`;
+    case 'hide':
+      return change.hidden
+        ? 'Hidden from the guild: only its players see this account'
+        : 'Shown to the guild again, as set below';
   }
 }
 

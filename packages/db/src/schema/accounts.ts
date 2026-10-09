@@ -57,6 +57,11 @@ export const osrsAccounts = pgTable(
     lastSeen: tstz('last_seen').defaultNow().notNull(),
     status: text('status', { enum: ACCOUNT_STATUSES }).default('active').notNull(),
     hiddenAt: tstz('hidden_at'),
+    /**
+     * The owner hid the account from the guild (D-104): only its owner and contributors see it,
+     * whatever account_sharing says. Not the same as status 'hidden' (the owner in grace).
+     */
+    hiddenFromGuild: boolean('hidden_from_guild').default(false).notNull(),
   },
   (t) => [
     index('osrs_accounts_name_normalized_idx').on(t.nameNormalized),

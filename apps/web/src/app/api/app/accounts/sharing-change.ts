@@ -15,6 +15,7 @@ export const sharingChangeSchema = z.discriminatedUnion('action', [
   z.strictObject({ action: z.enum(['grant', 'revoke']), category, userId }),
   z.strictObject({ action: z.literal('transfer'), userId }),
   z.strictObject({ action: z.literal('claim') }),
+  z.strictObject({ action: z.literal('hide'), hidden: z.boolean() }),
   z.strictObject({ action: z.enum(['block', 'unblock', 'remove']), userId }),
 ]);
 
