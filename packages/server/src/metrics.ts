@@ -26,6 +26,7 @@ export const JOB_NAMES = [
   'reverify-members',
   'expire-grace',
   'prune-audit-log',
+  'sync-hiscores',
 ] as const;
 export type JobName = (typeof JOB_NAMES)[number];
 
@@ -68,6 +69,20 @@ export const DISCORD_VERIFY_VERDICTS = ['member', 'not_member', 'missing_role', 
 export const DISCORD_VERIFY_BREAKER_RULES = ['batch', 'window'] as const;
 export type DiscordVerifyBreakerRule = (typeof DISCORD_VERIFY_BREAKER_RULES)[number];
 
+/**
+ * hub_hiscore_lookups_total{result}: how an account's hiscores lookup ended (hiscores/sync.ts).
+ * `throttled` pauses every lookup for a while (a 429, a 403, a 5xx, a page that isn't the hiscores);
+ * `error` is a network failure or a timeout, which pauses them too.
+ */
+export const HISCORE_LOOKUP_RESULTS = [
+  'ok',
+  'not_found',
+  'mismatch',
+  'throttled',
+  'error',
+] as const;
+export type HiscoreLookupResult = (typeof HISCORE_LOOKUP_RESULTS)[number];
+
 /** hub_accounts_deleted_total{cause}. */
 export const ACCOUNT_DELETION_CAUSES = ['grace_expiry', 'orphan_purge'] as const;
 
@@ -96,6 +111,7 @@ export const API_ROUTE_GROUPS = [
   'xp',
   'locations',
   'leaderboards',
+  'hiscores',
   'members',
   'openapi',
   'unknown',
@@ -237,6 +253,17 @@ function create() {
       label: 'result',
       values: DATA_EXPORT_RESULTS,
     }),
+    hiscoreLookups: fixedCounter(registry, {
+      name: 'hub_hiscore_lookups_total',
+      help: 'Official hiscores lookups by result (ok, not_found, mismatch, throttled, error)',
+      label: 'result',
+      values: HISCORE_LOOKUP_RESULTS,
+    }),
+    hiscoreXpFills: new Counter({
+      name: 'hub_hiscore_xp_fills_total',
+      help: 'Lookups that added XP made outside RuneLite to an account (D-105)',
+      registers: [registry],
+    }),
     liveStreamsRefused: new Counter({
       name: 'hub_live_streams_refused_total',
       help: 'Live (SSE) streams refused by the per-user limit (D-80)',
@@ -319,7 +346,7 @@ export type HubMetrics = ReturnType<typeof create>;
  * reload but keeps globalThis, so without it the old object (missing the new member) would be
  * handed to the new code until the dev server restarts. A new version starts fresh counters.
  */
-const METRICS_VERSION = 4;
+const METRICS_VERSION = 5;
 
 const g = globalThis as unknown as { __hubMetrics?: HubMetrics; __hubMetricsVersion?: number };
 

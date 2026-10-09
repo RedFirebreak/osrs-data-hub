@@ -28,6 +28,7 @@ import {
   type ApiEquipmentHistory,
   type ApiEvent,
   type ApiGains,
+  type ApiHiscores,
   type ApiLeaderboards,
   type ApiLocations,
   type ApiLocationsMulti,
@@ -47,6 +48,7 @@ import type {
   WireEquipmentHistory,
   WireEvent,
   WireGains,
+  WireHiscores,
   WireItem,
   WireItems,
   WireLeaderboards,
@@ -315,5 +317,29 @@ export function wireLootLeaderboard(l: ApiLootLeaderboard): WireLootLeaderboard 
     from: l.from,
     to: l.to,
     entries: l.entries.map((e) => ({ rank: e.rank, event: wireEvent(e.event) })),
+  };
+}
+
+/** GET /accounts/{id}/hiscores and each account of GET /hiscores. */
+export function wireHiscores(h: ApiHiscores): WireHiscores {
+  return {
+    account: h.account,
+    status: h.status,
+    fetched_at: h.fetchedAt,
+    mode: h.mode,
+    skills: h.skills.map((s) => ({
+      skill: s.skill,
+      level: s.level,
+      xp: s.xp,
+      rank: s.rank,
+      mode_rank: s.modeRank,
+    })),
+    activities: h.activities.map((a) => ({
+      activity: a.activity,
+      kind: a.kind,
+      score: a.score,
+      rank: a.rank,
+      mode_rank: a.modeRank,
+    })),
   };
 }

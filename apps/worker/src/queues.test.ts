@@ -56,6 +56,7 @@ describe('ensureScheduledQueues', () => {
       { name: 'reverify-members', cron: '*/15 * * * *' },
       { name: 'expire-grace', cron: '7 * * * *' },
       { name: 'prune-audit-log', cron: '23 3 * * *' },
+      { name: 'sync-hiscores', cron: '* * * * *' },
     ]);
     expect(names).toEqual([...JOB_NAMES]);
   });

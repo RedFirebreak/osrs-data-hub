@@ -20,6 +20,7 @@ export const JOBS: Record<JobName, { cron: string }> = {
   'reverify-members': { cron: '*/15 * * * *' },
   'expire-grace': { cron: '7 * * * *' },
   'prune-audit-log': { cron: '23 3 * * *' },
+  'sync-hiscores': { cron: '* * * * *' },
 };
 
 /** JOBS as the list ensureScheduledQueues takes. */

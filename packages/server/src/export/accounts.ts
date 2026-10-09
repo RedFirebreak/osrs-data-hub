@@ -7,6 +7,7 @@ import { CATEGORIES, DAY_MS, accountTypeLabel, floorTo, type Category } from '@h
 import {
   accountLinks,
   accountNames,
+  activityScores,
   equipmentChanges,
   events,
   locationSamples,
@@ -20,6 +21,7 @@ import {
 import { and, asc, desc, eq, gt, min, ne, sql, type SQL } from 'drizzle-orm';
 import type { AccountWithAccess } from '../accounts/load';
 import { loadAccountSections } from '../api/state';
+import { loadHiscoresViews } from '../hiscores/read';
 import { toApiItems } from '../api/types';
 import { EVENT_ROW_COLUMNS, toFeedEvent } from '../feed';
 import { jsonArray, jsonObject, keysetPages, streamed, type Field } from './json';
@@ -202,6 +204,84 @@ async function* historyFields(
   if (can('location_history')) {
     yield ['location_trail', streamed(() => jsonArray(locationPages(ctx, id), wirePoint))];
   }
+  if (can('hiscores')) {
+    // Lookups follow the end of a session by minutes: without `activity`, their times are day-only
+    // like the API's (D-50).
+    const exact = can('activity');
+    yield ['hiscores', await hiscoresField(ctx.db, entry, exact)];
+    yield ['activity_scores', streamed(() => jsonArray(scorePages(ctx, id), wireScore(exact)))];
+  }
+}
+
+const stamp = (at: Date, exact: boolean) => (exact ? at : floorTo(at, DAY_MS)).toISOString();
+
+/** `hiscores`: the latest lookup, as GET /api/v1/accounts/{id}/hiscores returns it (D-105). */
+async function hiscoresField(db: Db, { account }: AccountWithAccess, exact: boolean) {
+  const view = (await loadHiscoresViews(db, [account])).get(account.id)!;
+  return {
+    status: view.status,
+    fetched_at: view.fetchedAt === null ? null : stamp(new Date(view.fetchedAt), exact),
+    mode: view.mode,
+    skills: view.skills.map((s) => ({
+      skill: s.skill,
+      level: s.level,
+      xp: s.xp,
+      rank: s.rank,
+      mode_rank: s.modeRank,
+    })),
+    activities: view.activities.map((a) => ({
+      activity: a.activity,
+      kind: a.kind,
+      score: a.score,
+      rank: a.rank,
+      mode_rank: a.modeRank,
+    })),
+  };
+}
+
+type ScoreRow = {
+  activity: string;
+  readAt: Date;
+  score: number;
+  baseline: boolean;
+  cursor: string;
+};
+
+/** `activity_scores`: every change of a score the hiscores showed, by activity, then time. */
+function scorePages(ctx: AccountExportContext, accountId: number) {
+  return keysetPages<ScoreRow>(
+    (last, limit) =>
+      ctx.db
+        .select({
+          activity: activityScores.activity,
+          readAt: activityScores.readAt,
+          score: activityScores.score,
+          baseline: activityScores.baseline,
+          cursor: sql<string>`${activityScores.readAt}::text`,
+        })
+        .from(activityScores)
+        .where(
+          and(
+            eq(activityScores.accountId, accountId),
+            after(
+              sql`${activityScores.activity}, ${activityScores.readAt}`,
+              last && sql`${last.activity}, ${last.cursor}::timestamptz`,
+            ),
+          ),
+        )
+        .orderBy(asc(activityScores.activity), asc(activityScores.readAt))
+        .limit(limit),
+    ctx.batchSize,
+  );
+}
+
+function wireScore(exact: boolean) {
+  return (r: ScoreRow) => ({
+    activity: r.activity,
+    read_at: stamp(r.readAt, exact),
+    score: r.score,
+    baseline: r.baseline,
+  });
 }
 
 /**

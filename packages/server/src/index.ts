@@ -20,3 +20,4 @@ export * from './admin';
 export * from './health';
 export * from './api';
 export * from './export';
+export * from './hiscores';

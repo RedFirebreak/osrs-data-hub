@@ -5,7 +5,9 @@
  */
 import type { Category } from '@hub/core';
 import {
+  accountHiscores,
   accountNames,
+  activityScores,
   apiKeys,
   auditLog,
   deviceAccounts,
@@ -181,6 +183,35 @@ beforeAll(async () => {
   await t.db.insert(locationSamples).values([
     { accountId: mine.id, ts: new Date(RECENT), x: 3200, y: 3201, plane: 0, world: 302 },
     { accountId: mine.id, ts: new Date(RECENT + MIN), x: 3201, y: 3202, plane: 0, world: 302 },
+  ]);
+  await t.db.insert(accountHiscores).values({
+    accountId: mine.id,
+    lookupName: 'Mine',
+    mode: 'regular',
+    status: 'ok',
+    lastAttemptAt: new Date(RECENT + 2 * HOUR),
+    fetchedAt: new Date(RECENT + 2 * HOUR),
+    main: {
+      name: 'Mine',
+      skills: [{ name: 'Overall', rank: 10, level: 85, xp: 12000 }],
+      activities: [{ name: 'Zulrah', rank: 500, score: 12 }],
+    },
+  });
+  await t.db.insert(activityScores).values([
+    {
+      accountId: mine.id,
+      activity: 'Zulrah',
+      readAt: new Date(RECENT + HOUR),
+      score: 5,
+      baseline: true,
+    },
+    {
+      accountId: mine.id,
+      activity: 'Zulrah',
+      readAt: new Date(RECENT + 2 * HOUR),
+      score: 12,
+      baseline: false,
+    },
   ]);
 
   // An account the user plays on (another owner).
@@ -453,6 +484,7 @@ describe('exportUserData', () => {
       'location_history',
       'equipment',
       'inventory',
+      'hiscores',
     ]);
     expect(acc).toMatchObject({
       presence: { shared: true, online: true, world: 302, game_state: 'LOGGED_IN' },
@@ -495,6 +527,17 @@ describe('exportUserData', () => {
     expect(acc.location_trail).toEqual([
       { at: iso(RECENT), x: 3200, y: 3201, plane: 0, world: 302, is_on_boat: false },
       { at: iso(RECENT + MIN), x: 3201, y: 3202, plane: 0, world: 302, is_on_boat: false },
+    ]);
+    expect(acc.hiscores).toEqual({
+      status: 'ok',
+      fetched_at: iso(RECENT + 2 * HOUR),
+      mode: 'regular',
+      skills: [{ skill: 'Overall', level: 85, xp: 12000, rank: 10, mode_rank: null }],
+      activities: [{ activity: 'Zulrah', kind: 'boss', score: 12, rank: 500, mode_rank: null }],
+    });
+    expect(acc.activity_scores).toEqual([
+      { activity: 'Zulrah', read_at: iso(RECENT + HOUR), score: 5, baseline: true },
+      { activity: 'Zulrah', read_at: iso(RECENT + 2 * HOUR), score: 12, baseline: false },
     ]);
   });
 
@@ -640,11 +683,23 @@ describe('accountDocument', () => {
       'equipment_changes',
       'wealth_days',
       'location_trail',
+      'hiscores',
+      'activity_scores',
     ]) {
       expect(acc, key).not.toHaveProperty(key);
     }
     // A last-seen time is presence (D-50).
     expect(acc.last_seen).toBeNull();
+  });
+
+  it('writes hiscore times as the day only without activity, as the API does', async () => {
+    const { text } = await collect(accountDocument(await ctx(), await owned(['hiscores'])));
+    const acc = JSON.parse(text) as Record<string, unknown>;
+    expect(acc.hiscores).toMatchObject({ fetched_at: iso(RECENT) });
+    expect(acc.activity_scores).toEqual([
+      { activity: 'Zulrah', read_at: iso(RECENT), score: 5, baseline: true },
+      { activity: 'Zulrah', read_at: iso(RECENT), score: 12, baseline: false },
+    ]);
   });
 
   it('redacts event locations exactly as the feed does without a location category', async () => {

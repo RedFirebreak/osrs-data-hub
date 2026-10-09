@@ -3,6 +3,7 @@ export * from './crypto';
 export * from './format';
 export * from './guards';
 export * from './guild-feed';
+export * from './hiscores';
 export * from './http';
 export * from './ints';
 export * from './json';

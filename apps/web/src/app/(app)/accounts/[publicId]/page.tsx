@@ -36,6 +36,7 @@ import { AccountHeader } from '@/components/account-page/account-header';
 import { AccountSkeleton } from '@/components/account-page/account-skeleton';
 import { ActivityContent } from '@/components/account-page/activity-section';
 import { EquipmentGrid, EquipmentLog } from '@/components/account-page/equipment-content';
+import { HiscoresContent, hiscoresDescription } from '@/components/account-page/hiscores-content';
 import { InventoryContent } from '@/components/account-page/inventory-content';
 import { LocationContent } from '@/components/account-page/location-content';
 import { playtimeByDay } from '@/components/account-page/playtime';
@@ -112,6 +113,7 @@ async function AccountContent({ publicId }: { publicId: string }) {
     xpSection(ctx),
     activitySection(ctx),
     eventsSection(ctx),
+    hiscoresSection(ctx),
   ].filter(Boolean);
   const aside = [
     vitalsSection(ctx),
@@ -290,6 +292,25 @@ function eventsSection({ page, publicId, now }: SectionContext) {
           </p>
         }
       />
+    </SectionCard>
+  );
+}
+
+function hiscoresSection({ page, now, dayOnlyIn }: SectionContext) {
+  const hiscores = page.hiscores;
+  if (!hiscores.visible) return null;
+  const view = hiscores.data;
+  return (
+    <SectionCard
+      key="hiscores"
+      id="hiscores"
+      title="Hiscores"
+      description={hiscoresDescription(view)}
+      updatedAt={view.fetchedAt}
+      now={now}
+      updatedDayIn={dayOnlyIn}
+    >
+      <HiscoresContent view={view} />
     </SectionCard>
   );
 }

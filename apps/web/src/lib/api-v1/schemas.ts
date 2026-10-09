@@ -12,7 +12,13 @@
  * @hub/server's exported limits, so the docs state the numbers the server enforces; the read models
  * re-validate everything anyway.
  */
-import { CATEGORIES, KNOWN_EVENT_TYPES, TRAIL_STEPS } from '@hub/core';
+import {
+  ACTIVITY_KINDS,
+  CATEGORIES,
+  HISCORE_MODES,
+  KNOWN_EVENT_TYPES,
+  TRAIL_STEPS,
+} from '@hub/core';
 import { API_KEY_KINDS, SESSION_END_REASONS } from '@hub/db';
 import {
   DISCORD_ID_PATTERN,
@@ -232,6 +238,15 @@ export const LocationsQuery = z.object(locationsRange);
 export const LocationsMultiQuery = z.object({
   accounts: bulkAccountsParam('location_history'),
   ...locationsRange,
+});
+
+/** GET /hiscores. */
+export const HiscoresMultiQuery = z.object({
+  accounts: csv(accountIdItem, MAX_BULK_ACCOUNTS_SERVICE)
+    .optional()
+    .meta({
+      description: `Comma-separated account ids: up to ${MAX_BULK_ACCOUNTS} with a user key, ${MAX_BULK_ACCOUNTS_SERVICE} with a service key, each one whose \`hiscores\` the key may read, else 404. Without it (or empty): every visible account whose \`hiscores\` the key reads, sorted by name.`,
+    }),
 });
 
 /** The `period` of both leaderboards (/leaderboards/gains and /leaderboards/loot). */
@@ -659,6 +674,60 @@ const LocationsMultiData = z.object({
   }),
 });
 
+const modeRank = int.nullable().meta({
+  description:
+    'Rank on the account’s own iron table (`mode`); null for `regular`, or when not listed there.',
+});
+
+export const Hiscores = z.object({
+  account: AccountRef,
+  status: z.enum(['ok', 'pending', 'not_found', 'mismatch']).meta({
+    description:
+      'The latest lookup. `ok`: found. `pending`: not looked up yet. `not_found`: the name isn’t on the hiscores (renamed, or too low to be ranked). `mismatch`: the hiscores had a skill lower than the plugin reported (they lag, or the name is someone else’s now). With `not_found` and `mismatch` the tables are those of the last lookup that was `ok`.',
+  }),
+  fetched_at: timestamp.nullable().meta({
+    description:
+      'When the tables were read; null while no lookup was `ok` (both lists are empty). Cut to the UTC day for a key that can’t read the account’s `activity`.',
+  }),
+  mode: z.enum(HISCORE_MODES).meta({
+    description:
+      'The iron table the account is ranked on besides the main one, from its account type; group irons are `regular`.',
+  }),
+  skills: z
+    .array(
+      z.object({
+        skill: z.string().meta({ description: 'As Jagex writes it; Overall first.' }),
+        level: int.meta({
+          description: 'The real level (at most 99); the total level for Overall.',
+        }),
+        xp: int.nullable().meta({ description: 'Null when the hiscores don’t list it.' }),
+        rank: int.nullable().meta({ description: 'Rank on the main table; null when not listed.' }),
+        mode_rank: modeRank,
+      }),
+    )
+    .meta({ description: 'Every skill on the main table, in Jagex’s order.' }),
+  activities: z
+    .array(
+      z.object({
+        activity: z.string().meta({
+          description:
+            'The row’s name as Jagex writes it (`Zulrah`, `Clue Scrolls (all)`, `LMS - Rank`).',
+        }),
+        kind: z.enum(ACTIVITY_KINDS).meta({
+          description:
+            '`clue` for the clue rows, `activity` for minigames, points and Collections Logged, `boss` for everything else (a row the hub doesn’t know counts as a boss).',
+        }),
+        score: int.min(1).meta({ description: 'The kill count, clue count, points or rating.' }),
+        rank: int.nullable(),
+        mode_rank: modeRank,
+      }),
+    )
+    .meta({
+      description:
+        'The rows with a score above 0, in Jagex’s order. A missing row is below the hiscores’ threshold (5 kills for most bosses) or never done.',
+    }),
+});
+
 const LeaderboardsData = z.object({
   period: z.enum(LEADERBOARD_PERIODS),
   from: timestamp,
@@ -740,6 +809,8 @@ export const LocationsResponse = envelope(LocationsData, Meta);
 export const LocationsMultiResponse = envelope(LocationsMultiData, Meta);
 export const LeaderboardsResponse = envelope(LeaderboardsData, Meta);
 export const LootLeaderboardResponse = envelope(LootLeaderboardData, Meta);
+export const HiscoresResponse = envelope(Hiscores, Meta);
+export const HiscoresMultiResponse = envelope(z.array(Hiscores), ListMeta);
 
 export const ErrorResponse = z.object({
   error: z.object({
@@ -772,6 +843,7 @@ export type WireLocationsMulti = z.infer<typeof LocationsMultiData>;
 export type WireOwner = z.infer<typeof Owner>;
 export type WireLeaderboards = z.infer<typeof LeaderboardsData>;
 export type WireLootLeaderboard = z.infer<typeof LootLeaderboardData>;
+export type WireHiscores = z.infer<typeof Hiscores>;
 export type WireItem = z.infer<typeof Item>;
 export type WireSkills = z.infer<typeof Skills>;
 export type WireItems = z.infer<typeof Items>;

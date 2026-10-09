@@ -78,6 +78,13 @@
       "when": 1791569555528,
       "tag": "0010_account_hidden_from_guild",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1791584611655,
+      "tag": "0011_hiscores",
+      "breakpoints": true
     }
   ]
 }

@@ -1,6 +1,6 @@
 /**
  * The account page (handoff §12): header, presence, vitals, live location, skills with gains,
- * equipment, inventory and recent events, each section gated by its sharing category (handoff §10)
+ * equipment, inventory, recent events and the official hiscores (D-105), each section gated by its sharing category (handoff §10)
  * and shown as "not shared" when the plugin never sent it (D-4).
  */
 import {
@@ -18,6 +18,7 @@ import {
 import { accountNames, latestState, users, type DbOrTx } from '@hub/db';
 import { and, desc, eq, ne } from 'drizzle-orm';
 import type { FeedEvent } from '../feed';
+import { loadHiscoresViews, type HiscoresView } from '../hiscores/read';
 import { DEFAULT_TIMEZONE } from '../settings/user-settings';
 import {
   loadRecentEventRows,
@@ -102,6 +103,12 @@ export interface AccountPage {
   inventory: Section<{ items: ItemData[]; value: number }>;
   /** events: the newest PAGE_EVENTS, redacted; "not shared" when the account has no events at all. */
   recentEvents: Section<FeedEvent[]>;
+  /**
+   * hiscores (D-105): what the hub last read from the official hiscores. Never "not shared": the
+   * view says whether the account was looked up yet (`status`, `fetchedAt`). Without `activity`,
+   * `fetchedAt` carries only the day, like skills (D-50): a lookup follows a session's end.
+   */
+  hiscores: { visible: false } | { visible: true; data: HiscoresView };
 }
 
 type LatestRow = typeof latestState.$inferSelect;
@@ -137,6 +144,17 @@ export async function getAccountPage(
   const recentEvents: AccountPage['recentEvents'] = can('events')
     ? await eventsSection(db, entry)
     : { visible: false };
+  let hiscores: AccountPage['hiscores'] = { visible: false };
+  if (can('hiscores')) {
+    const view = (
+      await loadHiscoresViews(db, [{ id: account.id, accountType: account.accountType }])
+    ).get(account.id)!;
+    const fetchedAt =
+      view.fetchedAt === null || can('activity')
+        ? view.fetchedAt
+        : startOfLocalDay(new Date(view.fetchedAt), timezone).toISOString();
+    hiscores = { visible: true, data: { ...view, fetchedAt } };
+  }
 
   return {
     account: { ...header, lastSeen: can('activity') ? account.lastSeen.toISOString() : null },
@@ -162,6 +180,7 @@ export async function getAccountPage(
       })),
     ),
     recentEvents,
+    hiscores,
   };
 }
 

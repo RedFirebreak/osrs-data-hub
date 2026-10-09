@@ -43,6 +43,10 @@
       "description": "Sessions, equipment, wealth and locations."
     },
     {
+      "name": "Hiscores",
+      "description": "Ranks, kill counts, clues and minigames from the official hiscores (`hiscores`)."
+    },
+    {
       "name": "Leaderboards",
       "description": "Gains leaderboards (`stats`) and the loot leaderboard (`events`)."
     },
@@ -1208,6 +1212,136 @@
         }
       }
     },
+    "/accounts/{id}/hiscores": {
+      "get": {
+        "operationId": "getAccountHiscores",
+        "tags": [
+          "Hiscores"
+        ],
+        "summary": "Official hiscores",
+        "description": "What the hub last read from the official OSRS hiscores (`hiscores`): every skill with its rank, and the boss kill counts, clues and minigames with a score, each with its rank on the account’s own iron table beside the main one. The hub looks an account up when it first sees it, about 10 minutes after a play session ends, and once a day; `fetched_at` says when. Not part of `/snapshot`: poll this every few minutes at most.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9A-Za-z]{1,64}$"
+            },
+            "description": "The account's public id (opaque, base62), as `id` in `/accounts`.",
+            "example": "4fT9kQ2mXa7B"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK: `{ data, meta }`.",
+            "headers": {
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/X-RateLimit-Remaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/X-RateLimit-Reset"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HiscoresResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/hiscores": {
+      "get": {
+        "operationId": "getHiscores",
+        "tags": [
+          "Hiscores"
+        ],
+        "summary": "Official hiscores of several accounts",
+        "description": "What `/accounts/{id}/hiscores` returns, for several accounts in request order: up to 10 with a user key, 50 with a service key; an account the key can’t read makes the whole request 404. Without `accounts`, every visible account whose `hiscores` the key reads, sorted by name.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "accounts",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated account ids: up to 10 with a user key, 50 with a service key, each one whose `hiscores` the key may read, else 404. Without it (or empty): every visible account whose `hiscores` the key reads, sorted by name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK: `{ data, meta }`.",
+            "headers": {
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/X-RateLimit-Remaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/X-RateLimit-Reset"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HiscoresMultiResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
     "/leaderboards/gains": {
       "get": {
         "operationId": "getGainsLeaderboards",
@@ -1580,6 +1714,167 @@
           "truncated"
         ]
       },
+      "Hiscores": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "$ref": "#/components/schemas/AccountRef"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "pending",
+              "not_found",
+              "mismatch"
+            ],
+            "description": "The latest lookup. `ok`: found. `pending`: not looked up yet. `not_found`: the name isn’t on the hiscores (renamed, or too low to be ranked). `mismatch`: the hiscores had a skill lower than the plugin reported (they lag, or the name is someone else’s now). With `not_found` and `mismatch` the tables are those of the last lookup that was `ok`."
+          },
+          "fetched_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "description": "ISO-8601 UTC."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the tables were read; null while no lookup was `ok` (both lists are empty). Cut to the UTC day for a key that can’t read the account’s `activity`."
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "regular",
+              "ironman",
+              "hardcore_ironman",
+              "ultimate_ironman"
+            ],
+            "description": "The iron table the account is ranked on besides the main one, from its account type; group irons are `regular`."
+          },
+          "skills": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "skill": {
+                  "type": "string",
+                  "description": "As Jagex writes it; Overall first."
+                },
+                "level": {
+                  "type": "integer",
+                  "description": "The real level (at most 99); the total level for Overall."
+                },
+                "xp": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Null when the hiscores don’t list it."
+                },
+                "rank": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Rank on the main table; null when not listed."
+                },
+                "mode_rank": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Rank on the account’s own iron table (`mode`); null for `regular`, or when not listed there."
+                }
+              },
+              "required": [
+                "skill",
+                "level",
+                "xp",
+                "rank",
+                "mode_rank"
+              ]
+            },
+            "description": "Every skill on the main table, in Jagex’s order."
+          },
+          "activities": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "activity": {
+                  "type": "string",
+                  "description": "The row’s name as Jagex writes it (`Zulrah`, `Clue Scrolls (all)`, `LMS - Rank`)."
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "boss",
+                    "clue",
+                    "activity"
+                  ],
+                  "description": "`clue` for the clue rows, `activity` for minigames, points and Collections Logged, `boss` for everything else (a row the hub doesn’t know counts as a boss)."
+                },
+                "score": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "The kill count, clue count, points or rating."
+                },
+                "rank": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "mode_rank": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Rank on the account’s own iron table (`mode`); null for `regular`, or when not listed there."
+                }
+              },
+              "required": [
+                "activity",
+                "kind",
+                "score",
+                "rank",
+                "mode_rank"
+              ]
+            },
+            "description": "The rows with a score above 0, in Jagex’s order. A missing row is below the hiscores’ threshold (5 kills for most bosses) or never done."
+          }
+        },
+        "required": [
+          "account",
+          "status",
+          "fetched_at",
+          "mode",
+          "skills",
+          "activities"
+        ]
+      },
       "Item": {
         "type": "object",
         "properties": {
@@ -1863,7 +2158,8 @@
                 "location_live",
                 "location_history",
                 "equipment",
-                "inventory"
+                "inventory",
+                "hiscores"
               ]
             },
             "description": "What this key may read on this account right now."
@@ -2290,7 +2586,8 @@
                 "location_live",
                 "location_history",
                 "equipment",
-                "inventory"
+                "inventory",
+                "hiscores"
               ]
             },
             "description": "What this key may read on this account right now."
@@ -2678,7 +2975,8 @@
                         "location_live",
                         "location_history",
                         "equipment",
-                        "inventory"
+                        "inventory",
+                        "hiscores"
                       ]
                     }
                   },
@@ -3497,6 +3795,64 @@
             },
             "required": [
               "generated_at"
+            ]
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ]
+      },
+      "HiscoresResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Hiscores"
+          },
+          "meta": {
+            "type": "object",
+            "properties": {
+              "generated_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "When the hub built this response."
+              }
+            },
+            "required": [
+              "generated_at"
+            ]
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ]
+      },
+      "HiscoresMultiResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Hiscores"
+            }
+          },
+          "meta": {
+            "type": "object",
+            "properties": {
+              "generated_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "When the hub built this response."
+              },
+              "count": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "generated_at",
+              "count"
             ]
           }
         },

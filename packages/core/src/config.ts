@@ -78,6 +78,45 @@ const iconsUrl = z
     return trimmed;
   });
 
+/** Where the official hiscores are read from by default (D-105). */
+const DEFAULT_HISCORES_URL = 'https://secure.runescape.com';
+
+/**
+ * HISCORES_URL (D-105): unset → Jagex's own hiscores; empty → the hiscores sync is off (null);
+ * otherwise an http(s) origin to read `/m=<table>/index_lite.json` from (a stand-in in development),
+ * trailing slashes removed.
+ */
+const hiscoresUrl = z
+  .string()
+  .optional()
+  .transform((v, ctx) => {
+    if (v === undefined) return DEFAULT_HISCORES_URL;
+    const trimmed = v.trim().replace(/\/+$/, '');
+    if (trimmed === '') return null;
+    let url: URL;
+    try {
+      url = new URL(trimmed);
+    } catch {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'must be an absolute URL including https://, or empty to turn the hiscores off',
+      });
+      return z.NEVER;
+    }
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+      ctx.addIssue({ code: 'custom', message: 'must start with https:// (or http://)' });
+      return z.NEVER;
+    }
+    if (url.search || url.hash || url.username || url.password) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'must be a plain base URL, without ?query, #fragment or user:password@',
+      });
+      return z.NEVER;
+    }
+    return trimmed;
+  });
+
 /**
  * DISCORD_AUTHORIZE_URL (D-101): the page "Sign in with Discord" sends the browser to when a stand-in
  * plays Discord in local development. Unset or empty → Discord's own consent page. An http(s) URL;
@@ -180,6 +219,8 @@ const EnvSchema = z.object({
   WORKER_METRICS_PORT: int(9464, 0),
   LOG_LEVEL: logLevel,
   OSRS_ICONS_URL: iconsUrl,
+  HISCORES_URL: hiscoresUrl,
+  HISCORES_REQUEST_INTERVAL_MS: int(3000, 1000),
 });
 
 /** Every environment variable the config reads (the admin Configuration page lists them all). */
@@ -224,6 +265,12 @@ function toConfig(e: z.output<typeof EnvSchema>) {
     logLevel: e.LOG_LEVEL,
     /** Base URL of the OSRS icon CDN without a trailing slash; null = icons off (D-95). */
     osrsIconsUrl: e.OSRS_ICONS_URL,
+    hiscores: {
+      /** Base URL of the hiscores without a trailing slash; null = the sync is off (D-105). */
+      url: e.HISCORES_URL,
+      /** The least time between two lookups, across all accounts. */
+      requestIntervalMs: e.HISCORES_REQUEST_INTERVAL_MS,
+    },
   };
 }
 

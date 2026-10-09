@@ -11,6 +11,7 @@ export {
   type ApiAccountSummary,
 } from './accounts';
 export { ApiError } from './errors';
+export { apiHiscores, apiHiscoresMulti, type ApiHiscores } from './hiscores';
 export {
   API_EVENTS_SETTLE_MS,
   EVENTS_DEFAULT_LIMIT,

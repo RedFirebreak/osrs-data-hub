@@ -8,6 +8,7 @@ export const CATEGORIES = [
   'location_history',
   'equipment',
   'inventory',
+  'hiscores',
 ] as const;
 export type Category = (typeof CATEGORIES)[number];
 
@@ -38,6 +39,7 @@ export const DEFAULT_AUDIENCE: Readonly<Record<Category, Audience>> = {
   location_history: 'guild',
   equipment: 'guild',
   inventory: 'guild',
+  hiscores: 'guild',
 };
 
 export const CATEGORY_LABELS: Readonly<Record<Category, { label: string; covers: string }>> = {
@@ -55,6 +57,10 @@ export const CATEGORY_LABELS: Readonly<Record<Category, { label: string; covers:
   location_history: { label: 'Location history', covers: 'the trail of past positions' },
   equipment: { label: 'Equipment', covers: 'current gear and its change log' },
   inventory: { label: 'Inventory', covers: 'current inventory and wealth history' },
+  hiscores: {
+    label: 'Hiscores',
+    covers: 'ranks, boss kill counts, clues and minigames from the official hiscores',
+  },
 };
 
 export interface Viewer {

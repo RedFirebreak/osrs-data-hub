@@ -114,6 +114,16 @@ export function configSections(config: HubConfig): ConfigSection[] {
           description: 'Item, skill and slot icons (D-95)',
           value: text(config.osrsIconsUrl ?? 'off (text only)'),
         },
+        {
+          name: 'HISCORES_URL',
+          description: 'Official hiscores read by the worker (D-105)',
+          value: text(config.hiscores.url ?? 'off (no hiscores)'),
+        },
+        {
+          name: 'HISCORES_REQUEST_INTERVAL_MS',
+          description: 'Least time between two hiscores lookups',
+          value: text(config.hiscores.requestIntervalMs),
+        },
       ],
     },
     {
