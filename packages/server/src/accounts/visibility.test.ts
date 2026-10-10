@@ -5,10 +5,11 @@ import { CATEGORIES, DEFAULT_GUILD_FEED_FILTER } from '@hub/core';
 import { createTestDatabase, type TestDatabase } from '@hub/db/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { getAccountPage } from './account-page';
-import { getDashboard } from './dashboard';
 import { getGuildOverview } from './guild';
 import { getEquipmentHistory, getLocationHistory, getSessions, getWealthHistory } from './history';
 import { listFeed } from './list-feed';
+import { getOnlineNow } from './online-now';
+import { listOwnAccounts } from './own-accounts';
 import {
   deathData,
   seedAccount,
@@ -191,9 +192,8 @@ describe('blocked contributors', () => {
     expect(page?.skills.visible).toBe(true);
   });
 
-  it("leaves the account off the blocked user's dashboard", async () => {
-    const dash = await getDashboard(t.db, blocked.viewer, opts);
-    expect(dash.accounts).toEqual([]);
+  it("leaves the account out of the blocked user's own characters", async () => {
+    expect(await listOwnAccounts(t.db, blocked.viewer)).toEqual([]);
   });
 });
 
@@ -206,8 +206,8 @@ describe('hidden accounts', () => {
     }
     const feed = await listFeed(t.db, member.viewer);
     expect(feed.some((e) => e.account.publicId === hidden.publicId)).toBe(false);
-    const dash = await getDashboard(t.db, contributor.viewer, opts);
-    expect(dash.accounts.map((a) => a.publicId)).toEqual([open.publicId]);
+    const own = await listOwnAccounts(t.db, contributor.viewer);
+    expect(own.map((a) => a.publicId)).toEqual([open.publicId]);
   });
 
   it('are visible to admins, flagged hidden', async () => {
@@ -224,10 +224,8 @@ describe('inactive viewers', () => {
   it('see nothing at all', async () => {
     expect(await getAccountPage(t.db, inGrace.viewer, open.publicId, opts)).toBeNull();
     expect(await listFeed(t.db, inGrace.viewer)).toEqual([]);
-    expect(await getDashboard(t.db, inGrace.viewer, opts)).toEqual({
-      accounts: [],
-      onlineNow: [],
-    });
+    expect(await listOwnAccounts(t.db, inGrace.viewer)).toEqual([]);
+    expect(await getOnlineNow(t.db, inGrace.viewer, opts)).toEqual([]);
     expect(await getGuildOverview(t.db, inGrace.viewer, opts)).toEqual({
       members: [],
       feed: [],

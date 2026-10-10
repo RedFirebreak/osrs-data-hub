@@ -7,18 +7,17 @@
  * (OSRS_ICONS_URL, read here at request time; the browser loads the CDN's stack tables; D-95).
  */
 import { getConfig } from '@hub/core';
-import { getDb } from '@hub/db';
-import { listOwnAccounts } from '@hub/server';
 import Link from 'next/link';
 import { IconConfigLoader } from '@/components/icons/icon-config-provider';
 import { LiveProvider } from '@/components/live/live-provider';
 import { AppHeader } from '@/components/shell/app-header';
+import { loadOwnAccounts } from '@/lib/own-accounts';
 import { requireUser } from '@/lib/session';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const { user, viewer } = await requireUser();
+  const { user } = await requireUser();
   const { hubName, osrsIconsUrl } = getConfig();
-  const own = await listOwnAccounts(getDb().db, viewer);
+  const own = await loadOwnAccounts();
   return (
     <IconConfigLoader base={osrsIconsUrl}>
       <LiveProvider>

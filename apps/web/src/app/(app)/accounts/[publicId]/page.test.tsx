@@ -86,6 +86,14 @@ function headings(html: string): string[] {
   return [...html.matchAll(/<h2[^>]*>([^<]+)<\/h2>/g)].map((m) => m[1] ?? '');
 }
 
+/**
+ * The headings in a fixed order: a section that streams in behind a skeleton arrives after the
+ * ones rendered at once, wherever it sits on the page.
+ */
+function sortedHeadings(html: string): string[] {
+  return headings(html).sort();
+}
+
 describe('account page', () => {
   let ownerId: string;
   let account: SeededAccount;
@@ -194,22 +202,25 @@ describe('account page', () => {
     expect(html).toContain('Your account');
     expect(html).toContain('OldName');
     expect(html).toContain('World 302');
-    expect(headings(html)).toEqual([
-      'Skills',
-      'XP history',
-      'Sessions &amp; playtime',
-      'Events',
+    expect(sortedHeadings(html)).toEqual([
       'Hiscores',
-      'Vitals',
-      'Location',
-      'Equipment',
       'Inventory',
-      'Wealth',
+      'Latest',
+      'Right now',
+      'Sessions &amp; playtime',
       'Sharing',
+      'Skills',
+      'This week',
+      'Wealth',
+      'Worn',
+      'XP history',
     ]);
-    // Total level is the real one (D-44): 99 + 99 + 2; Strength's virtual 105 shown subtly.
+    // Total level is the real one (D-44): 99 + 99 + 2; Strength's tile shows 99 and names its
+    // virtual 105.
     expect(html).toContain('>200<');
-    expect(html).toContain('(105)');
+    expect(html).toContain('Strength, level 99, virtual level 105');
+    // A skill opens its progress.
+    expect(html).toMatch(/href="[^"]*skills=Magic"/);
     // Boosted HP is clamped visually and says so.
     expect(html).toContain('+16 boosted');
     expect(html).toContain('On a boat');
@@ -228,11 +239,11 @@ describe('account page', () => {
     page.headers = new Headers({ cookie: await ctx.signIn(ownerId) });
     const html = await render(bare.publicId);
     expect(headings(html)).toEqual(
-      expect.arrayContaining(['Skills', 'Vitals', 'Location', 'Equipment', 'Inventory', 'Events']),
+      expect.arrayContaining(['Skills', 'Right now', 'Worn', 'Inventory', 'Latest']),
     );
     expect(headings(html)).not.toContain('XP history');
     expect(headings(html)).not.toContain('Wealth');
-    expect((html.match(/>Not shared</g) ?? []).length).toBeGreaterThanOrEqual(6);
+    expect((html.match(/>Not shared</g) ?? []).length).toBeGreaterThanOrEqual(5);
   });
 
   it('hides what a guild member may not see, and never shows them the sharing panel', async () => {
@@ -241,14 +252,14 @@ describe('account page', () => {
     }
     await signIn({ name: 'Member' });
     const html = await render(account.publicId);
-    expect(headings(html)).toEqual([
-      'Skills',
-      'XP history',
-      'Sessions &amp; playtime',
-      'Events',
+    expect(sortedHeadings(html)).toEqual([
       'Hiscores',
-      'Vitals',
-      'Location',
+      'Latest',
+      'Right now',
+      'Sessions &amp; playtime',
+      'Skills',
+      'This week',
+      'XP history',
     ]);
     // Live location stays shared with the guild (the default, D-96); the rest is private.
     expect(html).toContain('3222, 3218');

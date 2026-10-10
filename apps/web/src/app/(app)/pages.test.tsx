@@ -1,5 +1,5 @@
 /**
- * The signed-in pages of this group (dashboard, settings) as a Server Component render sees them:
+ * The signed-in pages of this group (Home, settings) as a Server Component render sees them:
  * next/headers stubbed with the request's headers (like lib/session-pages.test.ts) and next/navigation's
  * client hooks stubbed for the client components rendered to markup. Checks who gets through, that a
  * page shows only the signed-in user's data, and the markup (headings, the empty state).
@@ -12,7 +12,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { withTestDb, type WebTestContext } from '@/lib/test-utils';
 import AppLayout from './layout';
-import DashboardPage from './page';
+import HomePage from './page';
 import SettingsPage from './settings/page';
 
 const page = vi.hoisted(() => ({ headers: new Headers() }));
@@ -109,26 +109,25 @@ describe('app layout', () => {
   });
 });
 
-describe('dashboard', () => {
+describe('home without characters', () => {
   it('sends signed-out and grace users to /login', async () => {
-    expect(await render(() => DashboardPage())).toBe('redirect:/login');
+    expect(await render(() => HomePage())).toBe('redirect:/login');
     await signIn({ status: 'grace' });
-    expect(await render(() => DashboardPage())).toBe('redirect:/login');
+    expect(await render(() => HomePage())).toBe('redirect:/login');
   });
 
-  it('points a user without accounts at the wizard, under proper headings', async () => {
+  it('points the user at the wizard, under proper headings', async () => {
     await signIn({ name: 'Newbie' });
-    const html = await render(() => DashboardPage());
-    expect(html).toMatch(/<h1[^>]*>Dashboard<\/h1>/);
-    expect(html).toContain('Welcome back, Newbie.');
+    const html = await render(() => HomePage());
+    expect(html).toMatch(/<h1[^>]*>Welcome, Newbie<\/h1>/);
     expect(html).toMatch(/<h2[^>]*>[^<]*<span[^>]*>.*Online now<\/h2>/);
-    expect(html).toMatch(/<h2[^>]*>Connect RuneLite to see your accounts<\/h2>/);
+    expect(html).toMatch(/<h2[^>]*>Connect RuneLite to see your character<\/h2>/);
     expect(html).toContain('href="/onboarding"');
   });
 });
 
-describe('dashboard with accounts', () => {
-  it("shows cards for the viewer's own accounts only, and online accounts it may see", async () => {
+describe('home with characters', () => {
+  it("is the viewer's own character, with the online accounts it may see", async () => {
     const other = await ctx.seedUser();
     await seedOnlineAccount('Guildie', other);
     const secret = await seedOnlineAccount('Hermit', other);
@@ -146,14 +145,30 @@ describe('dashboard with accounts', () => {
       .where(eq(osrsAccounts.id, hidden));
     await ctx.t.db.insert(accountLinks).values({ accountId: hidden, userId: me });
 
-    const html = await render(() => DashboardPage());
-    expect(html).toMatch(/<h2[^>]*>Your accounts<\/h2>/);
-    expect(html).toMatch(/<h3[^>]*><a[^>]*>Zezima<\/a><\/h3>/);
-    expect(html).not.toMatch(/<h3[^>]*><a[^>]*>Guildie<\/a><\/h3>/);
+    const html = await render(() => HomePage());
+    expect(html).toMatch(/<h1[^>]*>Zezima<\/h1>/);
+    expect(html).toContain('Your account');
     expect(html).toContain('>Guildie</span>'); // in "Online now"
     expect(html).not.toContain('Hermit');
     expect(html).not.toContain('Ghost');
-    expect(html).not.toContain('Connect RuneLite to see your accounts');
+    expect(html).not.toContain('Connect RuneLite');
+    // One character: nothing to pick.
+    expect(html).not.toContain('Choose another character');
+  });
+
+  it('opens on the character played last and offers the others', async () => {
+    const me = await signIn();
+    const old = await seedOnlineAccount('Old main', me);
+    await ctx.t.db
+      .update(osrsAccounts)
+      .set({ lastSeen: new Date(Date.now() - 86_400_000) })
+      .where(eq(osrsAccounts.id, old));
+    await seedOnlineAccount('New alt', me);
+
+    const html = await render(() => HomePage());
+    expect(html).toMatch(/<h1[^>]*>New alt<\/h1>/);
+    expect(html).not.toMatch(/<h1[^>]*>Old main<\/h1>/);
+    expect(html).toContain('Choose another character');
   });
 });
 

@@ -91,6 +91,16 @@
   --metrics-accent-soft: oklch(0.78 0.14 70 / 16%);
 }
 
+/* A skill's own colour (lib/skill-colors.ts): the element carries both themes' values inline
+   (skillTint) and this picks the one in use, since a server component can't know the theme. */
+.skill-tint {
+  --skill: var(--skill-light);
+}
+
+.dark .skill-tint {
+  --skill: var(--skill-dark);
+}
+
 /* Anything that can be pressed answers on pointer-down, not on release: a small dip that springs
    back. Colours keep their own short fade. */
 @utility pressable {
