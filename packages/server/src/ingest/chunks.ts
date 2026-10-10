@@ -41,6 +41,11 @@ export function chunkKeys(plan: SnapshotPlan, recv: Date): string[] {
   return keys;
 }
 
+/** The xp_samples chunk range of the XP bucket holding `at` (the hiscores' XP fill, D-105). */
+export function xpChunkKey(at: Date): string {
+  return chunkKey('xp_samples', floorTo(at, XP_BUCKET_MS));
+}
+
 function chunkKey(table: keyof typeof CHUNK_INTERVAL_MS, at: Date): string {
   return `${table}:${Math.floor(at.getTime() / CHUNK_INTERVAL_MS[table])}`;
 }

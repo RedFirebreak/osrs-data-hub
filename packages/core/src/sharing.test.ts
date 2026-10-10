@@ -55,7 +55,7 @@ const ALL = [...CATEGORIES].sort();
 const DEFAULT_GUILD: Category[] = ALL;
 
 describe('constants', () => {
-  it('has the seven handoff §10 categories', () => {
+  it('has the seven handoff §10 categories and hiscores (D-105)', () => {
     expect(CATEGORIES).toEqual([
       'stats',
       'events',
@@ -64,11 +64,12 @@ describe('constants', () => {
       'location_history',
       'equipment',
       'inventory',
+      'hiscores',
     ]);
     expect(AUDIENCES).toEqual(['private', 'guild', 'selected']);
   });
 
-  it('defaults every category to guild (D-96)', () => {
+  it('defaults every category to guild (D-96, D-105)', () => {
     expect(DEFAULT_AUDIENCE).toEqual({
       stats: 'guild',
       events: 'guild',
@@ -77,6 +78,7 @@ describe('constants', () => {
       location_history: 'guild',
       equipment: 'guild',
       inventory: 'guild',
+      hiscores: 'guild',
     });
   });
 

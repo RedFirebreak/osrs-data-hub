@@ -214,6 +214,27 @@ export const OPERATIONS: readonly OperationSpec[] = [
     notFound: true,
   },
   {
+    path: '/accounts/{id}/hiscores',
+    operationId: 'getAccountHiscores',
+    tag: 'Hiscores',
+    summary: 'Official hiscores',
+    description:
+      'What the hub last read from the official OSRS hiscores (`hiscores`): every skill with its rank, and the boss kill counts, clues and minigames with a score, each with its rank on the account’s own iron table beside the main one. The hub looks an account up when it first sees it, about 10 minutes after a play session ends, and once a day; `fetched_at` says when. Not part of `/snapshot`: poll this every few minutes at most.',
+    response: S.HiscoresResponse,
+    pathParams: S.AccountPath,
+    notFound: true,
+  },
+  {
+    path: '/hiscores',
+    operationId: 'getHiscores',
+    tag: 'Hiscores',
+    summary: 'Official hiscores of several accounts',
+    description: `What \`/accounts/{id}/hiscores\` returns, for several accounts in request order: up to ${MAX_BULK_ACCOUNTS} with a user key, ${MAX_BULK_ACCOUNTS_SERVICE} with a service key; an account the key can’t read makes the whole request 404. Without \`accounts\`, every visible account whose \`hiscores\` the key reads, sorted by name.`,
+    response: S.HiscoresMultiResponse,
+    query: S.HiscoresMultiQuery,
+    notFound: true,
+  },
+  {
     path: '/leaderboards/gains',
     operationId: 'getGainsLeaderboards',
     tag: 'Leaderboards',
@@ -258,6 +279,7 @@ const SHARED_COMPONENTS: readonly [string, z.ZodType][] = [
   ['AccountRef', S.AccountRef],
   ['Owner', S.Owner],
   ['AccountLocations', S.AccountLocations],
+  ['Hiscores', S.Hiscores],
   ['Item', S.Item],
   ['Meter', S.Meter],
   ['Skill', S.Skill],
@@ -499,6 +521,11 @@ export function buildOpenApiDocument(): Json {
       { name: 'XP and gains', description: 'XP series and gains (`stats`).' },
       { name: 'Events', description: 'The cursor feed and time-range reads (`events`).' },
       { name: 'Histories', description: 'Sessions, equipment, wealth and locations.' },
+      {
+        name: 'Hiscores',
+        description:
+          'Ranks, kill counts, clues and minigames from the official hiscores (`hiscores`).',
+      },
       {
         name: 'Leaderboards',
         description: 'Gains leaderboards (`stats`) and the loot leaderboard (`events`).',

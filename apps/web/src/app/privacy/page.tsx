@@ -58,6 +58,8 @@ export default async function PrivacyPage() {
   const guild = config.discord.guildName;
   // The icon CDN the browser loads pictures from (D-95); null when icons are off.
   const iconsHost = config.osrsIconsUrl ? new URL(config.osrsIconsUrl).host : null;
+  // The official hiscores the worker reads (D-105); null when the lookups are off.
+  const hiscoresHost = config.hiscores.url ? new URL(config.hiscores.url).host : null;
 
   const retention: { data: string; kept: string }[] = [
     {
@@ -71,6 +73,14 @@ export default async function PrivacyPage() {
       kept: 'No expiry',
     },
     { data: 'Play sessions, equipment changes, daily wealth', kept: 'No expiry' },
+    ...(hiscoresHost
+      ? [
+          {
+            data: 'Official hiscores: the latest lookup, and every change of a kill count, clue or minigame score',
+            kept: 'No expiry',
+          },
+        ]
+      : []),
     {
       data: 'Location trail: every tile you visit (one point a minute with a plugin before 1.6)',
       kept: formatDays(config.locationRetentionDays),
@@ -125,6 +135,17 @@ export default async function PrivacyPage() {
             worlds unless you turn that on in the plugin; if you do, the hub keeps only the events
             and play sessions from those worlds, marked as such.
           </p>
+          {hiscoresHost && (
+            <p>
+              Besides the plugin, the hub reads each account&apos;s entry on the official OSRS
+              hiscores ({hiscoresHost}) by its in-game name: after you log out, and once a day.
+              Those are public, so the request says nothing new about you; it comes from the
+              hub&apos;s server, not your browser. Ranks, boss kill counts, clues and minigames are
+              shown under the Hiscores category. XP the hiscores show above what the plugin last
+              sent (play on mobile or without RuneLite) is added to your XP history at the time of
+              the lookup. That is the only data the hub adds to what the plugin sent.
+            </p>
+          )}
         </Section>
 
         <Section id="stored" title="What is stored and for how long">
@@ -256,12 +277,12 @@ export default async function PrivacyPage() {
             sharing settings you made and the access others gave you, the audit log entries about
             you, and every account you own or play on: its current state, XP history (5-minute
             detail for as long as it is kept, daily before that), events, play sessions, equipment
-            changes, wealth per day and the location trail. It holds only what you can see in the
-            hub today, so a category an owner doesn&apos;t share with you isn&apos;t in it. It
-            leaves out the raw plugin messages kept for{' '}
-            {formatHours(config.rawPayloadRetentionHours)} for troubleshooting, and anything about
-            other members beyond the names the hub shows you. You can download it once every 10
-            minutes.
+            changes, wealth per day, the location trail and the official hiscores with every change
+            of a score. It holds only what you can see in the hub today, so a category an owner
+            doesn&apos;t share with you isn&apos;t in it. It leaves out the raw plugin messages kept
+            for {formatHours(config.rawPayloadRetentionHours)} for troubleshooting, and anything
+            about other members beyond the names the hub shows you. You can download it once every
+            10 minutes.
           </p>
         </Section>
 

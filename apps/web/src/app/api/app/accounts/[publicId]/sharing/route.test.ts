@@ -102,6 +102,7 @@ describe('GET /api/app/accounts/[publicId]/sharing', () => {
       ['location_history', 'guild', true],
       ['equipment', 'guild', true],
       ['inventory', 'guild', true],
+      ['hiscores', 'guild', true],
     ]);
     expect(sharing.contributors.map((c) => [c.name, c.role])).toEqual([
       ['Owner', 'owner'],

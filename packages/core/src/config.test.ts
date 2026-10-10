@@ -75,6 +75,31 @@ describe('DISCORD_AUTHORIZE_URL (D-101)', () => {
   });
 });
 
+describe('HISCORES_URL and HISCORES_REQUEST_INTERVAL_MS (D-105)', () => {
+  it('defaults to the official hiscores every 3 s, and turns the sync off when empty', () => {
+    expect(parseConfig(ENV).hiscores).toEqual({
+      url: 'https://secure.runescape.com',
+      requestIntervalMs: 3000,
+    });
+    expect(parseConfig({ ...ENV, HISCORES_URL: '' }).hiscores.url).toBeNull();
+    expect(parseConfig({ ...ENV, HISCORES_URL: ' http://127.0.0.1:3299/ ' }).hiscores.url).toBe(
+      'http://127.0.0.1:3299',
+    );
+    expect(
+      parseConfig({ ...ENV, HISCORES_REQUEST_INTERVAL_MS: '10000' }).hiscores.requestIntervalMs,
+    ).toBe(10000);
+  });
+
+  it('rejects a URL that is not a plain http(s) base, and an interval under a second', () => {
+    for (const value of ['secure.runescape.com', 'ftp://x.example', 'https://x.example/?a=1']) {
+      expect(() => parseConfig({ ...ENV, HISCORES_URL: value }), value).toThrow('HISCORES_URL');
+    }
+    expect(() => parseConfig({ ...ENV, HISCORES_REQUEST_INTERVAL_MS: '500' })).toThrow(
+      'HISCORES_REQUEST_INTERVAL_MS',
+    );
+  });
+});
+
 describe('OSRS_ICONS_URL (D-95)', () => {
   it('defaults to the icon CDN, turns icons off when empty, and strips trailing slashes', () => {
     expect(parseConfig(ENV).osrsIconsUrl).toBe('https://icons.scapekeeper.com');

@@ -7,6 +7,7 @@
  * | reverify-members           | every 15 min, a batch of users due (staggered 6-hourly checks) |
  * | expire-grace               | hourly: grace expiry, then the orphaned-account purge (D-61) |
  * | prune-audit-log            | daily                            |
+ * | sync-hiscores              | every minute, the accounts due on the official hiscores (D-105) |
  * | Timescale policies         | reconciled at startup            |
  *
  * Names and schedules are in ./queues (JOBS), what each job does is in main() below. Every run is
@@ -26,6 +27,7 @@ import {
   pruneAuditLog,
   purgeOrphanedAccounts,
   reverifyDueMembers,
+  syncHiscores,
 } from '@hub/server';
 import type { Server } from 'node:http';
 import { PgBoss } from 'pg-boss';
@@ -143,6 +145,19 @@ async function main() {
         }),
       'prune-audit-log': (run) =>
         run(() => pruneAuditLog(db, { retentionDays: config.auditLogRetentionDays })),
+      'sync-hiscores': async (run) => {
+        const baseUrl = config.hiscores.url;
+        // HISCORES_URL empty: off. Not a run, so not counted (said once at startup).
+        if (!baseUrl) return;
+        await run(() =>
+          syncHiscores(db, {
+            baseUrl,
+            requestIntervalMs: config.hiscores.requestIntervalMs,
+            metrics,
+            logger: log,
+          }),
+        );
+      },
     },
   );
   log.info({ jobs: JOB_NAMES }, 'worker started');
@@ -150,6 +165,7 @@ async function main() {
     // Said once at startup too: the job itself only runs every 15 minutes.
     log.warn('DISCORD_BOT_TOKEN or DISCORD_GUILD_ID not set: membership re-verification is off');
   }
+  if (!config.hiscores.url) log.info('HISCORES_URL is empty: the hiscores sync is off');
 }
 
 let stopping = false;

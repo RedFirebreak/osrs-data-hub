@@ -87,7 +87,7 @@ describe('categories: the key’s ∩ what the creator may see', () => {
   it('gives a member’s key the guild categories only, and omits the other sections', async () => {
     const { principal } = await makeKey(t.db, member.id, {}, NOW);
     const detail = present(await apiGetAccount(t.db, principal, zezima.publicId, NOW));
-    expect(detail.categories).toEqual(['stats', 'events', 'activity']);
+    expect(detail.categories).toEqual(['stats', 'events', 'activity', 'hiscores']);
     expect(sections(detail)).toEqual(['presence', 'vitals', 'skills']);
     expect(detail).not.toHaveProperty('location');
     expect(detail).not.toHaveProperty('inventory');
@@ -210,7 +210,7 @@ describe('the creator’s visibility, evaluated on every request', () => {
       expect(await apiGetAccount(t.db, p, hidden.publicId, NOW)).toBeNull();
       expect((await loadApiAccounts(t.db, p)).map((e) => e.account.id)).not.toContain(hidden.id);
       const detail = present(await apiGetAccount(t.db, p, zezima.publicId, NOW));
-      expect(detail.categories).toEqual(['stats', 'events', 'activity']);
+      expect(detail.categories).toEqual(['stats', 'events', 'activity', 'hiscores']);
     }
     // The UI's loader, without a restriction, still gives the admin both.
     const viewer = { userId: admin.id, status: 'active' as const, isAdmin: true };

@@ -194,6 +194,7 @@ describe('GET /api/v1/accounts/{id}', () => {
       'location_history',
       'equipment',
       'inventory',
+      'hiscores',
     ]);
     expect(data.presence).toMatchObject({ shared: true, online: true, world: 302 });
     expect(data.vitals).toMatchObject({ shared: true, hp: { current: 99, max: 99 } });
@@ -232,7 +233,7 @@ describe('GET /api/v1/accounts/{id}', () => {
       AccountResponse,
       await (await account(memberKey, world.main.id)).json(),
     );
-    expect(member.data.categories).toEqual(['stats', 'events', 'activity']);
+    expect(member.data.categories).toEqual(['stats', 'events', 'activity', 'hiscores']);
     expect(Object.keys(member.data).sort()).toEqual(
       [
         'categories',

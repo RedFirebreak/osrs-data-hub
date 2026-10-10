@@ -25,8 +25,6 @@ import {
   getSharingSettings,
   getUserSettings,
   getWealthHistory,
-  isPublicIdLike,
-  loadVisibleAccount,
   type AccountPage,
 } from '@hub/server';
 import type { Metadata } from 'next';
@@ -36,6 +34,7 @@ import { AccountHeader } from '@/components/account-page/account-header';
 import { AccountSkeleton } from '@/components/account-page/account-skeleton';
 import { ActivityContent } from '@/components/account-page/activity-section';
 import { EquipmentGrid, EquipmentLog } from '@/components/account-page/equipment-content';
+import { HiscoresContent, hiscoresDescription } from '@/components/account-page/hiscores-content';
 import { InventoryContent } from '@/components/account-page/inventory-content';
 import { LocationContent } from '@/components/account-page/location-content';
 import { playtimeByDay } from '@/components/account-page/playtime';
@@ -51,23 +50,15 @@ import { eventTypeOptions } from '@/components/events/event-types';
 import { AutoRefresh } from '@/components/shell/auto-refresh';
 import { SharingPanel } from '@/components/sharing/sharing-panel';
 import { Skeleton } from '@/components/ui/skeleton';
+import { AccountTabs } from '@/components/metrics/metrics-panels';
 import { requireUser } from '@/lib/session';
 import { cn } from '@/lib/utils';
+import { loadVisible } from './visible';
 
 /** Days of play sessions behind the playtime chart and the sessions list. */
 const ACTIVITY_DAYS = 30;
 /** Days of gear changes and wealth shown. */
 const HISTORY_DAYS = 90;
-
-/**
- * The quick check before anything streams (NEXT-14): the account if the viewer may know it exists,
- * else null. Shared by generateMetadata and the page within one request.
- */
-const loadVisible = cache(async (publicId: string) => {
-  const { viewer } = await requireUser();
-  // An id that can't be one (`%00` decodes to a NUL, which Postgres refuses) is just not found.
-  return isPublicIdLike(publicId) ? loadVisibleAccount(getDb().db, viewer, publicId) : null;
-});
 
 /** The page's data (inside the Suspense boundary). */
 const loadAccount = cache(async (publicId: string) => {
@@ -112,6 +103,7 @@ async function AccountContent({ publicId }: { publicId: string }) {
     xpSection(ctx),
     activitySection(ctx),
     eventsSection(ctx),
+    hiscoresSection(ctx),
   ].filter(Boolean);
   const aside = [
     vitalsSection(ctx),
@@ -129,6 +121,7 @@ async function AccountContent({ publicId }: { publicId: string }) {
         now={now}
         timezone={timezone}
       />
+      <AccountTabs publicId={publicId} active="overview" />
       {main.length === 0 && aside.length === 0 ? (
         <SectionCard
           title="Nothing else shared with you"
@@ -290,6 +283,25 @@ function eventsSection({ page, publicId, now }: SectionContext) {
           </p>
         }
       />
+    </SectionCard>
+  );
+}
+
+function hiscoresSection({ page, now, dayOnlyIn }: SectionContext) {
+  const hiscores = page.hiscores;
+  if (!hiscores.visible) return null;
+  const view = hiscores.data;
+  return (
+    <SectionCard
+      key="hiscores"
+      id="hiscores"
+      title="Hiscores"
+      description={hiscoresDescription(view)}
+      updatedAt={view.fetchedAt}
+      now={now}
+      updatedDayIn={dayOnlyIn}
+    >
+      <HiscoresContent view={view} />
     </SectionCard>
   );
 }

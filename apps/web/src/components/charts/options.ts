@@ -9,11 +9,21 @@
  * crosshair tooltip on lines and an axis-shadow tooltip on bars, and a legend only for 2+ series.
  */
 import { DAY_MS, HOUR_MS, formatDuration, formatGp, formatNumber } from '@hub/core';
-import type { BarSeriesOption, LineSeriesOption } from 'echarts/charts';
 import type {
+  BarSeriesOption,
+  HeatmapSeriesOption,
+  LineSeriesOption,
+  ScatterSeriesOption,
+} from 'echarts/charts';
+import type {
+  BrushComponentOption,
+  ToolboxComponentOption,
   GridComponentOption,
   LegendComponentOption,
+  MarkAreaComponentOption,
+  MarkLineComponentOption,
   TooltipComponentOption,
+  VisualMapComponentOption,
 } from 'echarts/components';
 import type { ComposeOption } from 'echarts/core';
 import { DATE_TIME_OPTIONS, formatInZone } from '@/lib/dates';
@@ -21,9 +31,16 @@ import { DATE_TIME_OPTIONS, formatInZone } from '@/lib/dates';
 export type ChartOption = ComposeOption<
   | BarSeriesOption
   | LineSeriesOption
+  | ScatterSeriesOption
+  | HeatmapSeriesOption
   | GridComponentOption
   | LegendComponentOption
   | TooltipComponentOption
+  | VisualMapComponentOption
+  | MarkAreaComponentOption
+  | MarkLineComponentOption
+  | BrushComponentOption
+  | ToolboxComponentOption
 >;
 
 /** Colours and font a chart is drawn with, resolved from the page's CSS variables (echart.tsx). */
@@ -303,7 +320,7 @@ export function firstParam(params: unknown): { value: unknown; dataIndex?: numbe
 // --- The account page's charts -------------------------------------------------------------------
 
 /** "29 Sep 2026, 14:05": a moment in a tooltip, with the year (a range can span several). */
-const MOMENT_OPTIONS: Intl.DateTimeFormatOptions = { ...DATE_TIME_OPTIONS, year: 'numeric' };
+export const MOMENT_OPTIONS: Intl.DateTimeFormatOptions = { ...DATE_TIME_OPTIONS, year: 'numeric' };
 const DATE_UTC = new Intl.DateTimeFormat(undefined, {
   year: 'numeric',
   month: 'short',
@@ -317,18 +334,18 @@ const SHORT_DAY_UTC = new Intl.DateTimeFormat(undefined, {
 });
 
 /** Compact axis labels: 13_200_000 → "13.2M" (formatGp's units, which read fine for XP too). */
-function compact(value: number): string {
+export function compact(value: number): string {
   return formatGp(value);
 }
 
 /** "2026-09-29" → "Sep 29" (the day is a calendar date: formatted in UTC so it never shifts). */
-function shortDay(day: string): string {
+export function shortDay(day: string): string {
   const t = Date.parse(`${day}T00:00:00Z`);
   return Number.isFinite(t) ? SHORT_DAY_UTC.format(new Date(t)) : day;
 }
 
 /** "2026-09-29" → "Sep 29, 2026", the title of a day's tooltip (a calendar date: UTC again). */
-function longDay(day: string): string {
+export function longDay(day: string): string {
   return DATE_UTC.format(new Date(`${day}T00:00:00Z`));
 }
 

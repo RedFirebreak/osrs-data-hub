@@ -104,7 +104,7 @@ describe('GET /api/v1/snapshot', () => {
     }
     const member = expectShape(SnapshotResponse, await (await snapshot(memberKey)).json());
     const main = member.data.find((a) => a.id === world.main.id);
-    expect(main?.categories).toEqual(['stats', 'events', 'activity']);
+    expect(main?.categories).toEqual(['stats', 'events', 'activity', 'hiscores']);
     expect(main).not.toHaveProperty('location');
     expect(main).not.toHaveProperty('inventory');
     expect(main).toHaveProperty('online', true);

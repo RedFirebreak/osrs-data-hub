@@ -92,4 +92,20 @@ describe('privacy page', () => {
       setConfigForTests(before);
     }
   });
+
+  it('says the hub reads the official hiscores and adds XP from them, and not when that is off (D-105)', async () => {
+    const text = await render();
+    expect(text).toContain('official OSRS hiscores (secure.runescape.com)');
+    expect(text).toContain('is added to your XP history');
+    expect(text).toContain('Official hiscores: the latest lookup');
+    const config = getConfig();
+    setConfigForTests({ ...config, hiscores: { ...config.hiscores, url: null } });
+    try {
+      const off = await render();
+      expect(off).not.toContain('hiscores (');
+      expect(off).not.toContain('Official hiscores');
+    } finally {
+      setConfigForTests(config);
+    }
+  });
 });
