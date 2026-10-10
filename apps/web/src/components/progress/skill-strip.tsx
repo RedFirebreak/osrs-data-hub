@@ -1,8 +1,9 @@
 /**
  * Every skill as its icon, in the game's order: on a skill's page, the way sideways to the next
- * skill without going back up. Every icon is at full strength (the dark sprites would vanish if the
- * others were dimmed); the current one is marked by its frame. The row scrolls on a phone. Each link
- * keeps the page's range. Server component.
+ * skill without going back up. Each icon sits on a plain tile, a mid grey in the dark theme: several
+ * sprites are black line art (Agility, Thieving, Mining) and vanish on a dark page. The current one
+ * is marked by its frame. The row scrolls on a phone. Each link keeps the page's range. Server
+ * component.
  */
 import Link from 'next/link';
 import { SkillIcon } from '@/components/icons/osrs-icon';
@@ -32,8 +33,10 @@ export function SkillStrip({ publicId, skills, current, search }: SkillStripProp
                 aria-label={skill}
                 title={skill}
                 className={cn(
-                  'pressable grid size-9 place-items-center rounded-lg border border-transparent focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none',
-                  on ? 'border-foreground/60 bg-muted' : 'hover:bg-muted',
+                  'pressable grid size-9 place-items-center rounded-lg border bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none dark:bg-neutral-600',
+                  on
+                    ? 'border-foreground'
+                    : 'border-transparent hover:bg-foreground/15 dark:hover:bg-neutral-500',
                 )}
               >
                 <SkillIcon skill={skill} holdSpace fallback={<span>{skill.slice(0, 2)}</span>} />

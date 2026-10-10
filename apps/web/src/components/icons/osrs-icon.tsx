@@ -152,12 +152,7 @@ export function SkillIcon({
   ...rest
 }: IconProps & { skill: string | null | undefined }) {
   const { base } = useIconConfig();
-  // Several skill sprites are black line art (Agility, Thieving, Mining): on a dark surface a faint
-  // light rim keeps their shape readable. Light surfaces need nothing.
-  const box = cn(
-    'size-5 shrink-0 object-scale-down dark:[filter:drop-shadow(0_0_1px_rgb(255_255_255/0.7))]',
-    className,
-  );
+  const box = cn('size-5 shrink-0 object-scale-down', className);
   return (
     <OsrsImage
       src={skillIconUrl(base, skill)}
@@ -208,12 +203,7 @@ export function EventGameIcon({
 }: IconProps & { event: EventIconSource }) {
   const icons = useIconConfig();
   const { base, stacks } = icons;
-  // Several skill sprites are black line art (Agility, Thieving, Mining): on a dark surface a faint
-  // light rim keeps their shape readable. Light surfaces need nothing.
-  const box = cn(
-    'size-5 shrink-0 object-scale-down dark:[filter:drop-shadow(0_0_1px_rgb(255_255_255/0.7))]',
-    className,
-  );
+  const box = cn('size-5 shrink-0 object-scale-down', className);
   if (awaitingStacks(icons, eventItemQuantity(event))) return blankBox(box);
   return (
     <OsrsImage

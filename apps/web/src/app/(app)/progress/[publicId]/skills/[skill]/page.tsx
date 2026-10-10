@@ -267,11 +267,14 @@ function SkillHeader({ row, character }: { row: SkillMetrics; character: string 
   return (
     <header className="skill-tint flex flex-col gap-4" style={skillTint(row.skill)}>
       <div className="flex items-center gap-4">
-        <SkillIcon
-          skill={row.skill}
-          holdSpace
-          className="size-11 object-contain [image-rendering:pixelated]"
-        />
+        {/* The same plain tile as the strip's icons: a black sprite needs a lighter ground. */}
+        <span className="grid size-16 shrink-0 place-items-center rounded-xl bg-muted dark:bg-neutral-600">
+          <SkillIcon
+            skill={row.skill}
+            holdSpace
+            className="size-11 object-contain [image-rendering:pixelated]"
+          />
+        </span>
         <div className="min-w-0">
           <h1 className="text-3xl leading-tight font-semibold tracking-tight sm:text-4xl">
             {row.skill}
