@@ -92,6 +92,17 @@ describe('periodComparison', () => {
     expect(comparisonStepMs(DAY, DAY)).toBe(DAY);
   });
 
+  it('keeps a fine line hourly for a week, but never under the floor', () => {
+    expect(comparisonStepMs(7 * DAY)).toBe(DAY);
+    expect(comparisonStepMs(7 * DAY, 0, true)).toBe(HOUR);
+    expect(comparisonStepMs(30 * DAY, 0, true)).toBe(DAY);
+    // Without `activity` a day stays the finest step (D-50).
+    expect(comparisonStepMs(7 * DAY, DAY, true)).toBe(DAY);
+    const week = periodComparison([], { from: 0, to: 7 * DAY }, { compare: false, fine: true });
+    expect(week.stepMs).toBe(HOUR);
+    expect(week.current).toHaveLength(7 * 24 + 1);
+  });
+
   it('accumulates each period from its own start', () => {
     const from = Date.parse('2026-10-01T00:00:00Z');
     const points = [

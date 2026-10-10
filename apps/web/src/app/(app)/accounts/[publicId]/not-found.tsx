@@ -18,7 +18,7 @@ export default function AccountNotFound() {
             <Link href="/guild">Browse the guild</Link>
           </Button>
           <Button asChild variant="outline">
-            <Link href="/">Your dashboard</Link>
+            <Link href="/">Home</Link>
           </Button>
         </div>
       }

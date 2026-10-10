@@ -90,7 +90,7 @@ export function FilterBar({
                 aria-checked={checked}
                 variant={checked ? 'secondary' : 'ghost'}
                 size="sm"
-                className={cn(checked && 'shadow-[inset_0_-2px_0_var(--metrics-accent)]')}
+                className={cn(checked && 'shadow-[inset_0_-2px_0_var(--foreground)]')}
                 onClick={() => {
                   if (r === 'custom') return setCustom(true);
                   setCustom(false);
@@ -198,7 +198,7 @@ export function FilterBar({
             />
           )}
           {sessionStart && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-metrics-accent-soft py-0.5 pr-1 pl-2.5">
+            <span className="inline-flex items-center gap-1 rounded-full bg-muted py-0.5 pr-1 pl-2.5">
               Session of {formatInZone(sessionStart, timezone, MOMENT_OPTIONS)}
               <Button
                 variant="ghost"
@@ -250,7 +250,7 @@ export function FilterBar({
                     variant={on ? 'secondary' : 'ghost'}
                     size="xs"
                     aria-pressed={on}
-                    className={cn(on && 'shadow-[inset_0_-2px_0_var(--metrics-accent)]')}
+                    className={cn(on && 'shadow-[inset_0_-2px_0_var(--foreground)]')}
                     onClick={() =>
                       set({
                         weekdays: on

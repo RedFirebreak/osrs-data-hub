@@ -1,17 +1,12 @@
 'use client';
-/** The signed-in user's avatar menu in the header: Settings, Privacy, the theme, Sign out. */
-import {
-  ChevronDownIcon,
-  LogOutIcon,
-  MonitorIcon,
-  MoonIcon,
-  SettingsIcon,
-  ShieldCheckIcon,
-  SunIcon,
-} from 'lucide-react';
+/**
+ * The signed-in user's avatar menu in the header: the set-up pages (Devices, API keys, Settings,
+ * Privacy, and Admin for admins), the theme and Sign out.
+ */
+import { ChevronDownIcon, LogOutIcon, MonitorIcon, MoonIcon, SunIcon } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import Link from 'next/link';
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { toast } from 'sonner';
 import { UserAvatar } from '@/components/common/user-avatar';
 import { Button } from '@/components/ui/button';
@@ -26,6 +21,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { signOut } from '@/lib/auth-client';
+import { accountMenuItemsFor } from './nav-items';
 
 const THEMES = [
   { value: 'system', label: 'System', icon: MonitorIcon },
@@ -70,18 +66,17 @@ export function UserMenu({ name, image, isAdmin }: UserMenuProps) {
           {isAdmin && <span className="block">Admin</span>}
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <DropdownMenuItem asChild>
-          <Link href="/settings">
-            <SettingsIcon aria-hidden />
-            Settings
-          </Link>
-        </DropdownMenuItem>
-        <DropdownMenuItem asChild>
-          <Link href="/privacy">
-            <ShieldCheckIcon aria-hidden />
-            Privacy
-          </Link>
-        </DropdownMenuItem>
+        {accountMenuItemsFor(isAdmin).map(({ href, label, icon: Icon, adminOnly }) => (
+          <Fragment key={href}>
+            {adminOnly && <DropdownMenuSeparator />}
+            <DropdownMenuItem asChild>
+              <Link href={href}>
+                <Icon aria-hidden />
+                {label}
+              </Link>
+            </DropdownMenuItem>
+          </Fragment>
+        ))}
         <DropdownMenuSeparator />
         <DropdownMenuLabel>Theme</DropdownMenuLabel>
         <DropdownMenuRadioGroup value={theme ?? 'system'} onValueChange={setTheme}>

@@ -194,14 +194,15 @@ export { MAX_SESSIONS } from '../accounts/history';
 
 /**
  * The Metrics view of an account for `viewer`, or null when the account isn't visible (the page
- * answers 404). `now` is the render time, `timezone` the viewer's (Settings).
+ * answers 404). `now` is the render time, `timezone` the viewer's (Settings). `fineSteps` draws the
+ * comparison by the hour up to eight days (comparisonStepMs), for a page that shows it as one line.
  */
 export async function getAccountMetrics(
   db: DbOrTx,
   viewer: Principal,
   publicId: string,
   query: MetricsQuery,
-  opts: { now: Date; timezone: string },
+  opts: { now: Date; timezone: string; fineSteps?: boolean },
 ): Promise<AccountMetrics | null> {
   const entry = await loadVisibleAccount(db, viewer, publicId);
   if (!entry) return null;
@@ -311,6 +312,7 @@ export async function getAccountMetrics(
     range,
     spanMs,
     now: opts.now,
+    fine: opts.fineSteps ?? false,
     drops,
     kills: bossKills,
     sessions: built,
@@ -478,6 +480,8 @@ interface ComparisonInput {
   range: { from: Date; to: Date };
   spanMs: number;
   now: Date;
+  /** Hourly steps up to eight days (comparisonStepMs). */
+  fine: boolean;
   drops: readonly { at: number; value: number }[];
   kills: readonly AccountKillGain[];
   sessions: readonly SessionMetrics[];
@@ -531,6 +535,7 @@ async function loadComparison(
       compare: query.compare && sel.measure !== 'active',
       // Without `activity`, nothing finer than a day (D-50).
       minStepMs: access.activity ? 0 : DAY_MS,
+      fine: input.fine,
     },
   );
 }

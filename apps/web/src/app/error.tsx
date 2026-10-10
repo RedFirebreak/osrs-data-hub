@@ -30,7 +30,7 @@ export default function ErrorPage({
             Try again
           </Button>
           <Button asChild variant="outline">
-            <Link href="/">Go to the dashboard</Link>
+            <Link href="/">Go to Home</Link>
           </Button>
         </div>
       }

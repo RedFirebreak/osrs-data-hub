@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { ItemTile } from '@/components/account-page/item-tile';
-import { SkillsTable } from '@/components/account-page/skills-table';
+import { SkillsPanel } from '@/components/account-page/skills-panel';
 import { EventFeed } from '@/components/events/event-feed';
 import { feedEvent } from '@/components/live/test-fixtures';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -76,10 +76,11 @@ describe('ItemTile with icons', () => {
 });
 
 describe('game icons elsewhere', () => {
-  it('puts skill icons on skill rows but not on Overall', () => {
+  it('puts skill icons on skill tiles, and gives Overall no tile', () => {
     const gains = { day: 0, week: 0, month: 0, year: 0 };
     const html = render(
-      <SkillsTable
+      <SkillsPanel
+        publicId="abc123def456"
         rows={[
           { skill: 'Overall', level: 2000, realLevel: 2000, xp: 1, gains },
           { skill: 'Attack', level: 99, realLevel: 99, xp: 1, gains },

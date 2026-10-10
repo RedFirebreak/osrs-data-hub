@@ -1,25 +1,39 @@
 import { describe, expect, it } from 'vitest';
-import { isNavActive, navItemsFor } from './nav-items';
+import { NAV_ITEMS, accountMenuItemsFor, isNavActive } from './nav-items';
 
 describe('navigation', () => {
-  it('shows Admin to admins only', () => {
-    expect(navItemsFor(false).map((i) => i.label)).toEqual([
-      'Dashboard',
-      'Guild',
+  it('keeps the top bar to what a player comes for', () => {
+    expect(NAV_ITEMS.map((i) => i.label)).toEqual(['Home', 'Progress', 'Guild']);
+  });
+
+  it('puts the set-up pages in the avatar menu, with Admin for admins only', () => {
+    expect(accountMenuItemsFor(false).map((i) => i.label)).toEqual([
       'Devices',
       'API keys',
       'Settings',
+      'Privacy',
     ]);
-    expect(navItemsFor(true).map((i) => i.label)).toContain('Admin');
+    expect(accountMenuItemsFor(true).map((i) => i.label)).toContain('Admin');
   });
 
   it('marks the current section', () => {
     expect(isNavActive('/', '/')).toBe(true);
+    expect(isNavActive('/guild', '/')).toBe(false);
+    expect(isNavActive('/guild', '/guild')).toBe(true);
+    expect(isNavActive('/guildhall', '/guild')).toBe(false);
+    expect(isNavActive('/progress', '/progress')).toBe(true);
+    expect(isNavActive('/progress/abc123def456/skills/magic', '/progress')).toBe(true);
+    expect(isNavActive('/progress/abc123def456', '/')).toBe(false);
     expect(isNavActive('/devices', '/')).toBe(false);
-    expect(isNavActive('/devices', '/devices')).toBe(true);
-    expect(isNavActive('/admin/users', '/admin')).toBe(true);
-    expect(isNavActive('/administrator', '/admin')).toBe(false);
-    expect(isNavActive('/api-keys', '/api-keys')).toBe(true);
+    expect(isNavActive('/devices', '/guild')).toBe(false);
     expect(isNavActive(null, '/')).toBe(false);
+  });
+
+  it("counts the viewer's own characters as Home and everyone else's as Guild", () => {
+    const own = ['mine12345678'];
+    expect(isNavActive('/accounts/mine12345678', '/', own)).toBe(true);
+    expect(isNavActive('/accounts/mine12345678', '/guild', own)).toBe(false);
+    expect(isNavActive('/accounts/theirs123456', '/', own)).toBe(false);
+    expect(isNavActive('/accounts/theirs123456', '/guild', own)).toBe(true);
   });
 });

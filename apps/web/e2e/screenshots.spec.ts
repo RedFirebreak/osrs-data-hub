@@ -165,13 +165,10 @@ async function send(member: Member, token: string, body: unknown): Promise<void>
   expect(res.status(), await res.text()).toBe(200);
 }
 
-/** The /accounts/<publicId> path of the dashboard card for `name`. */
+/** The /accounts/<publicId> path of the character `name`, from the guild's member list. */
 async function accountHref(page: Page, name: string): Promise<string> {
-  await visit(page, '/');
-  const link = page
-    .getByRole('region', { name: 'Your accounts' })
-    .getByRole('link', { name, exact: true })
-    .first();
+  await visit(page, '/guild');
+  const link = page.getByRole('main').getByRole('link', { name, exact: true }).first();
   const href = await link.getAttribute('href');
   expect(href).toMatch(/^\/accounts\/[^/]+$/);
   return href as string;
@@ -198,10 +195,10 @@ test('screenshots of every page', { tag: '@screenshots' }, async ({ browser, req
     await context.close();
   });
 
-  // carol: a fresh member (empty dashboard), then the owner of Iron Mira.
+  // carol: a fresh member (an empty Home), then the owner of Iron Mira.
   const carol = await signIn(browser, request, 'carol');
-  await test.step('empty dashboard', async () => {
-    await shoot(carol.page, 'dashboard-empty');
+  await test.step('empty home', async () => {
+    await shoot(carol.page, 'home-empty');
   });
   const carolToken = await pairDevice(carol, 'Carol’s desktop');
   // In the fixtures' own order (XP only goes up; a drop would make a snapshot count as special, D-24).
@@ -282,17 +279,10 @@ test('screenshots of every page', { tag: '@screenshots' }, async ({ browser, req
   const zezima = await accountHref(alice.page, 'Zezima');
   const lynx = await accountHref(alice.page, 'Lynx Titan');
 
-  await test.step('dashboard', async () => {
+  await test.step('home', async () => {
+    // Home is alice's character, the one she played last.
     await visit(alice.page, '/');
-    await shoot(alice.page, 'dashboard', { waitMs: 300 });
-    await shoot(alice.page, 'nav-menu', {
-      viewports: ['phone'],
-      fullPage: false,
-      before: async (page) => {
-        await page.getByRole('button', { name: 'Open navigation' }).click();
-        await expect(page.getByRole('menu')).toBeVisible();
-      },
-    });
+    await shoot(alice.page, 'home', { waitMs: 800 });
     await shoot(alice.page, 'user-menu', {
       fullPage: false,
       before: async (page) => {
@@ -342,6 +332,21 @@ test('screenshots of every page', { tag: '@screenshots' }, async ({ browser, req
     await shoot(alice.page, 'account-not-found');
   });
 
+  await test.step('progress', async () => {
+    const progress = zezima.replace('/accounts/', '/progress/');
+    await visit(alice.page, progress);
+    await shoot(alice.page, 'progress', { waitMs: 1500 });
+    await visit(alice.page, `${progress}?range=30d&measure=gp`);
+    await shoot(alice.page, 'progress-loot-30d', { waitMs: 1500, fullPage: false });
+    await visit(alice.page, `${progress}/skills/attack`);
+    await shoot(alice.page, 'progress-skill', { waitMs: 1500 });
+    await visit(alice.page, `${progress}/deep-dive`);
+    await shoot(alice.page, 'progress-deep-dive', { waitMs: 1500 });
+    // carol reads what Zezima shares with the guild.
+    await visit(carol.page, progress);
+    await shoot(carol.page, 'progress-member-view', { waitMs: 1500, fullPage: false });
+  });
+
   await test.step('guild, settings, privacy', async () => {
     await visit(alice.page, '/guild');
     await shoot(alice.page, 'guild', { waitMs: 300 });
@@ -356,9 +361,9 @@ test('screenshots of every page', { tag: '@screenshots' }, async ({ browser, req
     await expect(dialog).toBeHidden();
     await visit(alice.page, '/privacy');
     await shoot(alice.page, 'privacy');
-    // carol's dashboard: her account, and alice's in "Online now".
+    // carol's Home: her character, and alice's in "Online now".
     await visit(carol.page, '/');
-    await shoot(carol.page, 'dashboard-member');
+    await shoot(carol.page, 'home-member', { waitMs: 800 });
   });
 
   await test.step('api keys', async () => {
@@ -424,8 +429,8 @@ test('screenshots of every page', { tag: '@screenshots' }, async ({ browser, req
     });
   });
 
-  // Last, so the drops it sends don't fill the timelines above: a drop while alice looks at the
-  // dashboard, and its toast (below the header, on the right).
+  // Last, so the drops it sends don't fill the timelines above: a drop while alice looks at
+  // Home, and its toast (below the header, on the right).
   await test.step('toast', async () => {
     await visit(alice.page, '/');
     await shoot(alice.page, 'toast', {

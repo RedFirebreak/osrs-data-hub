@@ -10,12 +10,19 @@ export interface ValuePoint {
   value: number;
 }
 
+/** The longest span drawn in hours: two days, or eight for a `fine` line (a week, by the hour). */
+const HOURLY_DAYS = 2;
+const FINE_HOURLY_DAYS = 8;
+
 /**
  * The step of the cumulative lines: hourly up to two days, daily up to 120 days, weekly beyond.
- * `minStepMs` raises it (a viewer without `activity` gets days at least, D-50).
+ * `minStepMs` raises it (a viewer without `activity` gets days at least, D-50). `fine` keeps the
+ * hourly step up to eight days: a week drawn as one line wants its sessions visible as climbs, where
+ * the comparison's two lines read better day by day.
  */
-export function comparisonStepMs(spanMs: number, minStepMs = 0): number {
-  const step = spanMs <= 2 * DAY_MS ? HOUR_MS : spanMs <= 120 * DAY_MS ? DAY_MS : 7 * DAY_MS;
+export function comparisonStepMs(spanMs: number, minStepMs = 0, fine = false): number {
+  const hourly = (fine ? FINE_HOURLY_DAYS : HOURLY_DAYS) * DAY_MS;
+  const step = spanMs <= hourly ? HOUR_MS : spanMs <= 120 * DAY_MS ? DAY_MS : 7 * DAY_MS;
   return Math.max(step, minStepMs);
 }
 
@@ -59,10 +66,10 @@ export interface PeriodComparison {
 export function periodComparison(
   points: readonly ValuePoint[],
   range: { from: number; to: number; now?: number },
-  opts: { compare: boolean; minStepMs?: number },
+  opts: { compare: boolean; minStepMs?: number; fine?: boolean },
 ): PeriodComparison {
   const span = range.to - range.from;
-  const stepMs = comparisonStepMs(span, opts.minStepMs);
+  const stepMs = comparisonStepMs(span, opts.minStepMs, opts.fine);
   const end = Math.min(range.to, range.now ?? range.to);
   const current = cumulativeSeries(points, range.from, Math.max(range.from + 1, end), stepMs);
   const previous = opts.compare

@@ -1,8 +1,9 @@
 /**
  * The top of the account page (handoff §12): the account's name (the page's h1), its type badge, the
  * viewer's relation to it, live presence (online dot + world, or "last seen"; hidden without the
- * activity category, D-50), the owner, previous names and when the hub first saw it. Server component
- * (AccountPresence is a client component that follows live presence messages).
+ * activity category, D-50), the owner, previous names and when the hub first saw it, with room
+ * beside the name for an action (the character picker). Server component (AccountPresence is a
+ * client component that follows live presence messages).
  */
 import type { AccountHeader as Header, Presence, Section } from '@hub/server';
 import { EyeOffIcon, UserRoundIcon } from 'lucide-react';
@@ -22,6 +23,8 @@ export interface AccountHeaderProps {
   now: string;
   /** The viewer's time zone (Settings), for the dates shown. */
   timezone: string;
+  /** Beside the name, at the end of its row (under it on a phone). */
+  action?: React.ReactNode;
 }
 
 function relationBadge(account: Header) {
@@ -31,13 +34,13 @@ function relationBadge(account: Header) {
   return null;
 }
 
-export function AccountHeader({ account, presence, now, timezone }: AccountHeaderProps) {
+export function AccountHeader({ account, presence, now, timezone, action }: AccountHeaderProps) {
   const names = account.previousNames;
   const firstSeen = formatInZone(account.firstSeen, timezone, { month: 'long', year: 'numeric' });
   return (
     <header className="flex flex-col gap-3">
       <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
-        <h1 className="min-w-0 text-2xl font-semibold tracking-tight break-words">
+        <h1 className="min-w-0 text-3xl leading-tight font-semibold tracking-tight break-words sm:text-4xl">
           {account.name}
         </h1>
         <AccountTypeBadge accountType={account.accountType} />
@@ -52,6 +55,7 @@ export function AccountHeader({ account, presence, now, timezone }: AccountHeade
             Hidden
           </Badge>
         )}
+        {action && <div className="flex min-w-0 sm:ml-auto">{action}</div>}
       </div>
       <AccountPresence publicId={account.publicId} presence={presence} now={now} />
       <dl className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-muted-foreground">

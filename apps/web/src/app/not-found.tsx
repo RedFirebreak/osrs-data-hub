@@ -16,7 +16,7 @@ export default function NotFound() {
       title="Page not found"
       actions={
         <Button asChild>
-          <Link href="/">Go to the dashboard</Link>
+          <Link href="/">Go to Home</Link>
         </Button>
       }
     >

@@ -37,13 +37,13 @@ test('a Discord user who is not in the guild is sent back to /login with an expl
   await expect(
     page.getByRole('alert').filter({ hasText: new RegExp(`not a member of ${GUILD_NAME}`, 'i') }),
   ).toBeVisible();
-  // No session was created (AUTH-6): the dashboard still sends bob to the login page.
+  // No session was created (AUTH-6): Home still sends bob to the login page.
   await page.goto('/');
   await expect(page).toHaveURL(/\/login$/);
   await expect(page.getByRole('button', { name: 'Sign in with Discord' })).toBeVisible();
 });
 
-test('a member pairs RuneLite with the wizard and sees the account on the dashboard', async ({
+test('a member pairs RuneLite with the wizard and sees the character on Home', async ({
   page,
   request,
 }, testInfo) => {
@@ -53,18 +53,21 @@ test('a member pairs RuneLite with the wizard and sees the account on the dashbo
 
   await signInWithDiscord(page, 'alice');
   await expect(page).toHaveURL(`${HUB_URL}/`);
-  await expect(page.getByRole('heading', { level: 1, name: 'Dashboard' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
 
   // The wizard's clock starts after sign-in (handoff §2: onboarded in under two minutes).
   const wizardStarted = performance.now();
   if (testInfo.retry === 0 && testInfo.repeatEachIndex === 0) {
-    // A fresh user has no accounts: the empty state points to the wizard.
+    // A fresh user has no character: the empty state points to the wizard.
     await expect(
-      page.getByRole('heading', { name: 'Connect RuneLite to see your accounts' }),
+      page.getByRole('heading', { name: 'Connect RuneLite to see your character' }),
     ).toBeVisible();
     await page.getByRole('link', { name: 'Add your first device' }).click();
   } else {
-    // Retries (and --repeat-each) share the database: alice already has the account.
+    // Retries (and --repeat-each) share the database: alice already has the account, so Home is
+    // her character. "Add device" lives on the devices page, in the avatar menu.
+    await page.getByRole('button', { name: 'Open the account menu' }).click();
+    await page.getByRole('menuitem', { name: 'Devices' }).click();
     await page.getByRole('main').getByRole('link', { name: 'Add device' }).click();
   }
 
@@ -141,18 +144,18 @@ test('a member pairs RuneLite with the wizard and sees the account on the dashbo
   await page.getByRole('option', { name: /^Guild/ }).click();
   await expect(inventory).toHaveText('Guild');
 
-  // On to the dashboard.
-  await page.getByRole('link', { name: 'Go to the dashboard' }).click();
+  // On to Home: the character that was just paired.
+  await page.getByRole('link', { name: 'Go to Home' }).click();
   await expect(page).toHaveURL(`${HUB_URL}/`);
-  const accounts = page.getByRole('region', { name: 'Your accounts' });
-  await expect(accounts.getByRole('heading', { name: ZEZIMA })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: ZEZIMA })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Skills' })).toBeVisible();
 
   const wizardMs = Math.round(performance.now() - wizardStarted);
-  console.log(`e2e: wizard flow (dashboard → paired → first data → dashboard) took ${wizardMs} ms`);
+  console.log(`e2e: wizard flow (Home → paired → first data → Home) took ${wizardMs} ms`);
   testInfo.annotations.push({ type: 'wizard duration', description: `${wizardMs} ms` });
   expect(wizardMs, 'the wizard itself takes well under two minutes').toBeLessThan(60_000);
 
-  // A drop arrives while alice looks at the dashboard: a toast, top right, naming the account.
+  // A drop arrives while alice looks at Home: a toast, top right, naming the account.
   const loot = payloadFixture('event-loot');
   expect((loot.player as { name?: string }).name).toBe(ZEZIMA);
   const drop = await plugin.send(token, freshPayload('event-loot'));
@@ -170,13 +173,19 @@ test('a member pairs RuneLite with the wizard and sees the account on the dashbo
     expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);
   }
 
-  // The account page loaded directly answers 200 (an unknown one 404: see the devices test).
-  const accountHref = await accounts
-    .getByRole('link', { name: ZEZIMA })
-    .first()
-    .getAttribute('href');
-  expect(accountHref).toMatch(/^\/accounts\/[A-Za-z0-9]+$/);
-  const accountPage = await page.goto(accountHref ?? '/');
+  // The week leads on to Progress, which opens on the same character.
+  const progressHref = await page.getByRole('link', { name: 'See progress' }).getAttribute('href');
+  expect(progressHref).toMatch(/^\/progress\/[A-Za-z0-9]+$/);
+  await page
+    .getByRole('navigation', { name: 'Main' })
+    .getByRole('link', { name: 'Progress' })
+    .click();
+  await expect(page).toHaveURL(`${HUB_URL}${progressHref}`);
+  await expect(page.getByRole('heading', { level: 1, name: 'Progress' })).toBeVisible();
+
+  // The character page loaded directly answers 200 (an unknown one 404: see the devices test).
+  const accountHref = (progressHref ?? '').replace('/progress/', '/accounts/');
+  const accountPage = await page.goto(accountHref);
   expect(accountPage?.status()).toBe(200);
   await expect(page.getByRole('heading', { level: 1, name: ZEZIMA })).toBeVisible();
 
@@ -203,9 +212,9 @@ test('the devices page lists the paired device, and revoking it locks the plugin
 
   await signInWithDiscord(page, 'carol');
   await expect(page).toHaveURL(`${HUB_URL}/`);
-  // carol never reports an account, so her dashboard stays empty.
+  // carol never reports an account, so her Home stays empty.
   await expect(
-    page.getByRole('heading', { name: 'Connect RuneLite to see your accounts' }),
+    page.getByRole('heading', { name: 'Connect RuneLite to see your character' }),
   ).toBeVisible();
 
   // Pair a device named in step 1 of the wizard.

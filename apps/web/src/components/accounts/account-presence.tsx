@@ -4,7 +4,7 @@
  * that follows live 'presence' messages from the LiveProvider (whichever of the server-rendered state
  * and the live one is newer wins; live "online" expires client-side after onlineForMs).
  *
- * Takes the read models' `Section<Presence>` (AccountCard.presence, AccountPage.presence):
+ * Takes the read model's `Section<Presence>` (AccountPage.presence):
  * - not visible (the viewer lacks the activity category) → renders nothing;
  * - not shared → a "Not shared" badge, until a live message arrives;
  * - shared → the line above.

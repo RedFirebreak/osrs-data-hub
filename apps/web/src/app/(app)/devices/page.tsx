@@ -108,7 +108,7 @@ function EmptyDevices() {
         </CardTitle>
         <CardDescription className="max-w-prose text-balance">
           Pair the HA Exporter RuneLite plugin with a 5-digit code and your accounts start showing
-          up on the dashboard. It takes about two minutes.
+          up on Home. It takes about two minutes.
         </CardDescription>
       </CardHeader>
       <CardContent>

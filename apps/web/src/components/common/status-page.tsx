@@ -6,7 +6,7 @@
  *     icon={CompassIcon}
  *     eyebrow="404"
  *     title="Page not found"
- *     actions={<Button asChild><Link href="/">Go to the dashboard</Link></Button>}
+ *     actions={<Button asChild><Link href="/">Go to Home</Link></Button>}
  *   >
  *     This page doesn&apos;t exist, or it isn&apos;t shared with you.
  *   </StatusPage>

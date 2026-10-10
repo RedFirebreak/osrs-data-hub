@@ -15,9 +15,10 @@ import { asc, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { getAccountPage, type AccountPage } from './accounts/account-page';
 import { loadViewer } from './accounts/access';
-import { getDashboard } from './accounts/dashboard';
 import { getSessions } from './accounts/history';
 import { listFeed } from './accounts/list-feed';
+import { getOnlineNow } from './accounts/online-now';
+import { listOwnAccounts } from './accounts/own-accounts';
 import { listAuditLog } from './admin/audit-log';
 import { listDevices } from './devices/devices';
 import type { FeedEvent } from './feed';
@@ -304,30 +305,28 @@ describe('ingest → read models → live', () => {
     expect(sessions?.map((s) => s.endReason).sort()).toEqual(['logout', null].sort());
   });
 
-  it("gives the owner a complete dashboard card and the member only what's shared", async () => {
+  it("makes the account the owner's own character, online for the member to see", async () => {
     const owner = await viewer(ownerId);
     const member = await viewer(memberId);
     const now = at(clock.now);
 
-    const mine = await getDashboard(t.db, owner, { now });
-    expect(mine.accounts).toHaveLength(1);
-    const [card] = mine.accounts;
-    expect(card).toMatchObject({
-      publicId: zezima.publicId,
-      relation: 'owner',
-      totalLevel: 2372, // Σ min(level, 99), PLUGIN-9
+    expect((await listOwnAccounts(t.db, owner)).map((a) => a.publicId)).toEqual([zezima.publicId]);
+    const mine = await page(owner, zezima.publicId);
+    expect(mine).toMatchObject({
+      account: { relation: 'owner' },
       presence: { visible: true, shared: true, data: { online: true } },
     });
-    expect(card?.recentEvents.map((e) => e.type)).toEqual([
+    expect(shared(mine!.skills).totalLevel).toBe(2372); // Σ min(level, 99), PLUGIN-9
+    expect(shared(mine!.recentEvents).map((e) => e.type)).toEqual([
       'loot',
       'superior_spawn',
       'death',
       'loot',
     ]);
 
-    const theirs = await getDashboard(t.db, member, { now });
-    expect(theirs.accounts).toEqual([]);
-    expect(theirs.onlineNow.map((o) => o.publicId)).toEqual([zezima.publicId]);
+    expect(await listOwnAccounts(t.db, member)).toEqual([]);
+    const online = await getOnlineNow(t.db, member, { now });
+    expect(online.map((o) => o.publicId)).toEqual([zezima.publicId]);
   });
 
   it('applies the sharing defaults on the account page and the feed', async () => {
@@ -449,7 +448,7 @@ describe('offboarding and coming back', () => {
     const member = await viewer(memberId);
     expect(await page(member, zezima.publicId)).toBeNull();
     expect(await listFeed(t.db, member, { accountPublicId: zezima.publicId })).toEqual([]);
-    expect((await getDashboard(t.db, member, { now: at(clock.now) })).onlineNow).toEqual([]);
+    expect(await getOnlineNow(t.db, member, { now: at(clock.now) })).toEqual([]);
     expect((await page(await viewer(adminId), zezima.publicId))?.account.hidden).toBe(true);
 
     // The next fan-out re-reads the subscribed users: the grace user's stream is closed, the

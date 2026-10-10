@@ -1,7 +1,7 @@
 'use client';
 /**
  * LiveProvider: the one live connection of a signed-in page tree (mounted by app/(app)/layout.tsx),
- * shared by toasts, the dashboard's "Online now" strip, account pages and the pairing wizard.
+ * shared by toasts, Home's "Online now" strip, account pages and the pairing wizard.
  *
  * It runs a LiveConnection (live-connection.ts): EventSource on /api/live/stream with reconnects, the
  * 10 s polling fallback on /api/live/events while the stream is down, and de-duplication of events.

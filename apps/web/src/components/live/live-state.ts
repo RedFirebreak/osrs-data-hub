@@ -219,7 +219,7 @@ export function liveIsNewer(
 }
 
 /**
- * The "online now" list: the server-rendered entries (getDashboard's onlineNow), updated by the live
+ * The "online now" list: the server-rendered entries (getOnlineNow), updated by the live
  * presence the client received since. For each account the newer of the two wins (by lastSeen); a
  * live entry that is offline (or expired) removes the account, a live entry that is online adds it.
  * Sorted by name, like the server list.

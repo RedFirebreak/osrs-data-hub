@@ -8,7 +8,7 @@ export {
   type SkillRow,
   type Vitals,
 } from './account-page';
-export { getDashboard, type AccountCard, type OnlineEntry } from './dashboard';
+export { getOnlineNow, type OnlineEntry } from './online-now';
 export {
   GUILD_FEED_EVENTS,
   getGuildOverview,
@@ -29,6 +29,7 @@ export {
 } from './history';
 export { FEED_DEFAULT_LIMIT, FEED_MAX_LIMIT, listFeed } from './list-feed';
 export { loadVisibleAccount, loadVisibleAccounts, type Presence } from './load';
+export { listOwnAccounts, type OwnAccount } from './own-accounts';
 export { startOfLocalDay } from './periods';
 export type { Section } from './sections';
 export {

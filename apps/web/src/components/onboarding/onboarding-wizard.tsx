@@ -16,7 +16,7 @@
  *   looks it up once and resumes it (resumeResult): the same code while the hub still accepts it,
  *   step 3 for the device of a consumed code, a new code only when it expired.
  *
- * Reachable any time as "Add device" (dashboard, devices page).
+ * Reachable any time as "Add device" (the devices page).
  */
 import { useRouter } from 'next/navigation';
 import { useEffect, useEffectEvent, useReducer, useRef, useState } from 'react';

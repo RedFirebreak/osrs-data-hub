@@ -8,7 +8,7 @@
  * rounded tops, hairline grid, one y-axis, text in text colours (never the series colour), a
  * crosshair tooltip on lines and an axis-shadow tooltip on bars, and a legend only for 2+ series.
  */
-import { DAY_MS, HOUR_MS, formatDuration, formatGp, formatNumber } from '@hub/core';
+import { DAY_MS, HOUR_MS, formatDuration, formatGp } from '@hub/core';
 import type {
   BarSeriesOption,
   HeatmapSeriesOption,
@@ -26,7 +26,7 @@ import type {
   VisualMapComponentOption,
 } from 'echarts/components';
 import type { ComposeOption } from 'echarts/core';
-import { DATE_TIME_OPTIONS, formatInZone } from '@/lib/dates';
+import { DATE_TIME_OPTIONS } from '@/lib/dates';
 
 export type ChartOption = ComposeOption<
   | BarSeriesOption
@@ -347,77 +347,6 @@ export function shortDay(day: string): string {
 /** "2026-09-29" → "Sep 29, 2026", the title of a day's tooltip (a calendar date: UTC again). */
 export function longDay(day: string): string {
   return DATE_UTC.format(new Date(`${day}T00:00:00Z`));
-}
-
-/**
- * Points of a change-only XP series ready for a step chart: [ms, xp] in time order, with the last
- * value carried to `to` (XP only changes when a new bucket is written, so the latest value holds until
- * now). Points after `to` are dropped; an empty series stays empty.
- */
-export function stepPoints(points: readonly [string, number][], to: Date): [number, number][] {
-  const end = to.getTime();
-  const out: [number, number][] = [];
-  for (const [iso, xp] of points) {
-    const t = Date.parse(iso);
-    if (Number.isFinite(t) && Number.isFinite(xp) && t <= end) out.push([t, xp]);
-  }
-  out.sort((a, b) => a[0] - b[0]);
-  const last = out.at(-1);
-  if (last && last[0] < end) out.push([end, last[1]]);
-  return out;
-}
-
-export interface XpChartInput {
-  skill: string;
-  points: readonly [string, number][];
-  from: Date;
-  to: Date;
-  /** The viewer's time zone (Settings): the tooltip's date and time are shown in it. */
-  timezone: string;
-}
-
-/**
- * Below this share of the window a line is too short to see (a history that began minutes ago in a
- * 30-day range), so its points are drawn as dots.
- */
-const MIN_VISIBLE_LINE_SHARE = 0.02;
-
-/**
- * The XP chart: one step line (`step: 'end'`: XP is change-only and monotonic, so a value holds until
- * the next change instead of interpolating between samples), a 10% area wash, a crosshair tooltip
- * with the exact XP and the moment in the viewer's time zone (like the rest of the account page, not
- * the browser's). The y-axis fits the data (XP ranges are far from zero). A line covering only a
- * sliver of the window (a new account) gets dots, so the chart isn't blank.
- */
-export function xpChartOption(input: XpChartInput, theme: ChartTheme): ChartOption {
-  const data = stepPoints(input.points, input.to);
-  const color = theme.series[0];
-  const windowMs = input.to.getTime() - input.from.getTime();
-  const first = data[0];
-  const last = data.at(-1);
-  const spanMs = first && last ? last[0] - first[0] : 0;
-  const showSymbol = data.length > 0 && spanMs < windowMs * MIN_VISIBLE_LINE_SHARE;
-  return {
-    ...baseOption(theme),
-    tooltip: axisTooltip(theme, 'line', (params) => {
-      const p = firstParam(params);
-      const value = Array.isArray(p?.value) ? (p.value as [number, number]) : null;
-      if (!value) return '';
-      return (
-        tooltipTitle(formatInZone(new Date(value[0]), input.timezone, MOMENT_OPTIONS) ?? '') +
-        tooltipRow(color, `${formatNumber(value[1])} XP`, input.skill)
-      );
-    }),
-    xAxis: timeAxis(theme, input.from, input.to),
-    yAxis: valueAxis(theme, { scale: true, format: compact }),
-    series: [
-      lineSeries(
-        theme,
-        { name: input.skill, color, data, showSymbol },
-        { step: 'end', areaStyle: { color, opacity: 0.1 } },
-      ),
-    ],
-  };
 }
 
 export interface PlaytimeDay {

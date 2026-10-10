@@ -1,14 +1,16 @@
 /**
- * The Metrics tab of an account (D-106): how the player is doing and when they are effective, over
- * a range and the filters in the URL. Totals, a chosen session's timeline, the period comparison,
+ * Deep dive (D-106), one level under Progress: how the player is doing and when they are
+ * effective, over a range and the filters in the URL. Totals, a chosen session's timeline, the period comparison,
  * the effective-hours heatmap, the sessions scatter, the rate through a session, where the time
  * goes, the session recaps, the skills, the bosses and the goals, all from @hub/server
- * getAccountMetrics, which leaves out every panel whose sharing category the viewer lacks.
+ * getAccountMetrics, which leaves out every panel whose sharing category the viewer lacks. Under
+ * them, whatever the range: playtime per day with the recent sessions, and carried wealth per day.
  *
  * Not at /metrics: that is the hub's Prometheus endpoint. The visibility check runs before anything
  * streams, so an unknown account is a real 404 (NEXT-14).
  */
 import {
+  DAY_MS,
   OVERALL,
   getConfig,
   parseMetricsQuery,
@@ -16,13 +18,24 @@ import {
   type MetricsQuery,
 } from '@hub/core';
 import { getDb } from '@hub/db';
-import { getAccountMetrics, getUserSettings, type AccountMetrics } from '@hub/server';
+import {
+  getAccountMetrics,
+  getSessions,
+  getUserSettings,
+  getWealthHistory,
+  type AccountMetrics,
+} from '@hub/server';
+import { ChevronLeftIcon } from 'lucide-react';
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Suspense } from 'react';
+import { ActivityContent } from '@/components/account-page/activity-section';
+import { playtimeByDay } from '@/components/account-page/playtime';
 import { AccountTypeBadge } from '@/components/accounts/account-type-badge';
 import { MODE_LABELS } from '@/components/account-page/hiscores-content';
 import { MOMENT_OPTIONS } from '@/components/charts/options';
+import { WealthChart } from '@/components/charts/wealth-chart';
 import { CardSkeleton } from '@/components/common/card-skeleton';
 import { SectionCard } from '@/components/common/section-card';
 import { FilterBar } from '@/components/metrics/filter-bar';
@@ -38,7 +51,6 @@ import {
 } from '@/components/metrics/metrics-charts';
 import { MetricsQueryProvider } from '@/components/metrics/metrics-nav';
 import {
-  AccountTabs,
   BossesTable,
   SessionList,
   SkillsProgress,
@@ -46,36 +58,52 @@ import {
 } from '@/components/metrics/metrics-panels';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatInZone } from '@/lib/dates';
+import { deepDiveHref, progressHref } from '@/lib/routes';
 import { requireUser } from '@/lib/session';
-import { loadVisible } from '../visible';
+import { loadVisible } from '@/lib/visible-account';
+
+/** Days of play sessions behind the playtime chart and the sessions list. */
+const ACTIVITY_DAYS = 30;
+/** Days of wealth shown. */
+const HISTORY_DAYS = 90;
 
 export async function generateMetadata({
   params,
-}: PageProps<'/accounts/[publicId]/metrics'>): Promise<Metadata> {
+}: PageProps<'/progress/[publicId]/deep-dive'>): Promise<Metadata> {
   const { publicId } = await params;
   const visible = await loadVisible(publicId);
-  return { title: `${visible?.account.name ?? 'Account'} · Metrics · ${getConfig().hubName}` };
+  return { title: `${visible?.account.name ?? 'Account'} · Deep dive · ${getConfig().hubName}` };
 }
 
 export default async function MetricsPage({
   params,
   searchParams,
-}: PageProps<'/accounts/[publicId]/metrics'>) {
+}: PageProps<'/progress/[publicId]/deep-dive'>) {
   const { publicId } = await params;
   // See NEXT-14: before any Suspense boundary, so the answer is a real 404.
   const visible = await loadVisible(publicId);
   if (!visible) notFound();
   const query = parseMetricsQuery(await searchParams);
   return (
-    <div className="metrics flex flex-col gap-6">
-      <header className="flex flex-col gap-3">
+    <div className="flex flex-col gap-6">
+      <header className="flex flex-col gap-2">
+        <Link
+          href={progressHref(publicId)}
+          className="flex w-fit items-center gap-1 rounded-md text-sm text-muted-foreground hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+        >
+          <ChevronLeftIcon aria-hidden className="size-4" />
+          Progress of {visible.account.name}
+        </Link>
         <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
-          <h1 className="min-w-0 text-2xl font-semibold tracking-tight break-words">
-            {visible.account.name}
+          <h1 className="text-3xl leading-tight font-semibold tracking-tight sm:text-4xl">
+            Deep dive
           </h1>
           <AccountTypeBadge accountType={visible.account.accountType} />
         </div>
-        <AccountTabs publicId={publicId} active="metrics" />
+        <p className="max-w-prose text-sm text-muted-foreground">
+          Sessions, the hours {visible.account.name} is most effective, rates and filters. The
+          address holds the view, so it can be bookmarked or sent.
+        </p>
       </header>
       <MetricsQueryProvider query={query}>
         <Suspense fallback={<MetricsSkeleton />}>
@@ -92,7 +120,7 @@ async function MetricsContent({ publicId, query }: { publicId: string; query: Me
   const { timezone } = await getUserSettings(db, user.id);
   const m = await getAccountMetrics(db, viewer, publicId, query, { now: new Date(), timezone });
   if (!m) notFound();
-  const path = `/accounts/${publicId}/metrics`;
+  const path = deepDiveHref(publicId);
   const measures: Record<MetricsMeasure, boolean> = {
     xp: m.access.stats,
     gp: m.access.events,
@@ -217,8 +245,66 @@ async function MetricsContent({ publicId, query }: { publicId: string; query: Me
           />
         </SectionCard>
       </div>
+      {(m.access.activity || m.access.inventory) && (
+        <div className="grid items-start gap-6 lg:grid-cols-2">
+          {m.access.activity && (
+            <SectionCard
+              id="activity"
+              title="Sessions & playtime"
+              description={`The last ${ACTIVITY_DAYS} days, in your time zone, whatever the range above.`}
+            >
+              <Suspense fallback={<Skeleton className="h-64 w-full rounded-lg" />}>
+                <ActivityLoader publicId={publicId} timezone={timezone} />
+              </Suspense>
+            </SectionCard>
+          )}
+          {m.access.inventory && (
+            <SectionCard
+              id="wealth"
+              title="Wealth"
+              description={`Carried value (inventory and gear) per day, last ${HISTORY_DAYS} days.`}
+            >
+              <Suspense fallback={<Skeleton className="h-64 w-full rounded-lg" />}>
+                <WealthLoader publicId={publicId} />
+              </Suspense>
+            </SectionCard>
+          )}
+        </div>
+      )}
     </>
   );
+}
+
+/** Playtime per day and the recent sessions with their worlds: the `activity` category. */
+async function ActivityLoader({ publicId, timezone }: { publicId: string; timezone: string }) {
+  const { viewer } = await requireUser();
+  const to = new Date();
+  const sessions = await getSessions(getDb().db, viewer, publicId, {
+    from: new Date(to.getTime() - ACTIVITY_DAYS * DAY_MS),
+    to,
+  });
+  if (sessions === null) return <NotShared what="play sessions" />;
+  const playtime = playtimeByDay(sessions, { now: to, days: ACTIVITY_DAYS, timezone });
+  return <ActivityContent sessions={sessions} playtime={playtime} timezone={timezone} />;
+}
+
+/** Carried wealth per day: the `inventory` category. */
+async function WealthLoader({ publicId }: { publicId: string }) {
+  const { viewer } = await requireUser();
+  const to = new Date();
+  const days = await getWealthHistory(getDb().db, viewer, publicId, {
+    from: new Date(to.getTime() - HISTORY_DAYS * DAY_MS),
+    to,
+  });
+  if (days === null) return <NotShared what="inventory" />;
+  if (days.length === 0) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        No wealth history yet. It builds up day by day while the plugin sends the inventory.
+      </p>
+    );
+  }
+  return <WealthChart days={days} />;
 }
 
 function TimelineSection({ m, timezone }: { m: AccountMetrics; timezone: string }) {
@@ -232,7 +318,7 @@ function TimelineSection({ m, timezone }: { m: AccountMetrics; timezone: string 
         s.activeMs,
         s.onlineMs,
       )} active${s.main ? `, mostly ${s.main.name}` : ''}.`}
-      className="ring-2 ring-metrics-accent/40"
+      className="ring-2 ring-foreground/30"
     >
       <SessionTimelineChart timeline={timeline} timezone={timezone} />
     </SectionCard>

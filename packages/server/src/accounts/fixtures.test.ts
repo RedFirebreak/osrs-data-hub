@@ -19,9 +19,9 @@ import {
   type Wire,
 } from '../ingest/test-support';
 import { getAccountPage, type AccountPage } from './account-page';
-import { getDashboard } from './dashboard';
 import { getGuildOverview } from './guild';
 import { listFeed } from './list-feed';
+import { getOnlineNow } from './online-now';
 import { seedSharing } from './test-support';
 import { getGains } from './xp';
 
@@ -204,8 +204,8 @@ describe('gains from ingested snapshots, and what special worlds leave out', () 
     const feed = await listFeed(t.db, member, { accountPublicId: publicId });
     expect(feed.map((e) => [e.type, e.specialWorld])).toEqual([['level_up', true]]);
     const now = new Date(t0 + 2 * HOUR + 11 * MIN);
-    const dash = await getDashboard(t.db, owner, { now });
-    expect(dash.accounts.find((a) => a.publicId === publicId)?.gains.week).toBe(ATTACK_GAIN);
+    const skills = data((await page(owner, publicId, now.getTime())).skills);
+    expect(skills.rows.find((r) => r.skill === 'Overall')?.gains.week).toBe(ATTACK_GAIN);
     const { leaderboards } = await getGuildOverview(t.db, member, { now });
     const overall = leaderboards.week.find((b) => b.skill === 'Overall')?.entries;
     expect(overall).toEqual([{ publicId, name: 'Zezima', gain: ATTACK_GAIN }]);
@@ -284,16 +284,16 @@ describe('events from the fixtures', () => {
 
 describe('logging out (logout)', () => {
   it('takes the account out of "online now" and closes its presence', async () => {
-    const before = await getDashboard(t.db, member, { now: new Date(t0 + 6 * HOUR) });
+    const before = await getOnlineNow(t.db, member, { now: new Date(t0 + 6 * HOUR) });
     await sendZezima('snapshot-normal', 6 * HOUR, 'gained');
-    const online = await getDashboard(t.db, member, { now: new Date(t0 + 6 * HOUR + 2_000) });
-    expect(online.onlineNow.map((e) => e.publicId)).toContain(publicId);
-    expect(before.onlineNow.map((e) => e.publicId)).not.toContain(publicId);
+    const online = await getOnlineNow(t.db, member, { now: new Date(t0 + 6 * HOUR + 2_000) });
+    expect(online.map((e) => e.publicId)).toContain(publicId);
+    expect(before.map((e) => e.publicId)).not.toContain(publicId);
 
     await sendZezima('logout', 6 * HOUR + 5 * MIN, 'drop');
     const now = t0 + 6 * HOUR + 5 * MIN + 2_000;
-    const after = await getDashboard(t.db, member, { now: new Date(now) });
-    expect(after.onlineNow.map((e) => e.publicId)).not.toContain(publicId);
+    const after = await getOnlineNow(t.db, member, { now: new Date(now) });
+    expect(after.map((e) => e.publicId)).not.toContain(publicId);
     expect(data((await page(member, publicId, now)).presence)).toMatchObject({
       online: false,
       gameState: 'LOGIN_SCREEN',

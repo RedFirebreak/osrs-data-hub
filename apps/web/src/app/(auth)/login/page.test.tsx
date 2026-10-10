@@ -102,7 +102,7 @@ describe('login page', () => {
     expect(description).toContain('never asks for a RuneScape or Jagex login');
   });
 
-  it('sends an active user to the dashboard', async () => {
+  it('sends an active user Home', async () => {
     await signIn();
     expect(await render()).toBe('redirect:/');
     expect(await render({ error: 'not_guild_member' })).toBe('redirect:/');
