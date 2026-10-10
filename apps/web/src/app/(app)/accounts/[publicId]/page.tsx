@@ -13,7 +13,7 @@ import { notFound } from 'next/navigation';
 import { Suspense } from 'react';
 import { AccountSkeleton } from '@/components/account-page/account-skeleton';
 import { CharacterView } from '@/components/account-page/character-view';
-import { loadVisible } from './visible';
+import { loadVisible } from '@/lib/visible-account';
 
 export async function generateMetadata({
   params,

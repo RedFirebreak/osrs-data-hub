@@ -3,7 +3,7 @@ import { NAV_ITEMS, accountMenuItemsFor, isNavActive } from './nav-items';
 
 describe('navigation', () => {
   it('keeps the top bar to what a player comes for', () => {
-    expect(NAV_ITEMS.map((i) => i.label)).toEqual(['Home', 'Guild']);
+    expect(NAV_ITEMS.map((i) => i.label)).toEqual(['Home', 'Progress', 'Guild']);
   });
 
   it('puts the set-up pages in the avatar menu, with Admin for admins only', () => {
@@ -21,6 +21,9 @@ describe('navigation', () => {
     expect(isNavActive('/guild', '/')).toBe(false);
     expect(isNavActive('/guild', '/guild')).toBe(true);
     expect(isNavActive('/guildhall', '/guild')).toBe(false);
+    expect(isNavActive('/progress', '/progress')).toBe(true);
+    expect(isNavActive('/progress/abc123def456/skills/magic', '/progress')).toBe(true);
+    expect(isNavActive('/progress/abc123def456', '/')).toBe(false);
     expect(isNavActive('/devices', '/')).toBe(false);
     expect(isNavActive('/devices', '/guild')).toBe(false);
     expect(isNavActive(null, '/')).toBe(false);

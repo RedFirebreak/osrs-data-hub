@@ -1,7 +1,7 @@
 /**
- * The Metrics tab and the boss page as a Server Component render sees them (D-106, D-108): who gets
- * through, notFound() before anything streams (NEXT-14), the panels the owner sees, and what a guild
- * member kept out of `activity` and `hiscores` sees instead.
+ * Progress, Deep dive and the boss page as a Server Component render sees them (D-106, D-108,
+ * D-112): who gets through, notFound() before anything streams (NEXT-14), what the owner sees, and
+ * what a guild member kept out of `activity` and `hiscores` sees instead.
  */
 import { activityScores, accountHiscores } from '@hub/db';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -15,7 +15,8 @@ import {
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { withTestDb, type WebTestContext } from '@/lib/test-utils';
 import BossPage from './bosses/[activity]/page';
-import MetricsPage from './page';
+import DeepDivePage from './deep-dive/page';
+import ProgressPage from './page';
 
 const page = vi.hoisted(() => ({ headers: new Headers() }));
 
@@ -28,7 +29,7 @@ vi.mock('next/headers', () => ({
 vi.mock('next/navigation', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   useRouter: () => ({ refresh() {}, push() {}, replace() {}, back() {}, prefetch() {} }),
-  usePathname: () => '/accounts/x/metrics',
+  usePathname: () => '/progress/x',
 }));
 
 let ctx: WebTestContext;
@@ -81,9 +82,13 @@ async function render(element: Promise<React.ReactElement>): Promise<string> {
   }
 }
 
+const progress = (publicId: string, search: Record<string, string> = {}) =>
+  render(
+    ProgressPage({ params: Promise.resolve({ publicId }), searchParams: Promise.resolve(search) }),
+  );
 const metrics = (publicId: string, search: Record<string, string> = {}) =>
   render(
-    MetricsPage({ params: Promise.resolve({ publicId }), searchParams: Promise.resolve(search) }),
+    DeepDivePage({ params: Promise.resolve({ publicId }), searchParams: Promise.resolve(search) }),
   );
 const boss = (publicId: string, activity: string) =>
   render(
@@ -97,7 +102,14 @@ function headings(html: string): string[] {
   return [...html.matchAll(/<h2[^>]*>([^<]+)<\/h2>/g)].map((m) => m[1] ?? '');
 }
 
-describe('Metrics pages', () => {
+/** The labels of the pressed buttons (the range, then the measure). */
+function pressed(html: string): string[] {
+  return [...html.matchAll(/<button[^>]*aria-pressed="true"[^>]*>([^<]+)<\/button>/g)].map(
+    (m) => m[1] ?? '',
+  );
+}
+
+describe('Progress pages', () => {
   let ownerId: string;
   let memberId: string;
   let account: SeededAccount;
@@ -146,10 +158,77 @@ describe('Metrics pages', () => {
   });
 
   it('sends signed-out users to /login and answers not found for unknown accounts', async () => {
+    expect(await progress(account.publicId)).toBe('redirect:/login');
     expect(await metrics(account.publicId)).toBe('redirect:/login');
     await signIn();
-    expect(await metrics('nope')).toBe('not-found');
-    expect(await metrics('%00')).toBe('not-found');
+    for (const page of [progress, metrics]) {
+      expect(await page('nope')).toBe('not-found');
+      expect(await page('%00')).toBe('not-found');
+    }
+  });
+
+  it('answers the owner first: one amount, its range and what it counts', async () => {
+    await useUser(ownerId);
+    const html = await progress(account.publicId);
+    expect(html).toContain('>Progress</h1>');
+    expect(html).toContain('How Graph Fan is coming along.');
+    // The amount for assistive tech, then the digits that count up to it.
+    expect(html).toContain('<span class="sr-only">+30,000 XP</span>');
+    expect(html).toContain('in the last 7 days');
+    // The range control and the measure pills, 7D and XP pressed by default.
+    for (const range of ['1D', '7D', '30D', '90D', '1Y']) {
+      expect(html).toContain(`>${range}</button>`);
+    }
+    expect(pressed(html)).toEqual(['7D', 'XP']);
+    expect(html).not.toContain('disabled=""');
+  });
+
+  it('lists what was trained, the bosses and the goals, and leads on to the detail', async () => {
+    await useUser(ownerId);
+    const html = await progress(account.publicId);
+    expect(headings(html)).toEqual(expect.arrayContaining(['Skills trained', 'Bosses', 'Goals']));
+    const base = `/progress/${account.publicId}`;
+    // A skill opens its own page, a boss its page with the same range, Deep dive the same view.
+    expect(html).toContain(`href="${base}/skills/ranged"`);
+    expect(html).toContain(`href="${base}/bosses/Zulrah?range=7d"`);
+    expect(html).toContain('112 kills in total');
+    expect(html).toContain('>+12</span>');
+    expect(html).toContain(`href="${base}/deep-dive?range=7d"`);
+    expect(html).toContain('Set goal');
+  });
+
+  it('follows the range and the measure in the address', async () => {
+    await useUser(ownerId);
+    const loot = await progress(account.publicId, { range: '30d', measure: 'gp' });
+    expect(loot).toContain('<span class="sr-only">+2M gp</span>');
+    expect(loot).toContain('in the last 30 days, from 1 drop');
+    expect(pressed(loot)).toEqual(['30D', 'Loot']);
+    expect(loot).toContain('/deep-dive?measure=gp"');
+
+    // "1D" is the last 24 hours: the session of 24 to 23 hours ago is in it.
+    const day = await progress(account.publicId, { range: '1d' });
+    expect(day).toContain('<span class="sr-only">+30,000 XP</span>');
+    expect(day).toContain('in the last 24 hours');
+    // Anything unknown is the default view, not an error.
+    expect(pressed(await progress(account.publicId, { range: 'x', measure: 'y' }))).toEqual([
+      '7D',
+      'XP',
+    ]);
+  });
+
+  it('offers a member only the measures shared with them', async () => {
+    await useUser(memberId);
+    const html = await progress(account.publicId);
+    expect(html).toContain('a guild member&#x27;s character');
+    expect(html).toContain('<span class="sr-only">+30,000 XP</span>');
+    // Boss kills (hiscores) and play time (activity) are private here.
+    expect((html.match(/disabled=""/g) ?? []).length).toBe(2);
+    expect(headings(html)).not.toContain('Bosses');
+    expect(html).not.toContain('Set goal');
+
+    const kills = await progress(account.publicId, { measure: 'kills' });
+    expect(kills).toContain('Not shared');
+    expect(kills).not.toContain('+12');
   });
 
   it('shows the owner the totals, the charts, the sessions, the bosses and the goal form', async () => {
@@ -172,7 +251,15 @@ describe('Metrics pages', () => {
     expect(html).toContain('Mostly Zulrah');
     expect(html).toContain('12 kills');
     expect(html).toContain('Set goal');
-    expect(html).toContain('aria-current="page"');
+    // One level under Progress, and it says so.
+    expect(html).toContain('>Deep dive</h1>');
+    expect(html).toContain(`href="/progress/${account.publicId}"`);
+    // What left the character page: playtime per day with the recent sessions, and wealth.
+    expect(headings(html)).toEqual(expect.arrayContaining(['Sessions &amp; playtime', 'Wealth']));
+    expect(html).toContain('Recent sessions');
+    // A session opens its timeline here, a boss its own page.
+    expect(html).toContain(`href="/progress/${account.publicId}/deep-dive?session=`);
+    expect(html).toContain(`href="/progress/${account.publicId}/bosses/Zulrah"`);
   });
 
   it('opens a session timeline from the URL', async () => {
@@ -189,6 +276,7 @@ describe('Metrics pages', () => {
     const html = await metrics(account.publicId);
     expect(html).toContain('doesn&#x27;t share its play sessions or stats with you');
     expect(headings(html)).not.toContain('Bosses');
+    expect(headings(html)).not.toContain('Sessions &amp; playtime');
     expect(headings(html)).toContain('Skills');
     expect(html).not.toContain('Set goal');
     expect(html).not.toContain('Mostly Zulrah');

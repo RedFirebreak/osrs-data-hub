@@ -207,11 +207,9 @@ describe('account page', () => {
       'Inventory',
       'Latest',
       'Right now',
-      'Sessions &amp; playtime',
       'Sharing',
       'Skills',
       'This week',
-      'Wealth',
       'Worn',
       'XP history',
     ]);
@@ -220,7 +218,7 @@ describe('account page', () => {
     expect(html).toContain('>200<');
     expect(html).toContain('Strength, level 99, virtual level 105');
     // A skill opens its progress.
-    expect(html).toMatch(/href="[^"]*skills=Magic"/);
+    expect(html).toContain(`href="/progress/${account.publicId}/skills/magic"`);
     // Boosted HP is clamped visually and says so.
     expect(html).toContain('+16 boosted');
     expect(html).toContain('On a boat');
@@ -230,8 +228,10 @@ describe('account page', () => {
     expect(html).toContain('Lunar');
     expect(html).toContain('received');
     // The streamed sections rendered their content, not only their skeletons.
-    expect(html).toContain('Recent sessions');
-    expect(html).toContain('In progress');
+    expect(html).toContain('See progress');
+    expect(html).toContain('Gear changes');
+    // History lives on the progress pages, not here.
+    expect(html).not.toContain('Recent sessions');
     expect(html).not.toContain('Not shared');
   });
 
@@ -256,7 +256,6 @@ describe('account page', () => {
       'Hiscores',
       'Latest',
       'Right now',
-      'Sessions &amp; playtime',
       'Skills',
       'This week',
       'XP history',

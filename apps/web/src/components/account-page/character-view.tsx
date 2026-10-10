@@ -3,8 +3,8 @@
  * is the viewer's own most recently played character. Header (name, type, live presence, owner,
  * previous names, and a picker when the viewer has more characters), then the skills panel, the
  * week in one glance, the latest events, where the character is and how it stands, what it wears
- * and carries, and the hiscores. What changed over time lives on the progress pages, which the
- * skills and the week link to.
+ * and carries, and the hiscores. What changed over time (sessions, playtime, wealth, every chart
+ * but one skill's XP) lives on the progress pages, which the skills and the week link to.
  *
  * Each section follows the read model's three states (handoff §10, D-4): hidden when the viewer may
  * not see its category, a "Not shared" card when the plugin never sent it, or the data (`dataSection`
@@ -23,21 +23,17 @@ import {
   getAccountPage,
   getEquipmentHistory,
   getOnlineNow,
-  getSessions,
   getSharingSettings,
   getUserSettings,
-  getWealthHistory,
   type AccountPage,
 } from '@hub/server';
 import { notFound } from 'next/navigation';
 import { Suspense, cache } from 'react';
 import { AccountHeader } from '@/components/account-page/account-header';
-import { ActivityContent } from '@/components/account-page/activity-section';
 import { EquipmentGrid, EquipmentLog } from '@/components/account-page/equipment-content';
 import { HiscoresContent, hiscoresDescription } from '@/components/account-page/hiscores-content';
 import { InventoryContent } from '@/components/account-page/inventory-content';
 import { LocationContent } from '@/components/account-page/location-content';
-import { playtimeByDay } from '@/components/account-page/playtime';
 import { SkillsPanel } from '@/components/account-page/skills-panel';
 import { VitalsContent } from '@/components/account-page/vitals-content';
 import { WeekSummary } from '@/components/account-page/week-summary';
@@ -45,7 +41,6 @@ import { XpChartPanel } from '@/components/account-page/xp-chart-panel';
 import { accountHref } from '@/components/accounts/account-link';
 import { CharacterPicker } from '@/components/accounts/character-picker';
 import { NotSharedBadge } from '@/components/accounts/not-shared-badge';
-import { WealthChart } from '@/components/charts/wealth-chart';
 import { CardSkeleton } from '@/components/common/card-skeleton';
 import { NotSharedCard, SectionCard, dataSection } from '@/components/common/section-card';
 import { EventTimeline } from '@/components/events/event-timeline';
@@ -58,9 +53,7 @@ import { loadOwnAccounts } from '@/lib/own-accounts';
 import { requireUser } from '@/lib/session';
 import { cn } from '@/lib/utils';
 
-/** Days of play sessions behind the playtime chart and the sessions list. */
-const ACTIVITY_DAYS = 30;
-/** Days of gear changes and wealth shown. */
+/** Days of gear changes listed. */
 const HISTORY_DAYS = 90;
 
 /** The view's data (inside the caller's Suspense boundary). */
@@ -94,7 +87,6 @@ export async function CharacterView({ publicId, home = false }: CharacterViewPro
     skillsSection(ctx),
     eventsSection(ctx),
     xpSection(ctx),
-    activitySection(ctx),
     hiscoresSection(ctx),
   ].filter(Boolean);
   const aside = [
@@ -102,7 +94,6 @@ export async function CharacterView({ publicId, home = false }: CharacterViewPro
     rightNowSection(ctx),
     wornSection(ctx),
     inventorySection(ctx),
-    wealthSection(ctx),
   ].filter(Boolean);
 
   return (
@@ -259,37 +250,6 @@ function xpSection({ page, publicId, timezone }: SectionContext) {
   );
 }
 
-function activitySection(ctx: SectionContext) {
-  if (!ctx.page.presence.visible) return null;
-  return (
-    <SectionCard
-      key="activity"
-      id="activity"
-      title="Sessions & playtime"
-      description={`The last ${ACTIVITY_DAYS} days, in your time zone.`}
-    >
-      <Suspense fallback={<ContentSkeleton rows={5} chart />}>
-        <ActivityLoader ctx={ctx} />
-      </Suspense>
-    </SectionCard>
-  );
-}
-
-async function ActivityLoader({ ctx }: { ctx: SectionContext }) {
-  const to = ctx.renderedAt;
-  const sessions = await getSessions(getDb().db, ctx.viewer, ctx.publicId, {
-    from: new Date(to.getTime() - ACTIVITY_DAYS * DAY_MS),
-    to,
-  });
-  if (sessions === null) return null;
-  const playtime = playtimeByDay(sessions, {
-    now: to,
-    days: ACTIVITY_DAYS,
-    timezone: ctx.timezone,
-  });
-  return <ActivityContent sessions={sessions} playtime={playtime} timezone={ctx.timezone} />;
-}
-
 function hiscoresSection({ page, now, dayOnlyIn }: SectionContext) {
   const hiscores = page.hiscores;
   if (!hiscores.visible) return null;
@@ -434,49 +394,6 @@ function inventorySection({ page, now, dayOnlyIn }: SectionContext) {
     ),
     content: (inventory) => <InventoryContent items={inventory.items} />,
   });
-}
-
-function wealthSection(ctx: SectionContext) {
-  if (!ctx.page.inventory.visible) return null;
-  return (
-    <Suspense
-      key="wealth"
-      fallback={
-        <CardSkeleton>
-          <ContentSkeleton rows={0} chart />
-        </CardSkeleton>
-      }
-    >
-      <WealthLoader ctx={ctx} />
-    </Suspense>
-  );
-}
-
-async function WealthLoader({ ctx }: { ctx: SectionContext }) {
-  const to = ctx.renderedAt;
-  const days = await getWealthHistory(getDb().db, ctx.viewer, ctx.publicId, {
-    from: new Date(to.getTime() - HISTORY_DAYS * DAY_MS),
-    to,
-  });
-  if (days === null) return null;
-  const inventoryShared = ctx.page.inventory.visible && ctx.page.inventory.shared;
-  // Nothing to chart and the inventory card already says it isn't sent.
-  if (days.length === 0 && !inventoryShared) return null;
-  return (
-    <SectionCard
-      id="wealth"
-      title="Wealth"
-      description={`Carried value (inventory and gear) per day, last ${HISTORY_DAYS} days.`}
-    >
-      {days.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          No wealth history yet. It builds up day by day while the plugin sends the inventory.
-        </p>
-      ) : (
-        <WealthChart days={days} />
-      )}
-    </SectionCard>
-  );
 }
 
 // --- Under the columns ---------------------------------------------------------------------------

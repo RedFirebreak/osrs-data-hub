@@ -1,6 +1,5 @@
 /**
- * The Metrics tab's panels that are text rather than charts (D-106): the tabs between the account
- * page and Metrics, the totals of the range, the session recaps with their records, the skills with
+ * Deep dive's panels that are text rather than charts (D-106): the totals of the range, the session recaps with their records, the skills with
  * their progress and rates, and the bosses. Server components (links carry the page's filters).
  */
 import {
@@ -26,47 +25,10 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { formatInZone } from '@/lib/dates';
+import { bossHref } from '@/lib/routes';
+import { skillTint } from '@/lib/skill-colors';
 import { cn } from '@/lib/utils';
 import { formatEtaMs, formatMs, formatRate, formatShare } from './format';
-
-// --- Tabs ----------------------------------------------------------------------------------------
-
-/** Overview | Metrics under the account's name. */
-export function AccountTabs({
-  publicId,
-  active,
-}: {
-  publicId: string;
-  active: 'overview' | 'metrics';
-}) {
-  const tabs = [
-    { key: 'overview', label: 'Overview', href: `/accounts/${publicId}` },
-    { key: 'metrics', label: 'Metrics', href: `/accounts/${publicId}/metrics` },
-  ] as const;
-  return (
-    <nav aria-label="Account views" className="-mt-2 border-b">
-      <ul className="flex gap-4">
-        {tabs.map((t) => (
-          <li key={t.key}>
-            <Link
-              href={t.href}
-              aria-current={t.key === active ? 'page' : undefined}
-              className={cn(
-                'inline-block border-b-2 border-transparent px-1 pb-2 text-sm font-medium text-muted-foreground hover:text-foreground',
-                t.key === active &&
-                  (active === 'metrics'
-                    ? 'border-metrics-accent text-foreground'
-                    : 'border-foreground text-foreground'),
-              )}
-            >
-              {t.label}
-            </Link>
-          </li>
-        ))}
-      </ul>
-    </nav>
-  );
-}
 
 // --- Totals --------------------------------------------------------------------------------------
 
@@ -82,7 +44,7 @@ function Tile({
   muted?: boolean;
 }) {
   return (
-    <div className="min-w-0 rounded-xl border border-t-2 border-t-metrics-accent bg-card p-3">
+    <div className="min-w-0 rounded-xl border bg-card p-3">
       <dt className="text-xs text-muted-foreground">{label}</dt>
       <dd
         className={cn(
@@ -266,7 +228,7 @@ function SessionRecap({
     <li
       className={cn(
         'flex min-w-0 flex-col gap-2 rounded-xl border bg-card p-3 text-sm',
-        selected && 'ring-2 ring-metrics-accent',
+        selected && 'ring-2 ring-foreground/40',
       )}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -281,7 +243,7 @@ function SessionRecap({
       {records.length > 0 && (
         <div className="flex flex-wrap gap-1">
           {records.map((r) => (
-            <Badge key={r} variant="outline" className="gap-1 border-metrics-accent/50">
+            <Badge key={r} variant="outline" className="gap-1 border-foreground/30">
               <TrophyIcon aria-hidden className="size-3" />
               {r}
             </Badge>
@@ -298,10 +260,7 @@ function SessionRecap({
           role="img"
           aria-label={`${formatShare(s.activeMs, s.onlineMs)} of the session active`}
         >
-          <div
-            className="h-full rounded-full bg-metrics-accent"
-            style={{ width: `${share * 100}%` }}
-          />
+          <div className="h-full rounded-full bg-foreground" style={{ width: `${share * 100}%` }} />
         </div>
       </div>
       <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
@@ -423,8 +382,8 @@ export function SkillsProgress({ skills }: { skills: readonly SkillMetrics[] }) 
                   aria-label={`${Math.floor(row.progress * 100)}% of the way to level ${row.level + 1}, ${formatNumber(row.nextLevelXp - row.xp)} XP to go`}
                 >
                   <div
-                    className="h-full rounded-full bg-metrics-accent"
-                    style={{ width: `${row.progress * 100}%` }}
+                    className="skill-tint h-full rounded-full bg-(--skill)"
+                    style={{ width: `${row.progress * 100}%`, ...skillTint(row.skill) }}
                   />
                 </div>
               )}
@@ -447,14 +406,6 @@ export function SkillsProgress({ skills }: { skills: readonly SkillMetrics[] }) 
 
 // --- Bosses --------------------------------------------------------------------------------------
 
-/** The boss page's path of an activity (the name as the hiscores write it, URL-encoded). */
-export function bossHref(publicId: string, activity: string, query?: MetricsQuery): Route {
-  const search = query
-    ? metricsSearch({ ...query, session: null, measure: 'xp', skills: [], bosses: [] })
-    : '';
-  return `/accounts/${publicId}/metrics/bosses/${encodeURIComponent(activity)}${search ? `?${search}` : ''}` as Route;
-}
-
 export function BossesTable({
   bosses,
   publicId,
@@ -469,6 +420,8 @@ export function BossesTable({
   /** The iron table's name for an iron account ("Ironman"), else null. */
   modeLabel: string | null;
 }) {
+  // A boss page has a range of its own: it keeps this view's, not its measure or session.
+  const search = metricsSearch({ ...query, session: null, measure: 'xp', skills: [], bosses: [] });
   return (
     <Table className="tabular-nums">
       <TableHeader>
@@ -499,7 +452,7 @@ export function BossesTable({
         {bosses.map((b) => (
           <TableRow key={b.activity} className={cn(b.gained === 0 && 'text-muted-foreground')}>
             <TableHead scope="row" className="font-medium">
-              <Link href={bossHref(publicId, b.activity, query)} className="hover:underline">
+              <Link href={bossHref(publicId, b.activity, search)} className="hover:underline">
                 {b.activity}
               </Link>
             </TableHead>

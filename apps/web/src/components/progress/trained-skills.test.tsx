@@ -24,7 +24,7 @@ describe('TrainedSkills', () => {
       <TrainedSkills publicId="abc123def456" skills={skills} period="in the last 7 days" />,
     );
     expect(html).toContain('aria-label="Skills trained in the last 7 days"');
-    expect(html).toMatch(/href="[^"]*abc123def456[^"]*Attack"/);
+    expect(html).toContain('href="/progress/abc123def456/skills/attack"');
     expect(html).toContain('+600');
     // A virtual 104 is level 99 in the game.
     expect(html).toContain('level 99');

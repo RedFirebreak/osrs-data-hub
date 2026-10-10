@@ -13,14 +13,13 @@ import {
   formatGp,
   formatNumber,
   getConfig,
-  metricsSearch,
   parseMetricsQuery,
   type MetricsQuery,
 } from '@hub/core';
 import { getDb } from '@hub/db';
 import { getBossMetrics, getUserSettings, type BossMetricsPage } from '@hub/server';
 import { ChevronLeftIcon } from 'lucide-react';
-import type { Metadata, Route } from 'next';
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Suspense } from 'react';
@@ -32,7 +31,7 @@ import { BossKillsChart, BossLootChart } from '@/components/metrics/boss-charts'
 import { FilterBar } from '@/components/metrics/filter-bar';
 import { formatMs } from '@/components/metrics/format';
 import { MetricsQueryProvider } from '@/components/metrics/metrics-nav';
-import { AccountTabs, sessionHref } from '@/components/metrics/metrics-panels';
+import { sessionHref } from '@/components/metrics/metrics-panels';
 import {
   Table,
   TableBody,
@@ -42,9 +41,10 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { formatInZone } from '@/lib/dates';
+import { deepDiveHref, progressHref } from '@/lib/routes';
 import { requireUser } from '@/lib/session';
 import { cn } from '@/lib/utils';
-import { loadVisible } from '../../../visible';
+import { loadVisible } from '@/lib/visible-account';
 
 /** The boss name from the route, or null when it can't be one. */
 function bossName(raw: string): string | null {
@@ -59,7 +59,7 @@ function bossName(raw: string): string | null {
 
 export async function generateMetadata({
   params,
-}: PageProps<'/accounts/[publicId]/metrics/bosses/[activity]'>): Promise<Metadata> {
+}: PageProps<'/progress/[publicId]/bosses/[activity]'>): Promise<Metadata> {
   const { publicId, activity } = await params;
   const visible = await loadVisible(publicId);
   const name = bossName(activity) ?? 'Boss';
@@ -69,27 +69,26 @@ export async function generateMetadata({
 export default async function BossPage({
   params,
   searchParams,
-}: PageProps<'/accounts/[publicId]/metrics/bosses/[activity]'>) {
+}: PageProps<'/progress/[publicId]/bosses/[activity]'>) {
   const { publicId, activity: raw } = await params;
   // See NEXT-14: every 404 before the Suspense boundary.
   const visible = await loadVisible(publicId);
   const activity = bossName(raw);
   if (!visible || !activity || !visible.access.categories.has('hiscores')) notFound();
   const query = parseMetricsQuery(await searchParams);
-  const metricsPath = `/accounts/${publicId}/metrics`;
-  const back = metricsSearch({ ...query, session: null });
   return (
-    <div className="metrics flex flex-col gap-6">
-      <header className="flex flex-col gap-3">
+    <div className="flex flex-col gap-6">
+      <header className="flex flex-col gap-2">
         <Link
-          href={(back ? `${metricsPath}?${back}` : metricsPath) as Route}
-          className="flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+          href={progressHref(publicId)}
+          className="flex w-fit items-center gap-1 rounded-md text-sm text-muted-foreground hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
         >
           <ChevronLeftIcon aria-hidden className="size-4" />
-          {visible.account.name}
+          Progress of {visible.account.name}
         </Link>
-        <h1 className="text-2xl font-semibold tracking-tight">{activity}</h1>
-        <AccountTabs publicId={publicId} active="metrics" />
+        <h1 className="text-3xl leading-tight font-semibold tracking-tight sm:text-4xl">
+          {activity}
+        </h1>
       </header>
       <MetricsQueryProvider query={query}>
         <Suspense
@@ -124,7 +123,7 @@ async function BossContent({
     timezone,
   });
   if (!page) notFound();
-  const metricsPath = `/accounts/${publicId}/metrics`;
+  const sessionsPath = deepDiveHref(publicId);
   return (
     <>
       <FilterBar
@@ -256,7 +255,7 @@ async function BossContent({
                   <TableRow key={s.id}>
                     <TableHead scope="row" className="font-medium">
                       <Link
-                        href={sessionHref(metricsPath, { ...query, measure: 'kills' }, s.id)}
+                        href={sessionHref(sessionsPath, { ...query, measure: 'kills' }, s.id)}
                         className="hover:underline"
                       >
                         {formatInZone(s.start, timezone, MOMENT_OPTIONS)}
@@ -333,10 +332,7 @@ function BossTiles({ page }: { page: BossMetricsPage }) {
   return (
     <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
       {tiles.map((t) => (
-        <div
-          key={t.label}
-          className="min-w-0 rounded-xl border border-t-2 border-t-metrics-accent bg-card p-3"
-        >
+        <div key={t.label} className="min-w-0 rounded-xl border bg-card p-3">
           <dt className="text-xs text-muted-foreground">{t.label}</dt>
           <dd
             className={cn(

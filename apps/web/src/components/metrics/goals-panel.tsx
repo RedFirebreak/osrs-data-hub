@@ -142,7 +142,7 @@ export function GoalsPanel({ publicId, goals, canSet, skills, bosses }: GoalsPan
                 aria-label={`${Math.floor((goal.progress ?? 0) * 100)}% of the goal`}
               >
                 <div
-                  className="h-full rounded-full bg-metrics-accent"
+                  className="h-full rounded-full bg-foreground"
                   style={{ width: `${(goal.progress ?? 0) * 100}%` }}
                 />
               </div>

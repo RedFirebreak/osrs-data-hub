@@ -17,6 +17,11 @@
  * `onEvents` listens to the chart's own events (a click on a mark, the end of a brush); `brush`
  * turns the pointer into a horizontal brush on the x-axis (the option must have a `brush`
  * component), so a drag selects a span instead of needing a toolbox button first.
+ *
+ * `morph` is for a chart whose option keeps its shape while its data changes (the Progress line when
+ * the range changes): the new option is merged into the old one, so ECharts moves the line from
+ * where it is to where it goes instead of drawing a new chart. Every other chart replaces its option
+ * whole, which is what a chart whose series come and go needs.
  */
 import { BarChart, HeatmapChart, LineChart, ScatterChart } from 'echarts/charts';
 import {
@@ -75,6 +80,8 @@ export interface EChartProps {
   onEvents?: EChartEvents;
   /** Dragging across the plot brushes a span of the x-axis (see the file comment). */
   brush?: boolean;
+  /** Merge a new option into the current one, so the data moves (see the file comment). */
+  morph?: boolean;
 }
 
 const EVENT_NAMES: readonly EChartEventName[] = ['click', 'brushEnd'];
@@ -86,6 +93,7 @@ export function EChart({
   className,
   onEvents,
   brush = false,
+  morph = false,
 }: EChartProps) {
   const container = useRef<HTMLDivElement>(null);
   const chart = useRef<EChartsType | null>(null);
@@ -118,7 +126,7 @@ export function EChart({
   useEffect(() => {
     const instance = chart.current;
     if (!instance) return;
-    instance.setOption(option(theme), { notMerge: true, lazyUpdate: true });
+    instance.setOption(option(theme), { notMerge: !morph, lazyUpdate: true });
     if (brush) {
       instance.dispatchAction({
         type: 'takeGlobalCursor',
@@ -126,7 +134,7 @@ export function EChart({
         brushOption: { brushType: 'lineX', brushMode: 'single' },
       });
     }
-  }, [option, theme, brush]);
+  }, [option, theme, brush, morph]);
 
   return (
     <div
