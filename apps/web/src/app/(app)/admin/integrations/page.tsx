@@ -1,7 +1,7 @@
 /**
  * Admin → Integrations (D-88): the hub's service keys, the integration keys of the public API used
- * by the guild's own services (the live map). Active keys with Revoke, then revoked and expired
- * ones, and "Create integration key". Explains that a service key belongs to nobody, reads what the
+ * by the guild's own services (the live map). Active keys with Edit and Revoke, then revoked and
+ * expired ones with Delete (D-111), and "Create integration key". Explains that a service key belongs to nobody, reads what the
  * guild audience sees (D-89), survives every offboarding, and can ask whether a Discord account is a
  * member and an admin (D-100).
  */
@@ -20,6 +20,8 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { AdminEmptyState, AdminSectionHeader } from '@/components/admin/admin-section';
 import { CreateServiceKeyDialog } from '@/components/admin/service-keys/create-service-key-dialog';
+import { DeleteServiceKeyButton } from '@/components/admin/service-keys/delete-service-key-button';
+import { EditServiceKeyDialog } from '@/components/admin/service-keys/edit-service-key-dialog';
 import { RevokeServiceKeyButton } from '@/components/admin/service-keys/revoke-service-key-button';
 import { ApiKeyCard } from '@/components/api-keys/api-key-card';
 import { Button } from '@/components/ui/button';
@@ -131,7 +133,18 @@ function KeySection({
                 apiKey={key}
                 now={now}
                 timezone={timezone}
-                actions={<RevokeServiceKeyButton keyId={key.id} name={key.name} />}
+                actions={
+                  <>
+                    <EditServiceKeyDialog
+                      apiKey={key}
+                      nameMax={API_KEY_NAME_MAX}
+                      rateLimitDefault={SERVICE_KEY_RATE_LIMIT}
+                      rateLimitMax={MAX_KEY_RATE_LIMIT}
+                    />
+                    <RevokeServiceKeyButton keyId={key.id} name={key.name} />
+                  </>
+                }
+                inactiveActions={<DeleteServiceKeyButton keyId={key.id} name={key.name} />}
               />
             </li>
           ))}

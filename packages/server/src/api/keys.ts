@@ -1,12 +1,13 @@
 /**
  * API keys for the public, pull-only REST API (handoff §13, D-69, D-70, D-76): a member's own keys
- * (create, list, revoke) and what they share with service keys (D-88, managed in service-keys.ts):
- * the row, its status and rate limit, and the fields both kinds are created with. The key format is
+ * (create, list, edit, revoke, delete once dead, D-111) and what they share with service keys (D-88,
+ * managed in service-keys.ts): the row, its status and rate limit, the fields both kinds are created
+ * with, and the edit, revoke and delete that both kinds go through. The key format is
  * in key-format.ts, authenticating a request in key-auth.ts.
  */
 import { CATEGORIES, DAY_MS, sha256Hex, type Category } from '@hub/core';
 import { apiKeys, osrsAccounts, users, type ApiKeyKind, type Db, type DbOrTx } from '@hub/db';
-import { and, count, desc, eq, gt, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
+import { and, count, desc, eq, gt, inArray, isNull, not, or, sql, type SQL } from 'drizzle-orm';
 import { z } from 'zod';
 import { loadViewer } from '../accounts/access';
 import { loadVisibleAccounts } from '../accounts/load';
@@ -70,8 +71,12 @@ export interface ApiKeyInfo {
   status: ApiKeyStatus;
 }
 
-/** Why createApiKey refused: invalid → 400 (with `issues`), limit → 409, not_found → 404. */
-export type ApiKeyErrorCode = 'invalid' | 'limit' | 'not_found';
+/**
+ * Why a key operation refused: invalid → 400 (with `issues`), limit → 409, not_found → 404, conflict
+ * → 409 (the key's status doesn't allow it: editing a key that is no longer active, deleting one
+ * that still is, D-111).
+ */
+export type ApiKeyErrorCode = 'invalid' | 'limit' | 'not_found' | 'conflict';
 
 export interface ApiKeyIssue {
   /** Dotted path of the offending field ('' for the whole body), e.g. 'name', 'accountPublicIds'. */
@@ -116,6 +121,34 @@ export const KEY_FIELD_SCHEMAS = {
   expiresInDays: z.number().int().min(1).max(API_KEY_MAX_EXPIRY_DAYS).nullable().optional(),
 };
 
+/** An explicit account list: account ids, at least one, duplicates dropped. */
+const ACCOUNT_PUBLIC_IDS = z
+  .array(z.string().refine(isPublicIdLike, 'not an account id'))
+  .min(1, 'choose at least one account')
+  .max(MAX_KEY_ACCOUNTS)
+  .transform((ids) => [...new Set(ids)]);
+
+/** `accountPublicIds` goes with, and only with, `accountScope: 'list'`. */
+function refineAccountList(
+  body: { accountScope?: ApiKeyScope | undefined; accountPublicIds?: string[] | undefined },
+  ctx: z.RefinementCtx,
+): void {
+  if (body.accountScope === 'list' && body.accountPublicIds === undefined) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['accountPublicIds'],
+      message: 'required when accountScope is "list"',
+    });
+  }
+  if (body.accountScope !== 'list' && body.accountPublicIds !== undefined) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['accountPublicIds'],
+      message: 'only allowed when accountScope is "list"',
+    });
+  }
+}
+
 /**
  * The body of "create a key" (D-69, D-10: strict, unknown keys rejected):
  * - `name`: 1–64 characters after trimming (control characters become spaces);
@@ -131,30 +164,34 @@ export const CreateApiKeySchema = z
     name: KEY_FIELD_SCHEMAS.name,
     categories: KEY_FIELD_SCHEMAS.categories,
     accountScope: z.enum(['all_visible', 'list']),
-    accountPublicIds: z
-      .array(z.string().refine(isPublicIdLike, 'not an account id'))
-      .min(1, 'choose at least one account')
-      .max(MAX_KEY_ACCOUNTS)
-      .transform((ids) => [...new Set(ids)])
-      .optional(),
+    accountPublicIds: ACCOUNT_PUBLIC_IDS.optional(),
     expiresInDays: KEY_FIELD_SCHEMAS.expiresInDays,
   })
-  .superRefine((body, ctx) => {
-    if (body.accountScope === 'list' && body.accountPublicIds === undefined) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['accountPublicIds'],
-        message: 'required when accountScope is "list"',
-      });
-    }
-    if (body.accountScope !== 'list' && body.accountPublicIds !== undefined) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['accountPublicIds'],
-        message: 'only allowed when accountScope is "list"',
-      });
-    }
-  });
+  .superRefine(refineAccountList);
+
+/** A body that names no field to change. */
+export function refineNotEmpty(body: object, ctx: z.RefinementCtx): void {
+  if (Object.values(body).every((v) => v === undefined)) {
+    ctx.addIssue({ code: 'custom', path: [], message: 'nothing to change' });
+  }
+}
+
+/**
+ * The body of "edit a key" (D-111; strict, D-10): what the key reads, never the key itself. Each
+ * field is optional and as in CreateApiKeySchema: `name`, `categories`, and `accountScope` with
+ * `accountPublicIds` (required with 'list', forbidden otherwise; setting a scope replaces the whole
+ * account list). At least one field. The expiry can't be changed: a key's lifetime is decided when
+ * it is handed out.
+ */
+export const UpdateApiKeySchema = z
+  .strictObject({
+    name: KEY_FIELD_SCHEMAS.name.optional(),
+    categories: KEY_FIELD_SCHEMAS.categories.optional(),
+    accountScope: z.enum(['all_visible', 'list']).optional(),
+    accountPublicIds: ACCOUNT_PUBLIC_IDS.optional(),
+  })
+  .superRefine(refineAccountList)
+  .superRefine(refineNotEmpty);
 
 export type KeyRow = typeof apiKeys.$inferSelect;
 
@@ -441,6 +478,204 @@ export async function revokeApiKey(
       meta: { ownerUserId: revoked.userId, prefix: revoked.prefix, asAdmin: false },
     }),
   );
+}
+
+/**
+ * Edits one of the user's own keys (D-111): its name, its categories and its account scope, from the
+ * page's request body (UpdateApiKeySchema; a failure is ApiKeyError 'invalid'). The secret, prefix,
+ * expiry and creation time stay: an app using the key keeps working and reads what the key reads
+ * now from its next request on (access is evaluated per request, D-70). A 'list' scope may only name
+ * accounts the user can see right now, as on creation; accounts the user no longer sees therefore
+ * drop out of a list that is saved again. Only an active key can be edited (else 'conflict').
+ * Returns the key's info, or null when the key doesn't exist, isn't the user's, or `keyId` isn't a
+ * uuid (the route answers 404). Audit: 'api_key.updated' with what changed, only when something did.
+ */
+export async function updateApiKey(
+  db: Db,
+  opts: { userId: string; keyId: string; input: unknown; now?: Date },
+): Promise<ApiKeyInfo | null> {
+  const body = parseKeyInput(UpdateApiKeySchema, opts.input);
+  const now = opts.now ?? new Date();
+  const scope = and(eq(apiKeys.kind, 'user'), eq(apiKeys.userId, opts.userId));
+  const row = await updateKey(
+    db,
+    { keyId: opts.keyId, scope, now },
+    async (tx) => {
+      const values: KeyChanges = {};
+      if (body.name !== undefined) values.name = body.name;
+      if (body.categories !== undefined) values.categories = body.categories;
+      if (body.accountScope !== undefined) {
+        values.accountScope = body.accountScope;
+        values.accountIds =
+          body.accountScope === 'list'
+            ? (await visibleListAccounts(tx, opts.userId, body.accountPublicIds ?? [])).map(
+                (a) => a.id,
+              )
+            : null;
+      }
+      return values;
+    },
+    (tx, before, after) =>
+      audit(tx, {
+        actorUserId: opts.userId,
+        action: 'api_key.updated',
+        targetType: 'api_key',
+        targetId: after.id,
+        meta: { prefix: after.prefix, name: after.name, changes: keyChanges(before, after) },
+      }),
+  );
+  if (!row) return null;
+  const accounts = await loadListedAccounts(db, opts.userId, new Set(row.accountIds ?? []));
+  const listed = (row.accountIds ?? [])
+    .map((id) => accounts.get(id))
+    .filter((a): a is ApiKeyAccount => a !== undefined)
+    .sort(byNameThenHidden);
+  return keyInfoOf(row, listed, now);
+}
+
+/**
+ * Deletes one of the user's own keys once it is revoked or expired (D-111): the row goes, so the
+ * key leaves the page; it could never authenticate again anyway. The audit trail keeps its creation,
+ * revocation and deletion. An active key must be revoked first ('conflict'). False when the key
+ * doesn't exist (deleted already included), isn't the user's, or `keyId` isn't a uuid (404).
+ * Audit: 'api_key.deleted' with the prefix and name.
+ */
+export async function deleteApiKey(
+  db: Db,
+  opts: { userId: string; keyId: string; now?: Date },
+): Promise<boolean> {
+  const scope = and(eq(apiKeys.kind, 'user'), eq(apiKeys.userId, opts.userId));
+  return deleteKey(db, { keyId: opts.keyId, scope, now: opts.now }, (tx, deleted) =>
+    audit(tx, {
+      actorUserId: opts.userId,
+      action: 'api_key.deleted',
+      targetType: 'api_key',
+      targetId: deleted.id,
+      meta: { prefix: deleted.prefix, name: deleted.name, status: deleted.status },
+    }),
+  );
+}
+
+/** The columns an edit may change (D-111), user and service keys together. */
+export type KeyChanges = Partial<
+  Pick<KeyRow, 'name' | 'categories' | 'accountScope' | 'accountIds' | 'rateLimitPerMinute'>
+>;
+
+/**
+ * What changed between two versions of a key, for the audit entry: `{ field: { from, to } }`. An
+ * account list is recorded by its size, as on creation.
+ */
+export function keyChanges(before: KeyRow, after: KeyRow): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (before.name !== after.name) out.name = { from: before.name, to: after.name };
+  if (!sameList(before.categories, after.categories)) {
+    out.categories = { from: before.categories, to: after.categories };
+  }
+  if (before.accountScope !== after.accountScope) {
+    out.accountScope = { from: before.accountScope, to: after.accountScope };
+  }
+  if (!sameList(before.accountIds ?? [], after.accountIds ?? [])) {
+    out.accountCount = {
+      from: before.accountIds?.length ?? null,
+      to: after.accountIds?.length ?? null,
+    };
+  }
+  if (before.rateLimitPerMinute !== after.rateLimitPerMinute) {
+    out.rateLimitPerMinute = { from: before.rateLimitPerMinute, to: after.rateLimitPerMinute };
+  }
+  return out;
+}
+
+function sameList(a: readonly unknown[], b: readonly unknown[]): boolean {
+  return a.length === b.length && a.every((v, i) => v === b[i]);
+}
+
+/**
+ * Edits the key `keyId` if it is one of the keys `scope` selects (the keys the actor may edit), for
+ * updateApiKey and updateServiceKey (D-111). In one transaction that locks the row first (so a
+ * revocation can't slip in between the check and the write): an inactive key is ApiKeyError
+ * 'conflict'; `change` computes the new values (and may refuse with an ApiKeyError); only values that
+ * differ are written, and `auditUpdated` runs only when something did. Returns the row as it is now,
+ * or null when the key isn't in scope or `keyId` isn't a uuid.
+ */
+export async function updateKey(
+  db: Db,
+  opts: { keyId: string; scope: SQL | undefined; now: Date },
+  change: (tx: DbOrTx, row: KeyRow) => Promise<KeyChanges>,
+  auditUpdated: (tx: DbOrTx, before: KeyRow, after: KeyRow) => Promise<void>,
+): Promise<KeyRow | null> {
+  if (!isUuid(opts.keyId)) return null;
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT set_config('lock_timeout', '3s', true)`);
+    const [row] = await tx
+      .select()
+      .from(apiKeys)
+      .where(and(eq(apiKeys.id, opts.keyId), opts.scope))
+      .for('update');
+    if (!row) return null;
+    const status = apiKeyStatus(row, opts.now);
+    if (status !== 'active') {
+      throw new ApiKeyError(
+        'conflict',
+        `This key is ${status}. Only an active key can be changed.`,
+      );
+    }
+    const values = await change(tx, row);
+    const changed = Object.fromEntries(
+      Object.entries(values).filter(([field, value]) => {
+        const current = row[field as keyof KeyChanges];
+        return Array.isArray(value) && Array.isArray(current)
+          ? !sameList(value, current)
+          : value !== current;
+      }),
+    ) as KeyChanges;
+    if (Object.keys(changed).length === 0) return row;
+    const [after] = await tx.update(apiKeys).set(changed).where(eq(apiKeys.id, row.id)).returning();
+    if (!after) throw new Error('updateKey: the locked row disappeared');
+    await auditUpdated(tx, row, after);
+    return after;
+  });
+}
+
+/** What a deletion's audit entry is written from. */
+export type DeletedKey = Pick<KeyRow, 'id' | 'userId' | 'prefix' | 'name'> & {
+  status: Exclude<ApiKeyStatus, 'active'>;
+};
+
+/**
+ * Deletes the key `keyId` if it is one of the keys `scope` selects and is revoked or expired, for
+ * deleteApiKey and deleteServiceKey (D-111), and runs `auditDeleted` in the same transaction. True
+ * when it was deleted; ApiKeyError 'conflict' when it is in scope but still active; false when it
+ * isn't in scope (or no longer exists), or `keyId` isn't a uuid.
+ */
+export async function deleteKey(
+  db: Db,
+  opts: { keyId: string; scope: SQL | undefined; now?: Date | undefined },
+  auditDeleted: (tx: DbOrTx, deleted: DeletedKey) => Promise<void>,
+): Promise<boolean> {
+  if (!isUuid(opts.keyId)) return false;
+  const now = opts.now ?? new Date();
+  const inScope = and(eq(apiKeys.id, opts.keyId), opts.scope);
+  return db.transaction(async (tx) => {
+    const [deleted] = await tx
+      .delete(apiKeys)
+      .where(and(inScope, not(activeKeyFilter(now) ?? sql`true`)))
+      .returning();
+    if (deleted) {
+      const status = apiKeyStatus(deleted, now);
+      await auditDeleted(tx, {
+        id: deleted.id,
+        userId: deleted.userId,
+        prefix: deleted.prefix,
+        name: deleted.name,
+        status: status === 'active' ? 'revoked' : status,
+      });
+      return true;
+    }
+    const [existing] = await tx.select({ id: apiKeys.id }).from(apiKeys).where(inScope);
+    if (!existing) return false;
+    throw new ApiKeyError('conflict', 'This key is still active. Revoke it before deleting it.');
+  });
 }
 
 /** What a revocation's audit entry is written from. */

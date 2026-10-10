@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { fieldErrorsFrom } from '@/lib/api-client';
 import {
+  EDIT_SERVICE_KEY_FIELDS,
+  editServiceFormOf,
+  editServiceKeyBody,
   SERVICE_KEY_FIELDS,
   emptyServiceKeyForm,
   parseRateLimit,
@@ -94,5 +97,35 @@ describe('SERVICE_KEY_FIELDS', () => {
       ),
     ).toEqual({ rateLimitPerMinute: 'too big', categories: 'unknown' });
     expect(fieldErrorsFrom(null, SERVICE_KEY_FIELDS)).toEqual({});
+  });
+});
+
+describe('the edit form (D-111)', () => {
+  const key = { name: 'Live map', categories: ['activity' as const], rateLimitPerMinute: 600 };
+
+  it('shows a rate limit at the default as blank, and any other as typed', () => {
+    expect(editServiceFormOf(key, 600)).toEqual({
+      name: 'Live map',
+      categories: ['activity'],
+      rateLimit: '',
+    });
+    expect(editServiceFormOf({ ...key, rateLimitPerMinute: 900 }, 600).rateLimit).toBe('900');
+  });
+
+  it('sends null for a blank rate limit, so the key follows the default', () => {
+    expect(
+      editServiceKeyBody({
+        name: ' Live map ',
+        categories: ['hiscores', 'activity'],
+        rateLimit: '',
+      }),
+    ).toEqual({ name: 'Live map', categories: ['activity', 'hiscores'], rateLimitPerMinute: null });
+  });
+
+  it('validates as the create form does', () => {
+    expect(
+      validateServiceKeyForm({ name: '', categories: [], rateLimit: 'x' }, LIMITS),
+    ).toHaveProperty('rateLimitPerMinute');
+    expect(EDIT_SERVICE_KEY_FIELDS).not.toContain('expiresInDays');
   });
 });

@@ -22,7 +22,9 @@ Design decisions: D-69 … D-77, D-88 … D-94, D-98 and D-100 in [ARCHITECTURE.
 
    You can hold at most 10 active keys.
 2. The key, `ohub_<prefix>_<secret>`, is shown **once**. The hub keeps only a hash. If you lose it,
-   revoke it and create a new one.
+   revoke it and create a new one. What an active key reads (its name, categories and accounts) can
+   be changed later with **Edit** without changing the key itself; a revoked or expired key can be
+   deleted from the page.
 3. Send it on every request:
 
        curl -H "Authorization: Bearer ohub_NM5kHo1WTn_…" https://hub.example.com/api/v1/me
@@ -51,7 +53,9 @@ For the guild's own services (its live map, a shared bot) an admin creates a **s
 - it alone sees `account_hash` (D-91), and it may name 50 accounts per bulk request instead of 10 (D-92);
 - it alone can ask [`/members/{discord_id}`](#get-membersdiscord_id) whether a Discord account is a
   member of the hub and an admin (D-100). For a user key that endpoint doesn't exist;
-- day-based periods (`period=day` on gains and leaderboards) use UTC, since it has no creator settings.
+- day-based periods (`period=day` on gains and leaderboards) use UTC, since it has no creator settings;
+- its name, categories and rate limit can be edited while it is active, and it keeps working with the
+  same secret: give the live map a new category by editing its key, not by making a new one (D-111).
 
 `/me` tells the kinds apart: `key.kind` is `user` or `service`, and `user` is `null` for a service key.
 

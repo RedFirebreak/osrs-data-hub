@@ -1,6 +1,7 @@
 /**
- * Pure helpers for the API keys page (handoff §13, D-69, D-76): display texts, the create form's
- * state, validation and request body, and how a failed create or revoke is told. No React, no
+ * Pure helpers for the API keys page (handoff §13, D-69, D-76, D-111): display texts, the create and
+ * edit forms' state, validation and request bodies, and how a failed create, edit, revoke or delete
+ * is told. No React, no
  * browser APIs; unit-tested in api-key-model.test.ts.
  *
  * Only `import type` from @hub/server: the page's client components import this module (NEXT-12).
@@ -97,8 +98,11 @@ export function expiryDays(expiry: string): number | null {
   return EXPIRY_OPTIONS.find((o) => o.value === expiry)?.days ?? null;
 }
 
-/** Client-side checks before sending (the server checks everything again). */
-export function validateCreateForm(form: CreateKeyForm, nameMax: number): CreateKeyErrors {
+/** Client-side checks before sending (the server checks everything again); also the edit form's. */
+export function validateCreateForm(
+  form: Omit<CreateKeyForm, 'expiry'>,
+  nameMax: number,
+): CreateKeyErrors {
   const errors: CreateKeyErrors = {};
   const name = keyNameError(form.name, nameMax, 'Home Assistant');
   if (name) errors.name = name;
@@ -142,6 +146,64 @@ export const REVOKE_KEY_FAILURE: FailureOptions = {
   fallback: "Couldn't revoke the key. Try again in a moment.",
   notFound: 'This key no longer exists. Reload the page.',
   hubMessageFor: [403, 503],
+  refreshOnNotFound: true,
+};
+
+/** The edit form (D-111): what the key reads; the expiry stays as it was created. */
+export type EditKeyForm = Omit<CreateKeyForm, 'expiry'>;
+
+/**
+ * The edit form of a key as it is now. A listed account the user can no longer see isn't offered
+ * (the server would refuse it), so saving the list drops it: `hiddenAccounts` counts them for the
+ * dialog to say so.
+ */
+export function editFormOf(
+  info: Pick<ApiKeyInfo, 'name' | 'categories' | 'accountScope' | 'accounts'>,
+): EditKeyForm & { hiddenAccounts: number } {
+  const accounts = info.accountScope === 'list' ? (info.accounts ?? []) : [];
+  return {
+    name: info.name,
+    categories: [...info.categories],
+    scope: info.accountScope,
+    accountPublicIds: accounts.filter((a) => a.visible).map((a) => a.publicId),
+    hiddenAccounts: accounts.filter((a) => !a.visible).length,
+  };
+}
+
+/** The PATCH /api/app/api-keys/[id] body for a valid form (UpdateApiKeySchema's input). */
+export function editKeyBody(form: EditKeyForm): Record<string, unknown> {
+  return {
+    name: form.name.trim(),
+    categories: CATEGORIES.filter((c) => form.categories.includes(c)),
+    accountScope: form.scope,
+    ...(form.scope === 'list' ? { accountPublicIds: form.accountPublicIds } : {}),
+  };
+}
+
+export type EditKeyField = Exclude<CreateKeyField, 'expiresInDays'>;
+
+/** The edit form's fields the server's 400 `details` can name. */
+export const EDIT_KEY_FIELDS: readonly EditKeyField[] = ['name', 'categories', 'accountPublicIds'];
+
+/**
+ * How a failed PATCH /api/app/api-keys/[id] is told. A 409 is a key revoked or expired meanwhile (the
+ * hub's message says which); a 404 one deleted elsewhere: both refresh the page.
+ */
+export const EDIT_KEY_FAILURE: FailureOptions = {
+  fallback: "Couldn't save the key. Try again in a moment.",
+  notFound: 'This key no longer exists. Reload the page.',
+  conflict: 'Only an active key can be changed.',
+  refreshOnNotFound: true,
+};
+
+/**
+ * How a failed POST /api/app/api-keys/[id]/delete is told. A key that no longer exists was deleted
+ * elsewhere: the page is refreshed, so it leaves the list.
+ */
+export const DELETE_KEY_FAILURE: FailureOptions = {
+  fallback: "Couldn't delete the key. Try again in a moment.",
+  notFound: 'This key no longer exists. Reload the page.',
+  conflict: 'Revoke the key before deleting it.',
   refreshOnNotFound: true,
 };
 

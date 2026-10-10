@@ -1,18 +1,20 @@
 /**
- * The API keys routes (D-69, D-76): POST /api/app/api-keys and DELETE /api/app/api-keys/[id].
- * Create (201, the key shown once and working on /api/v1, never in the list), validation errors with
- * field details, the active-key limit (409), idempotent revoke, another user's key (404), session
- * auth and the Origin check.
+ * The API keys routes (D-69, D-76, D-111): POST /api/app/api-keys, PATCH and DELETE
+ * /api/app/api-keys/[id], POST /api/app/api-keys/[id]/delete. Create (201, the key shown once and
+ * working on /api/v1, never in the list), validation errors with field details, the active-key limit
+ * (409), editing (the same key reads the new categories), idempotent revoke, deleting a revoked key
+ * (409 while active), another user's key (404), session auth and the Origin check.
  */
 import { auditLog } from '@hub/db';
 import { MAX_ACTIVE_KEYS, listApiKeys, type ApiKeyInfo } from '@hub/server';
-import { eq } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GET as getMe } from '@/app/api/v1/me/route';
 import { freshLimits, seedWorld, v1Request, type World } from '@/app/api/v1/test-support';
 import { setApiLimitsForTests } from '@/lib/api-v1/with-api-key';
 import { withTestDb, type WebTestContext } from '@/lib/test-utils';
-import { DELETE } from './[id]/route';
+import { POST as DELETE_KEY } from './[id]/delete/route';
+import { DELETE, PATCH } from './[id]/route';
 import { POST } from './route';
 
 // /api/v1/me (to check a created key works) calls connection().
@@ -65,6 +67,36 @@ function revoke(cookie: string | undefined, id: string, opts: { origin?: string 
   return DELETE(
     ctx.request(`/api/app/api-keys/${id}`, {
       method: 'DELETE',
+      cookie,
+      headers: opts.origin ? { origin: opts.origin } : {},
+      sameOrigin: opts.origin === undefined,
+    }),
+    { params: Promise.resolve({ id }) },
+  );
+}
+
+function edit(
+  cookie: string | undefined,
+  id: string,
+  body: unknown,
+  opts: { origin?: string } = {},
+): Promise<Response> {
+  return PATCH(
+    ctx.request(`/api/app/api-keys/${id}`, {
+      method: 'PATCH',
+      cookie,
+      json: body,
+      headers: opts.origin ? { origin: opts.origin } : {},
+      sameOrigin: opts.origin === undefined,
+    }),
+    { params: Promise.resolve({ id }) },
+  );
+}
+
+function remove(cookie: string | undefined, id: string, opts: { origin?: string } = {}) {
+  return DELETE_KEY(
+    ctx.request(`/api/app/api-keys/${id}/delete`, {
+      method: 'POST',
       cookie,
       headers: opts.origin ? { origin: opts.origin } : {},
       sameOrigin: opts.origin === undefined,
@@ -226,5 +258,88 @@ describe('DELETE /api/app/api-keys/[id]', () => {
     expect((await revoke(cookie, created.info.id, { origin: 'https://evil.example' })).status).toBe(
       403,
     );
+  });
+});
+
+describe('PATCH /api/app/api-keys/[id]', () => {
+  it('edits what the key reads: 200 with the info, and the same key reads the new categories', async () => {
+    const owner = await ctx.signIn(world.ownerId);
+    const created = (await (await create(owner, valid)).json()) as {
+      key: string;
+      info: ApiKeyInfo;
+    };
+    const res = await edit(owner, created.info.id, { name: 'Map', categories: ['hiscores'] });
+    expect(res.status).toBe(200);
+    const { info } = (await res.json()) as { info: ApiKeyInfo };
+    expect(info).toMatchObject({
+      id: created.info.id,
+      prefix: created.info.prefix,
+      name: 'Map',
+      categories: ['hiscores'],
+    });
+    const me = await getMe(v1Request(ctx, '/me', { key: created.key }));
+    expect(me.status).toBe(200);
+    const { data } = (await me.json()) as { data: { key: { categories: string[] } } };
+    expect(data.key.categories).toEqual(['hiscores']);
+  });
+
+  it('400 with field details, 409 for a revoked key, 404 for another user’s key', async () => {
+    const a = await signedIn();
+    const b = await signedIn();
+    const created = (await (await create(a.cookie, valid)).json()) as { info: ApiKeyInfo };
+    const bad = await edit(a.cookie, created.info.id, { categories: [] });
+    expect(bad.status).toBe(400);
+    expect(((await bad.json()) as ErrorBody).error.details?.[0]?.path).toBe('categories');
+    expect((await edit(b.cookie, created.info.id, { name: 'x' })).status).toBe(404);
+    expect((await edit(a.cookie, 'not-a-uuid', { name: 'x' })).status).toBe(404);
+    await revoke(a.cookie, created.info.id);
+    const conflict = await edit(a.cookie, created.info.id, { name: 'x' });
+    expect(conflict.status).toBe(409);
+    expect(((await conflict.json()) as ErrorBody).error.code).toBe('conflict');
+  });
+
+  it('401 without a session, 403 from another origin', async () => {
+    const { cookie } = await signedIn();
+    const created = (await (await create(cookie, valid)).json()) as { info: ApiKeyInfo };
+    expect((await edit(undefined, created.info.id, { name: 'x' })).status).toBe(401);
+    expect(
+      (await edit(cookie, created.info.id, { name: 'x' }, { origin: 'https://evil.example' }))
+        .status,
+    ).toBe(403);
+  });
+});
+
+describe('POST /api/app/api-keys/[id]/delete', () => {
+  it('deletes a revoked key: 204, then 404; 409 while it is active', async () => {
+    const { userId, cookie } = await signedIn();
+    const created = (await (await create(cookie, valid)).json()) as { info: ApiKeyInfo };
+    const active = await remove(cookie, created.info.id);
+    expect(active.status).toBe(409);
+    expect(((await active.json()) as ErrorBody).error.code).toBe('conflict');
+    await revoke(cookie, created.info.id);
+    const res = await remove(cookie, created.info.id);
+    expect(res.status).toBe(204);
+    expect((await remove(cookie, created.info.id)).status).toBe(404);
+    expect(await listApiKeys(ctx.t.db, userId)).toEqual([]);
+    const [entry] = await ctx.t.db
+      .select()
+      .from(auditLog)
+      .where(eq(auditLog.targetId, created.info.id))
+      .orderBy(desc(auditLog.id))
+      .limit(1);
+    expect(entry?.action).toBe('api_key.deleted');
+  });
+
+  it('404 for another user’s key; 401 without a session, 403 from another origin', async () => {
+    const a = await signedIn();
+    const b = await signedIn();
+    const created = (await (await create(a.cookie, valid)).json()) as { info: ApiKeyInfo };
+    await revoke(a.cookie, created.info.id);
+    expect((await remove(b.cookie, created.info.id)).status).toBe(404);
+    expect((await remove(undefined, created.info.id)).status).toBe(401);
+    expect(
+      (await remove(a.cookie, created.info.id, { origin: 'https://evil.example' })).status,
+    ).toBe(403);
+    expect((await listApiKeys(ctx.t.db, a.userId))[0]?.id).toBe(created.info.id);
   });
 });

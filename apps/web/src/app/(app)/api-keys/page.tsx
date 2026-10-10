@@ -1,6 +1,6 @@
 /**
  * API keys (handoff §12/§13, D-69, D-76): the signed-in user's keys for the public API — active ones
- * with Revoke, then revoked and expired ones — and "Create key". Explains what keys are for, that
+ * with Edit and Revoke, then revoked and expired ones with Delete (D-111) — and "Create key". Explains what keys are for, that
  * access follows the owners' sharing settings on every request, and links to the API reference.
  * Without keys: an empty state with the same call to action.
  */
@@ -22,6 +22,9 @@ import {
   CreateApiKeyDialog,
   type PickableAccount,
 } from '@/components/api-keys/create-api-key-dialog';
+import { DeleteApiKeyButton } from '@/components/api-keys/delete-api-key-button';
+import { EditApiKeyDialog } from '@/components/api-keys/edit-api-key-dialog';
+import { RevokeApiKeyButton } from '@/components/api-keys/revoke-api-key-button';
 import { PageHeader } from '@/components/shell/page-header';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -102,6 +105,7 @@ export default async function ApiKeysPage() {
             title={ACTIVE_KEYS_TITLE}
             count={`${active.length} of ${MAX_ACTIVE_KEYS}`}
             keys={active}
+            accounts={accounts}
             now={now}
             timezone={timezone}
             empty="No active keys. Create one to give an app access."
@@ -116,6 +120,7 @@ export default async function ApiKeysPage() {
               title="Revoked and expired keys"
               count={String(inactive.length)}
               keys={inactive}
+              accounts={accounts}
               now={now}
               timezone={timezone}
             />
@@ -137,6 +142,7 @@ function KeySection({
   title,
   count,
   keys,
+  accounts,
   now,
   timezone,
   empty,
@@ -145,6 +151,8 @@ function KeySection({
   title: string;
   count: string;
   keys: ApiKeyInfo[];
+  /** What an edited key's account list may name. */
+  accounts: PickableAccount[];
   now: string;
   timezone: string;
   empty?: string;
@@ -163,7 +171,18 @@ function KeySection({
         <ul className="flex flex-col gap-4">
           {keys.map((key) => (
             <li key={key.id}>
-              <ApiKeyCard apiKey={key} now={now} timezone={timezone} />
+              <ApiKeyCard
+                apiKey={key}
+                now={now}
+                timezone={timezone}
+                actions={
+                  <>
+                    <EditApiKeyDialog apiKey={key} accounts={accounts} nameMax={API_KEY_NAME_MAX} />
+                    <RevokeApiKeyButton keyId={key.id} name={key.name} />
+                  </>
+                }
+                inactiveActions={<DeleteApiKeyButton keyId={key.id} name={key.name} />}
+              />
             </li>
           ))}
         </ul>

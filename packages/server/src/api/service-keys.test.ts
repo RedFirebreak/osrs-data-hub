@@ -32,13 +32,23 @@ import {
   locationPointLimit,
 } from './history';
 import { authenticateApiKey, type ApiPrincipal } from './key-auth';
-import { ApiKeyError, MAX_ACTIVE_KEYS, createApiKey, listApiKeys, revokeApiKey } from './keys';
+import {
+  ApiKeyError,
+  MAX_ACTIVE_KEYS,
+  createApiKey,
+  deleteApiKey,
+  listApiKeys,
+  revokeApiKey,
+  updateApiKey,
+} from './keys';
 import { MAX_KEY_RATE_LIMIT, SERVICE_KEY_RATE_LIMIT } from './limits';
 import { apiMe } from './me';
 import {
   createServiceKey,
+  deleteServiceKey,
   listServiceKeys,
   revokeServiceKey,
+  updateServiceKey,
   type ServiceKeyInfo,
 } from './service-keys';
 import { apiSnapshot } from './snapshot';
@@ -279,6 +289,111 @@ describe('listServiceKeys and revokeServiceKey', () => {
     ).rejects.toBeInstanceOf(AdminError);
     expect((await authenticateApiKey(t.db, `Bearer ${(await serviceKey()).key}`, NOW)).ok).toBe(
       true,
+    );
+  });
+});
+
+describe('updateServiceKey and deleteServiceKey (D-111)', () => {
+  it('adds a category to a live key: same key, the new category readable from the next request', async () => {
+    const { key, info, principal } = await serviceKey();
+    expect(principal.categories.has('hiscores')).toBe(false);
+    const updated = await updateServiceKey(t.db, {
+      actor: admin.viewer,
+      keyId: info.id,
+      input: { categories: [...info.categories, 'hiscores'], rateLimitPerMinute: 900 },
+      now: NOW,
+    });
+    expect(updated).toMatchObject({
+      id: info.id,
+      prefix: info.prefix,
+      name: 'Guild live map',
+      categories: ['activity', 'location_live', 'hiscores'],
+      rateLimitPerMinute: 900,
+      status: 'active',
+      createdBy: { id: admin.id, name: 'Ada Admin' },
+    });
+    const auth = await authenticateApiKey(t.db, `Bearer ${key}`, NOW);
+    expect(auth.ok && auth.principal.categories.has('hiscores')).toBe(true);
+    expect(auth.ok && auth.principal.rateLimitPerMinute).toBe(900);
+    expect(await lastAudit('service_key.updated')).toMatchObject({
+      actorUserId: admin.id,
+      targetId: info.id,
+      meta: {
+        prefix: info.prefix,
+        changes: {
+          categories: {
+            from: ['activity', 'location_live'],
+            to: ['activity', 'location_live', 'hiscores'],
+          },
+          rateLimitPerMinute: { from: null, to: 900 },
+        },
+      },
+    });
+    // null puts the rate limit back to the service default.
+    const reset = await updateServiceKey(t.db, {
+      actor: admin.viewer,
+      keyId: info.id,
+      input: { rateLimitPerMinute: null },
+      now: NOW,
+    });
+    expect(reset?.rateLimitPerMinute).toBe(SERVICE_KEY_RATE_LIMIT);
+  });
+
+  it('refuses non-admins, user keys, revoked keys and an account scope', async () => {
+    const { info } = await serviceKey();
+    await expect(
+      updateServiceKey(t.db, { actor: member.viewer, keyId: info.id, input: { name: 'x' } }),
+    ).rejects.toBeInstanceOf(AdminError);
+    const bad = await updateServiceKey(t.db, {
+      actor: admin.viewer,
+      keyId: info.id,
+      input: { accountScope: 'list' },
+    }).catch((e: unknown) => e);
+    expect((bad as ApiKeyError).code).toBe('invalid');
+    const userKey = await makeKey(t.db, member.id, {}, NOW);
+    expect(
+      await updateServiceKey(t.db, {
+        actor: admin.viewer,
+        keyId: userKey.info.id,
+        input: { name: 'x' },
+      }),
+    ).toBeNull();
+    // And the user-key path never edits a service key, not even its creator's.
+    expect(
+      await updateApiKey(t.db, { userId: admin.id, keyId: info.id, input: { name: 'x' } }),
+    ).toBeNull();
+    await revokeServiceKey(t.db, { actor: admin.viewer, keyId: info.id, now: NOW });
+    const revoked = await updateServiceKey(t.db, {
+      actor: admin.viewer,
+      keyId: info.id,
+      input: { name: 'x' },
+    }).catch((e: unknown) => e);
+    expect((revoked as ApiKeyError).code).toBe('conflict');
+  });
+
+  it('deletes a revoked key only, audited; never a user key or an active one', async () => {
+    const { info } = await serviceKey();
+    const active = await deleteServiceKey(t.db, { actor: admin.viewer, keyId: info.id }).catch(
+      (e: unknown) => e,
+    );
+    expect((active as ApiKeyError).code).toBe('conflict');
+    await revokeServiceKey(t.db, { actor: admin.viewer, keyId: info.id, now: NOW });
+    await expect(
+      deleteServiceKey(t.db, { actor: member.viewer, keyId: info.id }),
+    ).rejects.toBeInstanceOf(AdminError);
+    expect(await deleteApiKey(t.db, { userId: admin.id, keyId: info.id })).toBe(false);
+    expect(await deleteServiceKey(t.db, { actor: admin.viewer, keyId: info.id })).toBe(true);
+    expect(await deleteServiceKey(t.db, { actor: admin.viewer, keyId: info.id })).toBe(false);
+    expect((await listServiceKeys(t.db, NOW)).some((k) => k.id === info.id)).toBe(false);
+    expect(await lastAudit('service_key.deleted')).toMatchObject({
+      actorUserId: admin.id,
+      targetId: info.id,
+      meta: { prefix: info.prefix, name: 'Guild live map', status: 'revoked' },
+    });
+    const userKey = await makeKey(t.db, member.id, {}, NOW);
+    await revokeApiKey(t.db, { userId: member.id, keyId: userKey.info.id, now: NOW });
+    expect(await deleteServiceKey(t.db, { actor: admin.viewer, keyId: userKey.info.id })).toBe(
+      false,
     );
   });
 });

@@ -27,8 +27,12 @@ const AUDIT_ACTION_LABELS: Readonly<Record<AuditAction, string>> = {
   'hub.guild_feed_changed': 'Guild feed settings changed',
   'api_key.created': 'API key created',
   'api_key.revoked': 'API key revoked',
+  'api_key.updated': 'API key edited',
+  'api_key.deleted': 'API key deleted',
   'service_key.created': 'Service key created',
   'service_key.revoked': 'Service key revoked',
+  'service_key.updated': 'Service key edited',
+  'service_key.deleted': 'Service key deleted',
 };
 
 /** Actions no code writes any more; rows from before may still hold them. */

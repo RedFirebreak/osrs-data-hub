@@ -210,8 +210,8 @@ const TYPED_ERROR_STATUS = { not_found: 404, forbidden: 403, invalid: 400 } as c
  * - the public API's errors from @hub/server (imported as ServerApiError, its name clashes with ours):
  *   `invalid` → 400 `invalid_request`, `not_found` → 404 `not_found` (an account named in a list
  *   parameter that the key can't read, answered like an unknown one, D-70); ApiKeyError `invalid` →
- *   400 `invalid_request` with its field `issues` as `details`, `limit` → 409 `limit`, `not_found` →
- *   404 (their messages only repeat the request, so they are safe to show); GoalError (D-109) →
+ *   400 `invalid_request` with its field `issues` as `details`, `limit` → 409 `limit`, `conflict` →
+ *   409 `conflict` (the key's status doesn't allow it, D-111), `not_found` → 404 (their messages only repeat the request, so they are safe to show); GoalError (D-109) →
  *   404/403/400 by code and `limit` → 409;
  * - ZodError → 400 `invalid_request` with `details: [{ path, message }]` (field errors);
  * - a transient database error (lock timeout 55P03, connection loss, …) → 503 + Retry-After, and so
@@ -263,6 +263,8 @@ function errorResponse(err: unknown): Response {
         );
       case 'limit':
         return errorJson(409, 'limit', err.message);
+      case 'conflict':
+        return errorJson(409, 'conflict', err.message);
       case 'not_found':
         return errorJson(404, 'not_found', err.message);
     }
