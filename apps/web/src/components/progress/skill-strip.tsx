@@ -22,7 +22,8 @@ export interface SkillStripProps {
 export function SkillStrip({ publicId, skills, current, search }: SkillStripProps) {
   return (
     <nav aria-label="Skills" className="-mx-1 overflow-x-auto [scrollbar-width:thin]">
-      <ul className="flex w-max gap-1 p-1">
+      {/* Centred while it fits; on a phone it is wider than the page and scrolls from its start. */}
+      <ul className="mx-auto flex w-max gap-1 p-1">
         {skills.map((skill) => {
           const on = skill === current;
           return (
