@@ -15,6 +15,9 @@ import { sessionEndLabel } from './items';
 /** Sessions listed under the chart. */
 export const RECENT_SESSIONS = 8;
 
+/** Worlds of one session listed before "and N more" (a world hopper can visit a hundred). */
+export const WORLDS_SHOWN = 3;
+
 export interface ActivityContentProps {
   /** Sessions of the last 30 days, newest first (getSessions). */
   sessions: readonly PlaySession[];
@@ -51,11 +54,7 @@ export function ActivityContent({ sessions, playtime, timezone }: ActivityConten
                 {formatInZone(s.startedAt, timezone, DATE_TIME_OPTIONS)}
               </time>
               <span className="tabular-nums">{formatDuration(s.durationMs / 1000)}</span>
-              {s.worlds.length > 0 && (
-                <span className="text-muted-foreground">
-                  {s.worlds.length === 1 ? 'World' : 'Worlds'} {s.worlds.join(', ')}
-                </span>
-              )}
+              {s.worlds.length > 0 && <SessionWorlds worlds={s.worlds} />}
               <Badge
                 variant={s.endReason === null ? 'secondary' : 'outline'}
                 className="ml-auto text-muted-foreground"
@@ -67,5 +66,23 @@ export function ActivityContent({ sessions, playtime, timezone }: ActivityConten
         </ul>
       </div>
     </div>
+  );
+}
+
+/** "Worlds 395, 394, 390 and 41 more", the rest behind the "more" (as previous names in the header). */
+function SessionWorlds({ worlds }: { worlds: readonly number[] }) {
+  return (
+    <span className="text-muted-foreground">
+      {worlds.length === 1 ? 'World' : 'Worlds'} {worlds.slice(0, WORLDS_SHOWN).join(', ')}
+      {worlds.length > WORLDS_SHOWN && (
+        <details className="inline [&[open]>summary]:hidden">
+          <summary className="inline cursor-pointer underline-offset-4 hover:underline">
+            {' '}
+            and {worlds.length - WORLDS_SHOWN} more
+          </summary>
+          , {worlds.slice(WORLDS_SHOWN).join(', ')}
+        </details>
+      )}
+    </span>
   );
 }
