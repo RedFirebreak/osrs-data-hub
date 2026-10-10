@@ -9,7 +9,7 @@
  * Never import this module from a server component: load it through charts/lazy-echart.tsx
  * (next/dynamic with ssr: false), so server rendering never imports echarts.
  *
- *   <EChart option={(theme) => xpChartOption(input, theme)} label="Attack XP over 30 days" />
+ *   <EChart option={(theme) => wealthOption(days, theme)} label="Carried wealth per day" />
  *
  * `option` is a function of the resolved theme; pass a memoized one (useCallback/useMemo) so the
  * chart is only re-set when its data or the theme changes.

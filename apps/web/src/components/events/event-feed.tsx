@@ -11,7 +11,7 @@
  *
  *   <EventFeed events={card.recentEvents} now={now} compact linkAccounts={false} />
  */
-import { formatGp, isLootEvent } from '@hub/core';
+import { KNOWN_SKILLS, formatGp, isLootEvent } from '@hub/core';
 import type { FeedEvent } from '@hub/server';
 import Link from 'next/link';
 import { stackTone } from '@/components/account-page/items';
@@ -19,6 +19,7 @@ import { accountHref } from '@/components/accounts/account-link';
 import { SpecialWorldBadge } from '@/components/accounts/special-world-badge';
 import { RelativeTime } from '@/components/time/relative-time';
 import { Badge } from '@/components/ui/badge';
+import { skillHref } from '@/lib/routes';
 import { cn } from '@/lib/utils';
 import { EventIconBadge } from './event-icon';
 
@@ -82,6 +83,12 @@ export function EventFeed({
   );
 }
 
+/** The skill a level-up is of, when that skill has a progress page (Combat has none). */
+export function levelUpSkill(event: Pick<FeedEvent, 'type' | 'skill'>): string | null {
+  if (event.type !== 'level_up' || event.skill === null) return null;
+  return (KNOWN_SKILLS as readonly string[]).includes(event.skill) ? event.skill : null;
+}
+
 export interface EventFeedItemProps {
   event: FeedEvent;
   now?: string;
@@ -90,7 +97,10 @@ export interface EventFeedItemProps {
   className?: string;
 }
 
-/** One event row (also usable on its own, e.g. for a "latest event" highlight). */
+/**
+ * One event row (also usable on its own, e.g. for a "latest event" highlight). The line links to
+ * the account, or, where the account is the page (`linkAccount` off), a level-up to its skill.
+ */
 export function EventFeedItem({
   event,
   now,
@@ -112,6 +122,13 @@ export function EventFeedItem({
           {linkAccount ? (
             <Link
               href={accountHref(event.account.publicId)}
+              className="underline-offset-4 hover:underline focus-visible:underline"
+            >
+              {event.line}
+            </Link>
+          ) : levelUpSkill(event) ? (
+            <Link
+              href={skillHref(event.account.publicId, levelUpSkill(event)!)}
               className="underline-offset-4 hover:underline focus-visible:underline"
             >
               {event.line}

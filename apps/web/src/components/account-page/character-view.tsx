@@ -3,8 +3,8 @@
  * is the viewer's own most recently played character. Header (name, type, live presence, owner,
  * previous names, and a picker when the viewer has more characters), then the skills panel, the
  * week in one glance, the latest events, where the character is and how it stands, what it wears
- * and carries, and the hiscores. What changed over time (sessions, playtime, wealth, every chart
- * but one skill's XP) lives on the progress pages, which the skills and the week link to.
+ * and carries, and the hiscores. What changed over time (XP, sessions, playtime, wealth) lives on
+ * the progress pages, which the skills and the week link to.
  *
  * Each section follows the read model's three states (handoff §10, D-4): hidden when the viewer may
  * not see its category, a "Not shared" card when the plugin never sent it, or the data (`dataSection`
@@ -37,7 +37,6 @@ import { LocationContent } from '@/components/account-page/location-content';
 import { SkillsPanel } from '@/components/account-page/skills-panel';
 import { VitalsContent } from '@/components/account-page/vitals-content';
 import { WeekSummary } from '@/components/account-page/week-summary';
-import { XpChartPanel } from '@/components/account-page/xp-chart-panel';
 import { accountHref } from '@/components/accounts/account-link';
 import { CharacterPicker } from '@/components/accounts/character-picker';
 import { NotSharedBadge } from '@/components/accounts/not-shared-badge';
@@ -83,12 +82,7 @@ export async function CharacterView({ publicId, home = false }: CharacterViewPro
   const own = await loadOwnAccounts();
   const isOwn = own.some((account) => account.publicId === publicId);
 
-  const main = [
-    skillsSection(ctx),
-    eventsSection(ctx),
-    xpSection(ctx),
-    hiscoresSection(ctx),
-  ].filter(Boolean);
+  const main = [skillsSection(ctx), eventsSection(ctx), hiscoresSection(ctx)].filter(Boolean);
   const aside = [
     weekSection(ctx),
     rightNowSection(ctx),
@@ -225,26 +219,6 @@ function eventsSection({ page, publicId, now }: SectionContext) {
             New events appear here as they happen.
           </p>
         }
-      />
-    </SectionCard>
-  );
-}
-
-function xpSection({ page, publicId, timezone }: SectionContext) {
-  const skills = page.skills;
-  if (!skills.visible || !skills.shared) return null;
-  return (
-    <SectionCard
-      key="xp"
-      id="xp"
-      title="XP history"
-      description="XP of one skill over time; it only ever goes up."
-    >
-      <XpChartPanel
-        publicId={publicId}
-        skills={skills.data.rows.map((r) => r.skill)}
-        firstSeen={page.account.firstSeen}
-        timezone={timezone}
       />
     </SectionCard>
   );

@@ -1,9 +1,10 @@
 /**
- * Progress, Deep dive and the boss page as a Server Component render sees them (D-106, D-108,
+ * Progress, a skill's page, Deep dive and the boss page as a Server Component render sees them (D-106, D-108,
  * D-112): who gets through, notFound() before anything streams (NEXT-14), what the owner sees, and
  * what a guild member kept out of `activity` and `hiscores` sees instead.
  */
-import { activityScores, accountHiscores } from '@hub/db';
+import { activityScores, accountHiscores, osrsAccounts } from '@hub/db';
+import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderToReadableStream } from 'react-dom/server';
 import {
@@ -17,6 +18,7 @@ import { withTestDb, type WebTestContext } from '@/lib/test-utils';
 import BossPage from './bosses/[activity]/page';
 import DeepDivePage from './deep-dive/page';
 import ProgressPage from './page';
+import SkillPage from './skills/[skill]/page';
 
 const page = vi.hoisted(() => ({ headers: new Headers() }));
 
@@ -90,6 +92,13 @@ const metrics = (publicId: string, search: Record<string, string> = {}) =>
   render(
     DeepDivePage({ params: Promise.resolve({ publicId }), searchParams: Promise.resolve(search) }),
   );
+const skill = (publicId: string, name: string, search: Record<string, string> = {}) =>
+  render(
+    SkillPage({
+      params: Promise.resolve({ publicId, skill: name }),
+      searchParams: Promise.resolve(search),
+    }),
+  );
 const boss = (publicId: string, activity: string) =>
   render(
     BossPage({
@@ -121,6 +130,11 @@ describe('Progress pages', () => {
     const now = Date.now();
     const at = (hoursAgo: number) =>
       new Date(Math.floor((now - hoursAgo * 3_600_000) / 300_000) * 300_000);
+    // The hub saw the account before its first XP, as it does outside a test.
+    await ctx.t.db
+      .update(osrsAccounts)
+      .set({ firstSeen: at(40) })
+      .where(eq(osrsAccounts.id, account.id));
     await seed.latestState(account.id, {
       lastSeen: at(20),
       skills: skillMap({ Ranged: [1_030_000, 73] }),
@@ -133,6 +147,13 @@ describe('Progress pages', () => {
       ['Ranged', at(23.9), 1_030_000],
       ['Overall', at(23.9), 1_030_000],
     ]);
+    await seed.event(account.id, {
+      type: 'level_up',
+      occurredAt: at(23.9),
+      skill: 'Ranged',
+      level: 73,
+      data: { type: 'level_up', data: {}, eventId: 'l', timestamp: 0 },
+    });
     await seed.event(account.id, {
       type: 'loot',
       occurredAt: at(23.5),
@@ -282,6 +303,58 @@ describe('Progress pages', () => {
     expect(html).not.toContain('Mostly Zulrah');
   });
 
+  it("shows a skill where it stands and how it grew, in the skill's name", async () => {
+    await useUser(ownerId);
+    const html = await skill(account.publicId, 'ranged');
+    expect(html).toContain('>Ranged</h1>');
+    expect(html).toContain('1,030,000 XP');
+    // Level 73 starts at 992,895 XP and 74 at 1,096,278.
+    expect(html).toMatch(/\d+% of the way to 74/);
+    expect(html).toContain('66,278 XP to go');
+    expect(html).toContain('<span class="sr-only">+30,000 XP</span>');
+    expect(html).toContain('in the last 7 days');
+    // Every range, and all of the history; no measure to pick.
+    for (const range of ['1D', '7D', '30D', '90D', '1Y', 'All']) {
+      expect(html).toContain(`>${range}</button>`);
+    }
+    expect(pressed(html)).toEqual(['7D']);
+    // The pace, the level-up of the range, the way to set a goal, and the way back.
+    expect(html).toContain('XP an hour while training');
+    expect(html).toContain('Reached level');
+    expect(headings(html)).toEqual(expect.arrayContaining(['Milestones', 'Goal']));
+    expect(html).toContain('Set goal');
+    expect(html).toContain(`href="/progress/${account.publicId}"`);
+    // The strip marks this skill among the character's skills.
+    expect(html).toMatch(/aria-current="page"[^>]*aria-label="Ranged"/);
+  });
+
+  it('draws all of a skill from the first XP the hub saw', async () => {
+    await useUser(ownerId);
+    const html = await skill(account.publicId, 'ranged', { range: 'all' });
+    expect(pressed(html)).toEqual(['All']);
+    expect(html).toContain('<span class="sr-only">+30,000 XP</span>');
+    expect(html).toContain('since the hub first saw this character');
+    // Going back up, the summary gets its longest range.
+    expect(html).toContain(`href="/progress/${account.publicId}?range=1y"`);
+  });
+
+  it('answers not found for what is not a skill, and for stats that are not shared', async () => {
+    await useUser(ownerId);
+    for (const name of ['overall', 'combat', 'dungeoneering', '%E0%A4%A']) {
+      expect(await skill(account.publicId, name)).toBe('not-found');
+    }
+    // A skill the character never trained has no page either (inside the page: its skills are
+    // only known once they are read).
+    expect(await skill(account.publicId, 'magic')).toBe('not-found');
+    expect(await skill('nope', 'ranged')).toBe('not-found');
+    // The member reads stats, so the page opens, without what needs activity or events.
+    await useUser(memberId);
+    const html = await skill(account.publicId, 'Ranged');
+    expect(html).toContain('>Ranged</h1>');
+    expect(html).not.toContain('XP an hour while training');
+    expect(html).not.toContain('Set goal');
+  });
+
   it('shows a boss page to the owner and answers not found for others and non-bosses', async () => {
     await useUser(ownerId);
     const html = await boss(account.publicId, 'Zulrah');
@@ -293,5 +366,14 @@ describe('Progress pages', () => {
     expect(await boss(account.publicId, '%E0%A4%A')).toBe('not-found');
     await useUser(memberId);
     expect(await boss(account.publicId, 'Zulrah')).toBe('not-found');
+  });
+
+  // Last: it makes the account's stats private for the member.
+  it('answers not found for a skill whose stats are not shared', async () => {
+    await seed.sharing(account.id, 'stats', 'private');
+    await useUser(memberId);
+    expect(await skill(account.publicId, 'ranged')).toBe('not-found');
+    await useUser(ownerId);
+    expect(await skill(account.publicId, 'ranged')).toContain('>Ranged</h1>');
   });
 });

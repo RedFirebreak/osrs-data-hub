@@ -211,7 +211,6 @@ describe('account page', () => {
       'Skills',
       'This week',
       'Worn',
-      'XP history',
     ]);
     // Total level is the real one (D-44): 99 + 99 + 2; Strength's tile shows 99 and names its
     // virtual 105.
@@ -241,7 +240,6 @@ describe('account page', () => {
     expect(headings(html)).toEqual(
       expect.arrayContaining(['Skills', 'Right now', 'Worn', 'Inventory', 'Latest']),
     );
-    expect(headings(html)).not.toContain('XP history');
     expect(headings(html)).not.toContain('Wealth');
     expect((html.match(/>Not shared</g) ?? []).length).toBeGreaterThanOrEqual(5);
   });
@@ -258,7 +256,6 @@ describe('account page', () => {
       'Right now',
       'Skills',
       'This week',
-      'XP history',
     ]);
     // Live location stays shared with the guild (the default, D-96); the rest is private.
     expect(html).toContain('3222, 3218');
