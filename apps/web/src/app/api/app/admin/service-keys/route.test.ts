@@ -1,14 +1,16 @@
 /**
- * The admin service-key routes (D-88): who gets through (401 signed out, 403 non-admins, 403 for a
- * foreign Origin), creating a key (shown once, audited, no user), revoking, and that the key then
- * authenticates on /api/v1 as a service principal.
+ * The admin service-key routes (D-88, D-111): who gets through (401 signed out, 403 non-admins, 403
+ * for a foreign Origin), creating a key (shown once, audited, no user), editing it (the same key
+ * reads the new categories), revoking, deleting a revoked key, and that the key then authenticates
+ * on /api/v1 as a service principal.
  */
 import { apiKeys, auditLog } from '@hub/db';
 import { authenticateApiKey, listServiceKeys } from '@hub/server';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { withTestDb, type WebTestContext } from '@/lib/test-utils';
-import { DELETE as revoke } from './[id]/route';
+import { POST as remove } from './[id]/delete/route';
+import { PATCH as edit, DELETE as revoke } from './[id]/route';
 import { POST as create } from './route';
 
 let ctx: WebTestContext;
@@ -56,6 +58,31 @@ function revokeCall(id: string): Caller {
     revoke(
       ctx.request(`/api/app/admin/service-keys/${id}`, {
         method: 'DELETE',
+        cookie,
+        ...originOpts(opts.origin),
+      }),
+      { params: Promise.resolve({ id }) },
+    );
+}
+
+function editCall(id: string, body: unknown): Caller {
+  return (cookie, opts = {}) =>
+    edit(
+      ctx.request(`/api/app/admin/service-keys/${id}`, {
+        method: 'PATCH',
+        cookie,
+        json: body,
+        ...originOpts(opts.origin),
+      }),
+      { params: Promise.resolve({ id }) },
+    );
+}
+
+function removeCall(id: string): Caller {
+  return (cookie, opts = {}) =>
+    remove(
+      ctx.request(`/api/app/admin/service-keys/${id}/delete`, {
+        method: 'POST',
         cookie,
         ...originOpts(opts.origin),
       }),
@@ -160,5 +187,64 @@ describe('DELETE /api/app/admin/service-keys/[id]', () => {
     const created = (await (await createCall(valid)(adminCookie)).json()) as Created;
     await expectGuarded(revokeCall(created.info.id));
     expect((await authenticateApiKey(ctx.t.db, `Bearer ${created.key}`)).ok).toBe(true);
+  });
+});
+
+describe('PATCH /api/app/admin/service-keys/[id]', () => {
+  it('adds a category to the same key, audited; 409 once revoked', async () => {
+    const created = (await (await createCall(valid)(adminCookie)).json()) as Created;
+    const res = await editCall(created.info.id, {
+      categories: ['activity', 'location_live', 'hiscores'],
+    })(adminCookie);
+    expect(res.status).toBe(200);
+    const { info } = (await res.json()) as { info: Created['info'] & { categories: string[] } };
+    expect(info).toMatchObject({
+      id: created.info.id,
+      prefix: created.info.prefix,
+      categories: ['activity', 'location_live', 'hiscores'],
+      createdBy: { id: adminId, name: 'Admin' },
+    });
+    const auth = await authenticateApiKey(ctx.t.db, `Bearer ${created.key}`);
+    expect(auth.ok && auth.principal.categories.has('hiscores')).toBe(true);
+    const audits = await ctx.t.db
+      .select({ action: auditLog.action })
+      .from(auditLog)
+      .where(eq(auditLog.targetId, created.info.id));
+    expect(audits.map((a) => a.action)).toEqual(['service_key.created', 'service_key.updated']);
+
+    const bad = await editCall(created.info.id, { rateLimitPerMinute: 0 })(adminCookie);
+    expect(bad.status).toBe(400);
+    expect(((await bad.json()) as ErrorBody).error.details?.[0]?.path).toBe('rateLimitPerMinute');
+    await revokeCall(created.info.id)(adminCookie);
+    expect((await editCall(created.info.id, { name: 'x' })(adminCookie)).status).toBe(409);
+  });
+
+  it('404 for unknown ids; the route is guarded', async () => {
+    expect((await editCall('not-a-uuid', { name: 'x' })(adminCookie)).status).toBe(404);
+    const created = (await (await createCall(valid)(adminCookie)).json()) as Created;
+    await expectGuarded(editCall(created.info.id, { name: 'x' }));
+  });
+});
+
+describe('POST /api/app/admin/service-keys/[id]/delete', () => {
+  it('deletes a revoked key (audited), 409 while active, 404 after', async () => {
+    const created = (await (await createCall(valid)(adminCookie)).json()) as Created;
+    expect((await removeCall(created.info.id)(adminCookie)).status).toBe(409);
+    await revokeCall(created.info.id)(adminCookie);
+    await expectGuarded(removeCall(created.info.id));
+    const res = await removeCall(created.info.id)(adminCookie);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    expect((await removeCall(created.info.id)(adminCookie)).status).toBe(404);
+    expect((await listServiceKeys(ctx.t.db)).some((k) => k.id === created.info.id)).toBe(false);
+    const audits = await ctx.t.db
+      .select({ action: auditLog.action })
+      .from(auditLog)
+      .where(eq(auditLog.targetId, created.info.id));
+    expect(audits.map((a) => a.action)).toEqual([
+      'service_key.created',
+      'service_key.revoked',
+      'service_key.deleted',
+    ]);
   });
 });

@@ -1,6 +1,6 @@
 /**
- * Pure helpers for Admin → Integrations (service keys, D-88): the create form's state, validation
- * and request body, and the fields a failed create can name. No React, no browser APIs; unit-tested
+ * Pure helpers for Admin → Integrations (service keys, D-88, D-111): the create and edit forms' state,
+ * validation and request bodies, and the fields a failed create or edit can name. No React, no browser APIs; unit-tested
  * in service-key-model.test.ts. The server's limits (name length, the highest rate limit) reach the
  * client as props from the page. The name and expiry rules are the user keys' (api-key-model.ts).
  */
@@ -24,9 +24,9 @@ export function emptyServiceKeyForm(): ServiceKeyForm {
 export type ServiceKeyField = 'name' | 'categories' | 'rateLimitPerMinute' | 'expiresInDays';
 export type ServiceKeyErrors = Partial<Record<ServiceKeyField, string>>;
 
-/** Client-side checks before sending (the server checks everything again). */
+/** Client-side checks before sending (the server checks everything again); also the edit form's. */
 export function validateServiceKeyForm(
-  form: ServiceKeyForm,
+  form: Omit<ServiceKeyForm, 'expiry'>,
   limits: { nameMax: number; rateLimitMax: number },
 ): ServiceKeyErrors {
   const errors: ServiceKeyErrors = {};
@@ -67,4 +67,37 @@ export const SERVICE_KEY_FIELDS: readonly ServiceKeyField[] = [
   'categories',
   'rateLimitPerMinute',
   'expiresInDays',
+];
+
+/** The edit form (D-111): name, categories and rate limit; the expiry stays as it was created. */
+export type EditServiceKeyForm = Omit<ServiceKeyForm, 'expiry'>;
+
+/** The edit form of a service key as it is now; a rate limit at the default shows as blank. */
+export function editServiceFormOf(
+  info: { name: string; categories: readonly Category[]; rateLimitPerMinute: number },
+  rateLimitDefault: number,
+): EditServiceKeyForm {
+  return {
+    name: info.name,
+    categories: [...info.categories],
+    rateLimit: info.rateLimitPerMinute === rateLimitDefault ? '' : String(info.rateLimitPerMinute),
+  };
+}
+
+/** The PATCH /api/app/admin/service-keys/[id] body for a valid form (UpdateServiceKeySchema's input). */
+export function editServiceKeyBody(form: EditServiceKeyForm): Record<string, unknown> {
+  return {
+    name: form.name.trim(),
+    categories: CATEGORIES.filter((c) => form.categories.includes(c)),
+    rateLimitPerMinute: parseRateLimit(form.rateLimit) ?? null,
+  };
+}
+
+export type EditServiceKeyField = Exclude<ServiceKeyField, 'expiresInDays'>;
+
+/** The edit form's fields the server's 400 `details` can name. */
+export const EDIT_SERVICE_KEY_FIELDS: readonly EditServiceKeyField[] = [
+  'name',
+  'categories',
+  'rateLimitPerMinute',
 ];

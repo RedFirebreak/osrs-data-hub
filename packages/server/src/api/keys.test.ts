@@ -7,7 +7,15 @@ import { seedAccount, seedSharing, seedUser, type SeededUser } from '../accounts
 import { offboardUser, restoreUser } from '../offboarding/offboard';
 import { LAST_USED_RESOLUTION_MS, authenticateApiKey, type ApiAuthFailure } from './key-auth';
 import { API_KEY_PREFIX } from './key-format';
-import { MAX_ACTIVE_KEYS, ApiKeyError, createApiKey, listApiKeys, revokeApiKey } from './keys';
+import {
+  MAX_ACTIVE_KEYS,
+  ApiKeyError,
+  createApiKey,
+  deleteApiKey,
+  listApiKeys,
+  revokeApiKey,
+  updateApiKey,
+} from './keys';
 import { makeKey } from './test-support';
 
 let t: TestDatabase;
@@ -376,6 +384,196 @@ describe('revokeApiKey', () => {
     for (const keyId of ['00000000-0000-7000-8000-000000000000', 'nope', 'x\u0000']) {
       expect(await revokeApiKey(t.db, { userId: alice.id, keyId })).toBe(false);
     }
+  });
+});
+
+describe('updateApiKey', () => {
+  async function edited(userId: string, keyId: string, input: unknown, now = NOW) {
+    return updateApiKey(t.db, { userId, keyId, input, now });
+  }
+
+  async function editRefused(userId: string, keyId: string, input: unknown): Promise<ApiKeyError> {
+    const err = await edited(userId, keyId, input).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ApiKeyError);
+    return err as ApiKeyError;
+  }
+
+  it('changes what the key reads, keeps the key itself working, and audits what changed', async () => {
+    const user = await seedUser(t.db);
+    const { key, info } = await createApiKey(t.db, user.id, valid, NOW);
+    const before = await keyRow(info.id);
+    const later = new Date(NOW.getTime() + MIN);
+    const updated = await edited(
+      user.id,
+      info.id,
+      { name: '  Map  ', categories: ['hiscores', 'stats', 'hiscores'] },
+      later,
+    );
+    expect(updated).toMatchObject({
+      id: info.id,
+      prefix: info.prefix,
+      name: 'Map',
+      categories: ['stats', 'hiscores'],
+      status: 'active',
+      createdAt: info.createdAt,
+      expiresAt: info.expiresAt,
+    });
+    expect((await keyRow(info.id)).secretHash).toBe(before.secretHash);
+    const auth = await authenticateApiKey(t.db, `Bearer ${key}`, later);
+    expect(auth.ok && [...auth.principal.categories].sort()).toEqual(['hiscores', 'stats']);
+    const entries = await t.db
+      .select()
+      .from(auditLog)
+      .where(and(eq(auditLog.action, 'api_key.updated'), eq(auditLog.targetId, info.id)));
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      actorUserId: user.id,
+      meta: {
+        prefix: info.prefix,
+        name: 'Map',
+        changes: {
+          name: { from: 'Home Assistant', to: 'Map' },
+          categories: { from: ['stats'], to: ['stats', 'hiscores'] },
+        },
+      },
+    });
+  });
+
+  it('writes no audit entry when nothing changed', async () => {
+    const user = await seedUser(t.db);
+    const { info } = await createApiKey(t.db, user.id, valid, NOW);
+    const same = await edited(user.id, info.id, { name: 'Home Assistant', categories: ['stats'] });
+    expect(same).toMatchObject({ name: 'Home Assistant', categories: ['stats'] });
+    const entries = await t.db
+      .select()
+      .from(auditLog)
+      .where(and(eq(auditLog.action, 'api_key.updated'), eq(auditLog.targetId, info.id)));
+    expect(entries).toHaveLength(0);
+  });
+
+  it('switches the account scope, checking a new list as on creation', async () => {
+    const user = await seedUser(t.db);
+    const { info } = await createApiKey(t.db, user.id, valid, NOW);
+    const listed = await edited(user.id, info.id, {
+      accountScope: 'list',
+      accountPublicIds: [bobGuild.publicId],
+    });
+    expect(listed?.accountScope).toBe('list');
+    expect(listed?.accounts).toEqual([
+      { publicId: bobGuild.publicId, name: 'Bob Guild', visible: true },
+    ]);
+    expect((await keyRow(info.id)).accountIds).toEqual([bobGuild.id]);
+    const err = await editRefused(user.id, info.id, {
+      accountScope: 'list',
+      accountPublicIds: [bobPrivate.publicId],
+    });
+    expect(err.code).toBe('invalid');
+    expect((await keyRow(info.id)).accountIds).toEqual([bobGuild.id]);
+    const all = await edited(user.id, info.id, { accountScope: 'all_visible' });
+    expect(all).toMatchObject({ accountScope: 'all_visible', accounts: null });
+    expect((await keyRow(info.id)).accountIds).toBeNull();
+  });
+
+  it('refuses bodies that change nothing, are not strict, or break the scope rules', async () => {
+    const user = await seedUser(t.db);
+    const { info } = await createApiKey(t.db, user.id, valid, NOW);
+    for (const input of [
+      {},
+      { categories: [] },
+      { categories: ['nope'] },
+      { name: ' ' },
+      { expiresInDays: 30 },
+      { accountScope: 'list' },
+      { accountPublicIds: [bobGuild.publicId] },
+      { accountScope: 'all_visible', accountPublicIds: [bobGuild.publicId] },
+      null,
+    ]) {
+      expect((await editRefused(user.id, info.id, input)).code).toBe('invalid');
+    }
+  });
+
+  it('refuses a revoked or expired key with conflict', async () => {
+    const user = await seedUser(t.db);
+    const { info: revoked } = await createApiKey(t.db, user.id, valid, NOW);
+    await revokeApiKey(t.db, { userId: user.id, keyId: revoked.id, now: NOW });
+    expect((await editRefused(user.id, revoked.id, { categories: ['stats', 'events'] })).code).toBe(
+      'conflict',
+    );
+    const { info: expiring } = await createApiKey(
+      t.db,
+      user.id,
+      { ...valid, expiresInDays: 1 },
+      NOW,
+    );
+    const err = await edited(
+      user.id,
+      expiring.id,
+      { name: 'x' },
+      new Date(NOW.getTime() + 2 * DAY),
+    ).catch((e: unknown) => e);
+    expect((err as ApiKeyError).code).toBe('conflict');
+    expect((await keyRow(revoked.id)).categories).toEqual(['stats']);
+  });
+
+  it('answers null for someone else’s key, unknown ids and ids that are not uuids', async () => {
+    const owner = await seedUser(t.db);
+    const other = await seedUser(t.db);
+    const { info } = await createApiKey(t.db, owner.id, valid, NOW);
+    expect(await edited(other.id, info.id, { name: 'Mine now' })).toBeNull();
+    expect((await keyRow(info.id)).name).toBe('Home Assistant');
+    for (const keyId of ['00000000-0000-7000-8000-000000000000', 'nope']) {
+      expect(await edited(owner.id, keyId, { name: 'x' })).toBeNull();
+    }
+  });
+});
+
+describe('deleteApiKey', () => {
+  it('deletes a revoked or expired key, once, with an audit entry', async () => {
+    const user = await seedUser(t.db);
+    const { info: revoked } = await createApiKey(t.db, user.id, valid, NOW);
+    await revokeApiKey(t.db, { userId: user.id, keyId: revoked.id, now: NOW });
+    const { info: expired } = await createApiKey(
+      t.db,
+      user.id,
+      { ...valid, expiresInDays: 1 },
+      NOW,
+    );
+    const later = new Date(NOW.getTime() + 2 * DAY);
+    for (const key of [revoked, expired]) {
+      expect(await deleteApiKey(t.db, { userId: user.id, keyId: key.id, now: later })).toBe(true);
+      expect(await deleteApiKey(t.db, { userId: user.id, keyId: key.id, now: later })).toBe(false);
+    }
+    expect(await listApiKeys(t.db, user.id, later)).toEqual([]);
+    const entries = await t.db
+      .select()
+      .from(auditLog)
+      .where(and(eq(auditLog.action, 'api_key.deleted'), eq(auditLog.actorUserId, user.id)));
+    expect(entries.map((e) => e.meta)).toEqual(
+      expect.arrayContaining([
+        { prefix: revoked.prefix, name: 'Home Assistant', status: 'revoked' },
+        { prefix: expired.prefix, name: 'Home Assistant', status: 'expired' },
+      ]),
+    );
+  });
+
+  it('refuses an active key with conflict and leaves it working', async () => {
+    const user = await seedUser(t.db);
+    const { key, info } = await createApiKey(t.db, user.id, valid, NOW);
+    const err = await deleteApiKey(t.db, { userId: user.id, keyId: info.id, now: NOW }).catch(
+      (e: unknown) => e,
+    );
+    expect((err as ApiKeyError).code).toBe('conflict');
+    expect((await authenticateApiKey(t.db, `Bearer ${key}`, NOW)).ok).toBe(true);
+  });
+
+  it('answers false for someone else’s key and leaves it', async () => {
+    const owner = await seedUser(t.db);
+    const other = await seedUser(t.db);
+    const { info } = await createApiKey(t.db, owner.id, valid, NOW);
+    await revokeApiKey(t.db, { userId: owner.id, keyId: info.id, now: NOW });
+    expect(await deleteApiKey(t.db, { userId: other.id, keyId: info.id, now: NOW })).toBe(false);
+    expect(await deleteApiKey(t.db, { userId: other.id, keyId: 'nope', now: NOW })).toBe(false);
+    expect((await keyRow(info.id)).id).toBe(info.id);
   });
 });
 

@@ -3,11 +3,16 @@ import {
   API_KEY_MAX_EXPIRY_DAYS,
   API_KEY_NAME_MAX,
   CreateApiKeySchema,
+  UpdateApiKeySchema,
   type ApiKeyInfo,
 } from '@hub/server';
 import { describe, expect, it } from 'vitest';
 import { failureMessage, fieldErrorsFrom, refreshesPage } from '@/lib/api-client';
 import {
+  DELETE_KEY_FAILURE,
+  EDIT_KEY_FAILURE,
+  editFormOf,
+  editKeyBody,
   EXPIRY_OPTIONS,
   apiKeyPath,
   CREATE_KEY_FAILURE,
@@ -157,5 +162,62 @@ describe('responses', () => {
   it('refreshes the page when the key to revoke is already gone', () => {
     expect(refreshesPage(404, REVOKE_KEY_FAILURE)).toBe(true);
     expect(refreshesPage(404, CREATE_KEY_FAILURE)).toBe(false);
+  });
+});
+
+describe('the edit form (D-111)', () => {
+  const listed = {
+    name: 'Map',
+    categories: ['stats', 'hiscores'] as ApiKeyInfo['categories'],
+    accountScope: 'list' as const,
+    accounts: [
+      { publicId: 'accVisible', name: 'Zezima', visible: true },
+      { publicId: 'accHidden', name: null, visible: false },
+    ],
+  };
+
+  it('starts from the key as it is, without the accounts the user no longer sees', () => {
+    expect(editFormOf(listed)).toEqual({
+      name: 'Map',
+      categories: ['stats', 'hiscores'],
+      scope: 'list',
+      accountPublicIds: ['accVisible'],
+      hiddenAccounts: 1,
+    });
+    expect(editFormOf({ ...listed, accountScope: 'all_visible', accounts: null })).toMatchObject({
+      scope: 'all_visible',
+      accountPublicIds: [],
+      hiddenAccounts: 0,
+    });
+  });
+
+  it('sends a body the server accepts, the account list only with a list scope', () => {
+    const { hiddenAccounts: _, ...form } = editFormOf(listed);
+    const body = editKeyBody({ ...form, name: '  Map  ' });
+    expect(body).toEqual({
+      name: 'Map',
+      categories: ['stats', 'hiscores'],
+      accountScope: 'list',
+      accountPublicIds: ['accVisible'],
+    });
+    expect(UpdateApiKeySchema.safeParse(body).success).toBe(true);
+    const all = editKeyBody({ ...form, scope: 'all_visible' });
+    expect(all).not.toHaveProperty('accountPublicIds');
+    expect(UpdateApiKeySchema.safeParse(all).success).toBe(true);
+  });
+
+  it('tells a 409 with the hub’s message and refreshes on a 404', () => {
+    const body = {
+      error: {
+        code: 'conflict',
+        message: 'This key is revoked. Only an active key can be changed.',
+      },
+    };
+    expect(failureMessage(409, body, EDIT_KEY_FAILURE)).toBe(body.error.message);
+    expect(failureMessage(409, null, DELETE_KEY_FAILURE)).toBe(
+      'Revoke the key before deleting it.',
+    );
+    expect(refreshesPage(404, EDIT_KEY_FAILURE)).toBe(true);
+    expect(refreshesPage(404, DELETE_KEY_FAILURE)).toBe(true);
   });
 });

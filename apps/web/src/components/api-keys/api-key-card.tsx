@@ -3,8 +3,9 @@
  * status, the key as `ohub_<prefix>_…` (the secret is never shown again after creation), the
  * categories it reads, its account scope (listed accounts the owner can no longer see are named "An
  * account you can no longer see"; a service key reads the guild audience), its rate limit, who
- * created it (service keys), when it was created and last used, when it expires, and Revoke for an
- * active key (`actions` replaces the user's Revoke button on the admin page).
+ * created it (service keys), when it was created and last used, when it expires, and the page's
+ * actions: Edit and Revoke for an active key (`actions`), Delete for a revoked or expired one
+ * (`inactiveActions`, D-111).
  *
  * A server component; Revoke and the relative times are client components. `now` is the page's render
  * time, so relative times hydrate without a mismatch; `timezone` is the viewer's (Settings).
@@ -24,7 +25,6 @@ import {
   maskedKey,
   scopeText,
 } from './api-key-model';
-import { RevokeApiKeyButton } from './revoke-api-key-button';
 
 const DATE_OPTIONS: Intl.DateTimeFormatOptions = {
   day: 'numeric',
@@ -70,11 +70,13 @@ export interface ApiKeyCardProps {
   now: string;
   /** The viewer's time zone for absolute dates. */
   timezone: string;
-  /** The footer's action for an active key; default: the user's own Revoke button. */
-  actions?: React.ReactNode;
+  /** The footer's actions for an active key (Edit, Revoke). */
+  actions: React.ReactNode;
+  /** The footer's action for a revoked or expired key (Delete), after what happened to it. */
+  inactiveActions?: React.ReactNode;
 }
 
-export function ApiKeyCard({ apiKey, now, timezone, actions }: ApiKeyCardProps) {
+export function ApiKeyCard({ apiKey, now, timezone, actions, inactiveActions }: ApiKeyCardProps) {
   const active = apiKey.status === 'active';
   const expiresOn = apiKey.expiresAt
     ? formatInZone(apiKey.expiresAt, timezone, DATE_OPTIONS)
@@ -157,15 +159,20 @@ export function ApiKeyCard({ apiKey, now, timezone, actions }: ApiKeyCardProps) 
       </CardContent>
       <CardFooter className="flex flex-wrap items-center justify-end gap-2">
         {active ? (
-          (actions ?? <RevokeApiKeyButton keyId={apiKey.id} name={apiKey.name} />)
-        ) : apiKey.status === 'revoked' && apiKey.revokedAt ? (
-          <p className="mr-auto text-sm text-muted-foreground">
-            Revoked <RelativeTime date={apiKey.revokedAt} now={now} />. Apps using it get 401.
-          </p>
+          actions
         ) : (
-          <p className="mr-auto text-sm text-muted-foreground">
-            Expired{expiresOn ? ` on ${expiresOn}` : ''}. Apps using it get 401.
-          </p>
+          <>
+            {apiKey.status === 'revoked' && apiKey.revokedAt ? (
+              <p className="mr-auto text-sm text-muted-foreground">
+                Revoked <RelativeTime date={apiKey.revokedAt} now={now} />. Apps using it get 401.
+              </p>
+            ) : (
+              <p className="mr-auto text-sm text-muted-foreground">
+                Expired{expiresOn ? ` on ${expiresOn}` : ''}. Apps using it get 401.
+              </p>
+            )}
+            {inactiveActions}
+          </>
         )}
       </CardFooter>
     </Card>

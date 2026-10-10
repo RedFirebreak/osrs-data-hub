@@ -46,9 +46,12 @@ export {
   ApiKeyError,
   CreateApiKeySchema,
   MAX_ACTIVE_KEYS,
+  UpdateApiKeySchema,
   createApiKey,
+  deleteApiKey,
   listApiKeys,
   revokeApiKey,
+  updateApiKey,
   type ApiKeyInfo,
   type ApiKeyStatus,
 } from './keys';
@@ -83,8 +86,10 @@ export { apiMember, type ApiMember } from './members';
 export * from './params';
 export {
   createServiceKey,
+  deleteServiceKey,
   listServiceKeys,
   revokeServiceKey,
+  updateServiceKey,
   type ServiceKeyInfo,
 } from './service-keys';
 export {
