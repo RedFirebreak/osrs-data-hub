@@ -92,19 +92,20 @@ describe('app layout', () => {
     expect(await render(() => AppLayout({ children: <p>secret</p> }))).toBe('redirect:/login');
   });
 
-  it('lists Admin for admins only, and puts nothing private in the page', async () => {
+  it('shows the player navigation, and puts nothing private in the page', async () => {
     await signIn({ name: 'Plain' });
     const plain = await render(() => AppLayout({ children: <p>content</p> }));
     expect(plain).toContain('<p>content</p>');
     expect(plain).toContain('Plain');
-    expect(plain).toContain('href="/settings"');
-    expect(plain).not.toContain('href="/admin"');
+    expect(plain).toMatch(/<a[^>]*aria-current="page"[^>]*href="\/"[^>]*>Home<\/a>/);
+    expect(plain).toMatch(/<a[^>]*href="\/guild"[^>]*>Guild<\/a>/);
+    // The set-up pages live in the avatar menu (closed until opened), not in the bar.
+    for (const href of ['/devices', '/api-keys', '/settings', '/admin']) {
+      expect(plain).not.toContain(`href="${href}"`);
+    }
     expect(plain).not.toContain('@discord.invalid');
     expect(plain).toMatch(/href="#main"/);
     expect(plain).toMatch(/<main id="main"/);
-
-    await signIn({ name: 'Boss', isAdmin: true });
-    expect(await render(() => AppLayout({ children: null }))).toContain('href="/admin"');
   });
 });
 

@@ -29,6 +29,7 @@ export {
 } from './history';
 export { FEED_DEFAULT_LIMIT, FEED_MAX_LIMIT, listFeed } from './list-feed';
 export { loadVisibleAccount, loadVisibleAccounts, type Presence } from './load';
+export { listOwnAccounts, type OwnAccount } from './own-accounts';
 export { startOfLocalDay } from './periods';
 export type { Section } from './sections';
 export {

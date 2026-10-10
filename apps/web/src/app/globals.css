@@ -91,6 +91,24 @@
   --metrics-accent-soft: oklch(0.78 0.14 70 / 16%);
 }
 
+/* Anything that can be pressed answers on pointer-down, not on release: a small dip that springs
+   back. Colours keep their own short fade. */
+@utility pressable {
+  transition:
+    transform 120ms ease-out,
+    color 150ms,
+    background-color 150ms,
+    border-color 150ms;
+  &:active {
+    transform: scale(0.97);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    &:active {
+      transform: none;
+    }
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

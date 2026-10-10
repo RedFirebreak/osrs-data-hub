@@ -1,11 +1,14 @@
 /**
  * The signed-in part of the hub: every page under (app) needs an active session (requireUser →
  * /login otherwise; each page calls it too, since a layout isn't re-rendered on client navigation).
- * Header with navigation and the user menu, the page in a centred container, and one LiveProvider
+ * Header with navigation (told which characters are the viewer's own) and the user menu, the page in
+ * a centred container, and one LiveProvider
  * for toasts, presence and the wizard's live status (handoff §11), inside the icon configuration
  * (OSRS_ICONS_URL, read here at request time; the browser loads the CDN's stack tables; D-95).
  */
 import { getConfig } from '@hub/core';
+import { getDb } from '@hub/db';
+import { listOwnAccounts } from '@hub/server';
 import Link from 'next/link';
 import { IconConfigLoader } from '@/components/icons/icon-config-provider';
 import { LiveProvider } from '@/components/live/live-provider';
@@ -13,8 +16,9 @@ import { AppHeader } from '@/components/shell/app-header';
 import { requireUser } from '@/lib/session';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const { user } = await requireUser();
+  const { user, viewer } = await requireUser();
   const { hubName, osrsIconsUrl } = getConfig();
+  const own = await listOwnAccounts(getDb().db, viewer);
   return (
     <IconConfigLoader base={osrsIconsUrl}>
       <LiveProvider>
@@ -28,6 +32,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <AppHeader
             hubName={hubName}
             user={{ name: user.name, image: user.image, isAdmin: user.isAdmin }}
+            ownAccountIds={own.map((account) => account.publicId)}
           />
           <main id="main" className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6 sm:py-8">
             {children}
