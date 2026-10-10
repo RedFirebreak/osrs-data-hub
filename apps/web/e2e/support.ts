@@ -47,7 +47,7 @@ async function fakeDiscordConsent(page: Page, handle: DiscordHandle): Promise<UR
   return seen;
 }
 
-/** The hub page a sign-in ends on: the dashboard, or /login?error=… when it was refused. */
+/** The hub page a sign-in ends on: Home, or /login?error=… when it was refused. */
 function isSignInResult(url: URL): boolean {
   if (url.origin !== HUB_URL || url.pathname.startsWith('/api/')) return false;
   return url.pathname !== '/login' || url.searchParams.has('error');
@@ -55,7 +55,7 @@ function isSignInResult(url: URL): boolean {
 
 /**
  * Signs in on /login with "Sign in with Discord" as `handle`. Resolves once the browser is back on
- * the hub after the OAuth callback: on the dashboard for members, on /login?error=… otherwise.
+ * the hub after the OAuth callback: on Home for members, on /login?error=… otherwise.
  */
 export async function signInWithDiscord(page: Page, handle: DiscordHandle): Promise<void> {
   const authorizeUrls = await fakeDiscordConsent(page, handle);
@@ -74,7 +74,7 @@ export async function signInWithDiscord(page: Page, handle: DiscordHandle): Prom
   expect(authorize.searchParams.get('scope')).toBe('identify guilds.members.read');
   expect(authorize.searchParams.get('redirect_uri')).toBe(`${HUB_URL}/api/auth/callback/discord`);
   expect(authorize.searchParams.get('state')).toBeTruthy();
-  // The callback always redirects (to the dashboard, or to /login?error=…), never renders.
+  // The callback always redirects (to Home, or to /login?error=…), never renders.
   expect((await callback).status()).toBe(302);
 }
 

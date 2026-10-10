@@ -125,8 +125,9 @@ fixtures. Each run creates and migrates its own database (`hub_e2e_<random>`) an
 `E2E_SCREENSHOTS=1 pnpm test:e2e` runs `apps/web/e2e/screenshots.spec.ts` instead of the tests (it is
 tagged `@screenshots` and left out of the normal run). It pairs devices, sends the payload fixtures
 through `/api/osrs-data/events` (alice owns Zezima and Lynx Titan, whose plugin sends no inventory,
-equipment or location; carol owns Iron Mira) and saves every page — login, dashboard (empty and full),
-each wizard step, devices, account pages as owner, admin and plain member, guild, settings, privacy,
+equipment or location; carol owns Iron Mira) and saves every page — login, Home (empty and as a
+character), each wizard step, devices, character pages as owner, admin and plain member, Progress with a
+skill's page and Deep dive, guild, settings, privacy,
 every admin tab, the API keys page (empty, the create dialog, the key shown once, the list), the
 header at 820 and 1024 px, `/docs/api`, menus, dialogs and a toast — at 1440×900 and 390×844 in light and dark to
 `apps/web/e2e/screenshots/` (gitignored), named `<nn>-<page>-<viewport>-<scheme>.png`. It takes about

@@ -1,13 +1,13 @@
 'use client';
 /**
- * Wizard step 4 (handoff §6.3): done. Links to the dashboard and shows who sees the account (D-96):
+ * Wizard step 4 (handoff §6.3): done. Links to Home and shows who sees the account (D-96):
  * its owner gets the account page's sharing controls right here (DoneSharing), since everything is
  * shared with the guild by default; a contributor is told the owner decides; without an account yet,
  * the default in one line. And that the plugin's own settings decide what reaches the hub in the
  * first place (D-4).
  */
 import type { DeviceFirstData } from '@hub/server';
-import { LayoutDashboardIcon, MonitorSmartphoneIcon, PlusIcon } from 'lucide-react';
+import { HouseIcon, MonitorSmartphoneIcon, PlusIcon } from 'lucide-react';
 import type { Route } from 'next';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -32,8 +32,8 @@ export function DoneStep({ firstData, onRestart, headingRef }: DoneStepProps) {
         title={account ? "You're all set" : 'RuneLite is connected'}
         description={
           account
-            ? `${account.name} is on your dashboard, and it updates while you play.`
-            : 'Log in to OSRS whenever you like: your account shows up on the dashboard within seconds.'
+            ? `${account.name} is on your Home page, and it updates while you play.`
+            : 'Log in to OSRS whenever you like: your character shows up on Home within seconds.'
         }
       />
 
@@ -78,8 +78,8 @@ export function DoneStep({ firstData, onRestart, headingRef }: DoneStepProps) {
         </Button>
         <Button asChild size="lg">
           <Link href="/">
-            <LayoutDashboardIcon aria-hidden data-icon="inline-start" />
-            Go to the dashboard
+            <HouseIcon aria-hidden data-icon="inline-start" />
+            Go to Home
           </Link>
         </Button>
       </div>

@@ -8,7 +8,8 @@ the guild.
   one the ha-osrs-data Home Assistant integration speaks).
 - **Aggregates** per OSRS account: current state, 10+ years of XP history, events (loot, levels,
   deaths, collection log, diaries, combat tasks), play sessions, gear, wealth and a location trail.
-- **Shows** it: a personal dashboard, account pages, a guild page, and live event toasts.
+- **Shows** it: a page per character, progress charts per skill and boss, a guild page, and live
+  event toasts.
 - **Shares** it: per-account, per-category permissions, and a pull-only REST API with scoped keys for
   Home Assistant, a Discord bot or a live map ([docs/API.md](docs/API.md)).
 

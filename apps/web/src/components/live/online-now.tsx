@@ -1,11 +1,11 @@
 'use client';
 /**
- * The guild's "Online now" strip (handoff §12 dashboard): the server-rendered list (getDashboard's
- * onlineNow: every visible account whose activity the viewer may see) kept current by live
+ * The guild's "Online now" strip on Home (handoff §12): the server-rendered list (getOnlineNow:
+ * every visible account whose activity the viewer may see) kept current by live
  * 'presence' messages — accounts come online, go offline, or expire client-side after the message's
  * onlineForMs (mergeOnlineNow in live-state.ts).
  *
- *   <OnlineNow initial={dashboard.onlineNow} />
+ *   <OnlineNow initial={await getOnlineNow(db, viewer, { now })} />
  */
 import type { OnlineEntry } from '@hub/server';
 import Link from 'next/link';

@@ -1,8 +1,8 @@
 # Player-focused hub UI: design
 
-Status: draft for Red's review, 2026-10-10. Nothing here is built yet. A clickable prototype of the
-flow (made-up data, throwaway) is at `apps/web/public/prototype/index.html`, served by the dev stack
-at http://localhost:3200/prototype/index.html.
+Status: approved by Red on 2026-10-10 and built (decisions D-112 to D-114 in ARCHITECTURE.md, which
+is the reference from here on; this file is the design as it was agreed). The clickable prototype it
+was settled with is not kept.
 
 ## Why
 
@@ -28,7 +28,8 @@ their progress. For them the current UI has three problems:
 | What Home shows with one character | That character directly. A switcher appears only with two or more. |
 | The look | "Clean": today's black and white. Colour comes only from the skills, in bars and charts. |
 | The page's name | "Progress". (`/metrics` is the Prometheus endpoint, D-84.) |
-| Where the detailed charts live | Proposed: their own "Deep dive" page linked from Progress. Open, see the end. |
+| Where the detailed charts live | Their own "Deep dive" page linked from Progress. |
+| The ranges | 1D, 7D, 30D, 90D, 1Y, plus "All" on a skill page. "1D" is the last 24 hours. |
 
 ## The flow
 
@@ -158,8 +159,7 @@ Taken from the apple-design notes Red supplied, applied where they fit a data si
   chart from what is on screen; a second change mid-way redirects it. The headline number counts
   with it. ECharts animates a data update on a chart instance it keeps; today's wrapper replaces
   the whole option on every change (`notMerge` in `components/charts/echart.tsx`), so the Progress
-  chart gets an update path that keeps its series. No animation library is added. To be confirmed
-  in build step 3; the fallback is the prototype's own small spring on an SVG line.
+  chart gets an update path that keeps its series (`morph`, D-114). No animation library is added.
 - **Controls sit next to what they change**: the range control inside the chart's card, the picker
   beside the page title.
 - **Menus open from their trigger** (Radix already sets the origin).
@@ -210,10 +210,11 @@ Each step leaves the hub working and is one commit.
 Redesigning the Deep dive panels or the Guild, Devices, API keys, Settings and Admin pages beyond
 what the shared tokens change; new measures; comparing characters; a game-styled skin.
 
-## Open for Red
+## What changed while building
 
-1. **Deep dive as its own page** (proposed) or a fold-out at the bottom of Progress as in the
-   prototype.
-2. **The range choices**: 1D, 7D, 30D, 90D, 1Y, plus "All" on a skill page. "1D" is the last 24
-   hours, not "since midnight".
-3. **The gear change log and the Wealth chart**: proposed folded under Worn and moved to Deep dive.
+- "Sessions & playtime" moved to Deep dive whole (the playtime chart and the recent sessions with
+  their worlds), instead of being split between a Progress measure and Deep dive's session list.
+- The fourth pill is "Play time": the time with XP or drops (Deep dive's active time), with the time
+  online beside it.
+- The skill colours pass 4.5:1 on the muted tile surfaces too, not only on the card.
+- "Add device" is on the Devices page only.

@@ -5,7 +5,7 @@
  * A refused sign-in comes back as /login?error=<code> (lib/auth.ts, AUTH-6) and gets a clear
  * explanation (login-messages.ts). "Delete my data" (D-78) lands on /login?deleted=<date>, which
  * says when the data goes and that signing in cancels it (deleted-notice.ts; only a parsed date is
- * shown, never the parameter). Signed-in, active users go straight to the dashboard; an inactive
+ * shown, never the parameter). Signed-in, active users go straight to Home; an inactive
  * viewer counts as signed out here, or requireUser and this page would redirect in a loop.
  */
 import { getConfig } from '@hub/core';

@@ -121,7 +121,7 @@ export function SettingsForm({
       toast.success('Settings saved');
       // The stream applies the filter it opened with (LiveProvider → reopen with Last-Event-ID).
       if (changesToastFilter(patch)) reconnect();
-      // "Today" on the dashboard is cut in the time zone.
+      // "Today" in the gains is cut in the time zone.
       if (patch.timezone !== undefined) router.refresh();
       return;
     }
@@ -258,7 +258,7 @@ export function SettingsForm({
             <h2>Time zone</h2>
           </CardTitle>
           <CardDescription>
-            Decides where &quot;today&quot; starts for gains on your dashboard.
+            Decides where &quot;today&quot; starts for the gains and charts you see.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-2">
