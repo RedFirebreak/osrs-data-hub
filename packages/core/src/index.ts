@@ -7,6 +7,7 @@ export * from './hiscores';
 export * from './http';
 export * from './ints';
 export * from './json';
+export * from './map-link';
 export * from './names';
 export * from './presence';
 export * from './ratelimit';

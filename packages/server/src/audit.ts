@@ -34,6 +34,7 @@ export const AUDIT_ACTIONS = [
   'raw_payload.viewed',
   'hub.decommissioned',
   'hub.guild_feed_changed',
+  'hub.map_link_changed',
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 

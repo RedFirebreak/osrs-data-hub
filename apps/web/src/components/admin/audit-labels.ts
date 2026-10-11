@@ -25,6 +25,7 @@ const AUDIT_ACTION_LABELS: Readonly<Record<AuditAction, string>> = {
   'raw_payload.viewed': 'Raw payload viewed',
   'hub.decommissioned': 'Decommission switch',
   'hub.guild_feed_changed': 'Guild feed settings changed',
+  'hub.map_link_changed': 'Map link changed',
   'api_key.created': 'API key created',
   'api_key.revoked': 'API key revoked',
   'api_key.updated': 'API key edited',

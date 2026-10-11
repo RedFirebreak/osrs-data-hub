@@ -5,10 +5,11 @@
  */
 import { MAX_GUILD_FEED_MIN_LOOT_VALUE } from '@hub/core';
 import { getDb } from '@hub/db';
-import { getGuildFeedFilter } from '@hub/server';
+import { getGuildFeedFilter, getMapLink } from '@hub/server';
 import type { Metadata } from 'next';
 import { AdminSectionHeader } from '@/components/admin/admin-section';
 import { GuildFeedForm } from '@/components/admin/guild-feed-form';
+import { MapLinkForm } from '@/components/admin/map-link-form';
 import { adminMetadata, requireAdmin } from '@/lib/session';
 
 export function generateMetadata(): Promise<Metadata> {
@@ -17,7 +18,8 @@ export function generateMetadata(): Promise<Metadata> {
 
 export default async function AdminSettingsPage() {
   await requireAdmin();
-  const filter = await getGuildFeedFilter(getDb().db);
+  const { db } = getDb();
+  const [filter, mapLink] = await Promise.all([getGuildFeedFilter(db), getMapLink(db)]);
   return (
     <section aria-labelledby="admin-settings" className="flex flex-col gap-4">
       <AdminSectionHeader
@@ -26,6 +28,7 @@ export default async function AdminSettingsPage() {
         description="Options for the whole hub. Changes apply at once and are recorded in the audit log."
       />
       <GuildFeedForm initial={filter} maxMinLootValue={MAX_GUILD_FEED_MIN_LOOT_VALUE} />
+      <MapLinkForm initial={mapLink} />
     </section>
   );
 }

@@ -5,7 +5,15 @@
  * page shows only the signed-in user's data, and the markup (headings, the empty state).
  */
 import { randomUUID } from 'node:crypto';
-import { accountLinks, accountSharing, latestState, osrsAccounts, userSettings } from '@hub/db';
+import {
+  accountLinks,
+  accountSharing,
+  hubSettings,
+  latestState,
+  osrsAccounts,
+  userSettings,
+} from '@hub/db';
+import { setMapLink } from '@hub/server';
 import { eq } from 'drizzle-orm';
 import { renderToReadableStream } from 'react-dom/server';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -106,6 +114,33 @@ describe('app layout', () => {
     expect(plain).not.toContain('@discord.invalid');
     expect(plain).toMatch(/href="#main"/);
     expect(plain).toMatch(/<main id="main"/);
+    expect(plain).not.toContain('>Map<');
+  });
+
+  it('shows Map after Guild, opening in a new tab, only while an admin has it on (D-115)', async () => {
+    const adminId = await ctx.seedUser({ name: 'Admin', isAdmin: true });
+    await signIn({ name: 'Member' });
+    try {
+      await setMapLink(ctx.t.db, {
+        link: { enabled: false, url: 'https://map.example.com/' },
+        actorUserId: adminId,
+      });
+      const off = await render(() => AppLayout({ children: <p>content</p> }));
+      expect(off).not.toContain('map.example.com');
+
+      await setMapLink(ctx.t.db, {
+        link: { enabled: true, url: 'https://map.example.com/' },
+        actorUserId: adminId,
+      });
+      const on = await render(() => AppLayout({ children: <p>content</p> }));
+      const map = /<a[^>]*href="https:\/\/map\.example\.com\/"[^>]*>Map/.exec(on);
+      expect(map?.[0]).toContain('target="_blank"');
+      expect(map?.[0]).toContain('rel="noopener noreferrer"');
+      expect(on.indexOf('>Guild</a>')).toBeLessThan(on.indexOf('>Map'));
+      expect(on).toContain('(opens in a new tab)');
+    } finally {
+      await ctx.t.db.delete(hubSettings).where(eq(hubSettings.key, 'map_link'));
+    }
   });
 });
 

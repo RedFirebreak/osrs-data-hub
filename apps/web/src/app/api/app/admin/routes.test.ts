@@ -3,9 +3,9 @@
  * foreign Origin on mutations), and each route's happy path against seeded data.
  */
 import { randomUUID } from 'node:crypto';
-import { DAY_MS, DEFAULT_GUILD_FEED_FILTER, setConfigForTests } from '@hub/core';
+import { DAY_MS, DEFAULT_GUILD_FEED_FILTER, DEFAULT_MAP_LINK, setConfigForTests } from '@hub/core';
 import { auditLog, devices, rawPayloads, session, users } from '@hub/db';
-import { getGuildFeedFilter, isDecommissioned } from '@hub/server';
+import { getGuildFeedFilter, getMapLink, isDecommissioned } from '@hub/server';
 import { and, desc, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { withTestDb, type WebTestContext } from '@/lib/test-utils';
@@ -13,6 +13,7 @@ import { GET as getAuditLog } from './audit-log/route';
 import { PUT as putDecommission } from './decommission/route';
 import { DELETE as revokeDevice } from './devices/[id]/route';
 import { PUT as putGuildFeed } from './guild-feed/route';
+import { PUT as putMapLink } from './map-link/route';
 import { GET as getRawPayload } from './raw-payloads/[id]/route';
 import { POST as offboard } from './users/[id]/offboard/route';
 import { POST as restore } from './users/[id]/restore/route';
@@ -140,6 +141,18 @@ function guildFeedCall(body: unknown): Caller {
   return (cookie, opts = {}) =>
     putGuildFeed(
       ctx.request('/api/app/admin/guild-feed', {
+        method: 'PUT',
+        cookie,
+        json: body,
+        ...originOpts(opts.origin),
+      }),
+    );
+}
+
+function mapLinkCall(body: unknown): Caller {
+  return (cookie, opts = {}) =>
+    putMapLink(
+      ctx.request('/api/app/admin/map-link', {
         method: 'PUT',
         cookie,
         json: body,
@@ -541,5 +554,49 @@ describe('PUT /api/app/admin/guild-feed', () => {
       mutation: true,
     });
     expect(await getGuildFeedFilter(ctx.t.db)).toEqual(DEFAULT_GUILD_FEED_FILTER);
+  });
+});
+
+describe('PUT /api/app/admin/map-link', () => {
+  it('stores the map link and audits it (D-115)', async () => {
+    const res = await mapLinkCall({ enabled: true, url: ' https://Map.Example.com ' })(adminCookie);
+    expect(res.status).toBe(200);
+    const link = { enabled: true, url: 'https://map.example.com/' };
+    expect(await res.json()).toEqual(link);
+    expect(await getMapLink(ctx.t.db)).toEqual(link);
+    const [entry] = await ctx.t.db
+      .select({ meta: auditLog.meta, actor: auditLog.actorUserId })
+      .from(auditLog)
+      .where(eq(auditLog.action, 'hub.map_link_changed'))
+      .orderBy(desc(auditLog.id))
+      .limit(1);
+    expect(entry).toEqual({ meta: link, actor: adminId });
+
+    const off = await mapLinkCall({ enabled: false, url: null })(adminCookie);
+    expect(off.status).toBe(200);
+    expect(await getMapLink(ctx.t.db)).toEqual(DEFAULT_MAP_LINK);
+  });
+
+  it('refuses a malformed body with 400 and changes nothing', async () => {
+    for (const body of [
+      {},
+      { enabled: true },
+      { enabled: true, url: null },
+      { enabled: true, url: '' },
+      { enabled: false, url: 'javascript:alert(1)' },
+      { enabled: false, url: 'map.example.com' },
+      { enabled: 'yes', url: 'https://map.example.com' },
+      { enabled: false, url: 'https://map.example.com', extra: true },
+    ]) {
+      expect((await mapLinkCall(body)(adminCookie)).status).toBe(400);
+    }
+    expect(await getMapLink(ctx.t.db)).toEqual(DEFAULT_MAP_LINK);
+  });
+
+  it('is guarded, and a refused request changes nothing', async () => {
+    await expectGuarded(mapLinkCall({ enabled: true, url: 'https://map.example.com' }), {
+      mutation: true,
+    });
+    expect(await getMapLink(ctx.t.db)).toEqual(DEFAULT_MAP_LINK);
   });
 });
