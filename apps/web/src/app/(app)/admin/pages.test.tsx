@@ -11,6 +11,7 @@ import {
   revokeServiceKey,
   setDecommissioned,
   setGuildFeedFilter,
+  setMapLink,
 } from '@hub/server';
 import { eq } from 'drizzle-orm';
 import { renderToReadableStream } from 'react-dom/server';
@@ -303,6 +304,19 @@ describe('audit, configuration, settings and decommission pages', () => {
     const after = await render(() => SettingsPage());
     expect(after).toContain('value="25000"');
     expect(after).toMatch(/role="switch"[^>]*aria-checked="true"/);
+  });
+
+  it('shows the stored map link on the settings page (D-115)', async () => {
+    const before = await render(() => SettingsPage());
+    expect(before).toContain('Live map');
+    expect(before).toContain('placeholder="https://map.example.com"');
+    expect(before).not.toContain('value="https://map.guild.test/"');
+    await setMapLink(ctx.t.db, {
+      link: { enabled: true, url: 'https://map.guild.test/' },
+      actorUserId: adminId,
+    });
+    const after = await render(() => SettingsPage());
+    expect(after).toContain('value="https://map.guild.test/"');
   });
 });
 

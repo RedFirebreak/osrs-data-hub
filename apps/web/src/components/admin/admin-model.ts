@@ -384,6 +384,8 @@ export const DECOMMISSION_API_PATH = '/api/app/admin/decommission';
 
 export const GUILD_FEED_API_PATH = '/api/app/admin/guild-feed';
 
+export const MAP_LINK_API_PATH = '/api/app/admin/map-link';
+
 /**
  * How a failed admin request is told (failureMessage, lib/api-client.ts): `fallback` when the hub
  * gives no better text, and the admin pages' wording for 403 and 404.

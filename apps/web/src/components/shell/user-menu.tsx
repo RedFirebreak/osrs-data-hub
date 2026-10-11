@@ -56,7 +56,7 @@ export function UserMenu({ name, image, isAdmin }: UserMenuProps) {
           {/* The same avatar as everywhere else the user appears (member lists, account pages). */}
           <UserAvatar name={name} image={image} />
           <span className="hidden max-w-36 truncate sm:inline">{name}</span>
-          <ChevronDownIcon aria-hidden className="text-muted-foreground" />
+          <ChevronDownIcon aria-hidden className="text-muted-foreground max-sm:hidden" />
           <span className="sr-only">Open the account menu</span>
         </Button>
       </DropdownMenuTrigger>
