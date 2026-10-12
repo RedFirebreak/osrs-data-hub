@@ -11,6 +11,7 @@
  *     { action: 'claim' }                                  claimOwnership
  *     { action: 'hide', hidden }                           setHiddenFromGuild (D-104)
  *     { action: 'block' | 'unblock' | 'remove', userId }   setContributorBlocked / removeContributor
+ *     { action: 'card', userId, hidden }                   setContributorHiddenFromCard (D-116)
  *   → 200 `{ sharing }` as it is after the change (null when the actor may no longer read it).
  *   Refusals from the mutation: 404 not_found (invisible), 403 forbidden (not the owner or an
  *   admin; claim: not a contributor), 400 invalid (e.g. blocking the owner, a grantee who isn't an
@@ -30,6 +31,7 @@ import {
   removeGrant,
   setAudience,
   setContributorBlocked,
+  setContributorHiddenFromCard,
   setHiddenFromGuild,
   transferOwnership,
 } from '@hub/server';
@@ -92,5 +94,7 @@ async function applyChange(
       return setContributorBlocked(db, viewer, publicId, change.userId, change.action === 'block');
     case 'remove':
       return removeContributor(db, viewer, publicId, change.userId);
+    case 'card':
+      return setContributorHiddenFromCard(db, viewer, publicId, change.userId, change.hidden);
   }
 }

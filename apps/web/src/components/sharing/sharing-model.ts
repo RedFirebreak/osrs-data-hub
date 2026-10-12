@@ -81,6 +81,10 @@ export function successMessage(
       return `${who} is unblocked`;
     case 'remove':
       return `${who} was removed from this account`;
+    case 'card': {
+      const card = names.user ? `${names.user}'s guild card` : 'their guild card';
+      return change.hidden ? `Hidden from ${card}` : `Shown on ${card} again`;
+    }
     case 'hide':
       return change.hidden
         ? 'Hidden from the guild: only its players see this account'

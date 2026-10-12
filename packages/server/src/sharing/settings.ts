@@ -28,6 +28,11 @@ export interface SharingContributor {
   image: string | null;
   role: 'owner' | 'contributor';
   blocked: boolean;
+  /**
+   * The owner keeps this player's guild card from listing the account (D-116); always false for the
+   * owner.
+   */
+  hiddenFromCard: boolean;
   /** When this user's devices first and last reported the account. */
   firstSeen: string;
   lastSeen: string;
@@ -87,6 +92,7 @@ export async function getSharingSettings(
       name: users.name,
       image: users.image,
       blocked: accountLinks.blocked,
+      hiddenFromCard: accountLinks.hiddenFromCard,
       firstSeen: accountLinks.firstSeen,
       lastSeen: accountLinks.lastSeen,
     })
@@ -114,6 +120,7 @@ export async function getSharingSettings(
         image: l.image,
         role: isOwner(l.userId) ? 'owner' : 'contributor',
         blocked: l.blocked,
+        hiddenFromCard: !isOwner(l.userId) && l.hiddenFromCard,
         firstSeen: l.firstSeen.toISOString(),
         lastSeen: l.lastSeen.toISOString(),
       }))

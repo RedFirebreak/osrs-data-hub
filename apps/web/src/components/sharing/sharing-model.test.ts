@@ -16,6 +16,7 @@ function contributor(userId: string, role: 'owner' | 'contributor', blocked = fa
     image: null,
     role,
     blocked,
+    hiddenFromCard: false,
     firstSeen: '2026-09-01T00:00:00.000Z',
     lastSeen: '2026-09-29T00:00:00.000Z',
   };
@@ -87,6 +88,12 @@ describe('messages', () => {
     );
     expect(successMessage({ action: 'hide', hidden: false })).toBe(
       'Shown to the guild again, as set below',
+    );
+    expect(
+      successMessage({ action: 'card', userId: 'u', hidden: true }, { user: 'QFE- Ronald' }),
+    ).toBe("Hidden from QFE- Ronald's guild card");
+    expect(successMessage({ action: 'card', userId: 'u', hidden: false })).toBe(
+      'Shown on their guild card again',
     );
     expect(audienceLabel('guild')).toBe('Guild');
   });

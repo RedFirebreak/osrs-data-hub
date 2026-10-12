@@ -92,6 +92,13 @@
       "when": 1791585466958,
       "tag": "0012_account_goals",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1791792579043,
+      "tag": "0013_link_hidden_from_card",
+      "breakpoints": true
     }
   ]
 }

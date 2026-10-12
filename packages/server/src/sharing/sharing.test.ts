@@ -24,6 +24,7 @@ import {
   removeGrant,
   setAudience,
   setContributorBlocked,
+  setContributorHiddenFromCard,
   setHiddenFromGuild,
   transferOwnership,
 } from './mutations';
@@ -576,6 +577,63 @@ describe('setContributorBlocked', () => {
       setContributorBlocked(t.db, contributor.viewer, account.publicId, blocked.id, false),
       'forbidden',
     );
+  });
+});
+
+describe('setContributorHiddenFromCard', () => {
+  it("hides the account from a contributor's guild card and shows it again, audited once per change", async () => {
+    const account = await sharedAccount();
+    const cards = async (viewer: SeededUser) =>
+      Object.fromEntries(
+        ((await getSharingSettings(t.db, viewer.viewer, account.publicId))?.contributors ?? []).map(
+          (c) => [c.userId, c.hiddenFromCard],
+        ),
+      );
+    await setContributorHiddenFromCard(t.db, owner.viewer, account.publicId, contributor.id, true);
+    await setContributorHiddenFromCard(t.db, owner.viewer, account.publicId, contributor.id, true);
+    expect(await cards(owner)).toEqual({
+      [owner.id]: false,
+      [contributor.id]: true,
+      [blocked.id]: false,
+    });
+    // Nothing else changes: the contributor keeps the player's view and their link.
+    expect(await cards(contributor)).toMatchObject({ [contributor.id]: true });
+    expect(await linksOf(account.id)).toContainEqual({
+      userId: contributor.id,
+      role: 'contributor',
+      blocked: false,
+    });
+
+    // An admin may, through the override.
+    await setContributorHiddenFromCard(t.db, admin.viewer, account.publicId, contributor.id, false);
+    expect(await cards(owner)).toMatchObject({ [contributor.id]: false });
+    expect((await auditRows(account.publicId)).map((r) => [r.action, r.meta])).toEqual([
+      ['account.contributor_card_hidden', { userId: contributor.id, asAdmin: false }],
+      ['account.contributor_card_shown', { userId: contributor.id, asAdmin: true }],
+    ]);
+  });
+
+  it("refuses the owner, someone who isn't linked, and non-owners", async () => {
+    const account = await sharedAccount();
+    await expectRefused(
+      setContributorHiddenFromCard(t.db, owner.viewer, account.publicId, owner.id, true),
+      'invalid',
+    );
+    await expectRefused(
+      setContributorHiddenFromCard(t.db, owner.viewer, account.publicId, member.id, true),
+      'invalid',
+    );
+    await expectRefused(
+      setContributorHiddenFromCard(
+        t.db,
+        contributor.viewer,
+        account.publicId,
+        contributor.id,
+        true,
+      ),
+      'forbidden',
+    );
+    expect(await auditRows(account.publicId)).toEqual([]);
   });
 });
 

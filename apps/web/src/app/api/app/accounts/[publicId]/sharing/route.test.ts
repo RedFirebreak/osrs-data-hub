@@ -347,6 +347,45 @@ describe('PATCH /api/app/accounts/[publicId]/sharing', () => {
     expect(await audits(account.publicId, 'sharing.hidden_from_guild_changed')).toBe(2);
   });
 
+  it("card: hides the account from a contributor's guild card and shows it again (D-116)", async () => {
+    const owner = await signedIn();
+    const contributor = await signedIn();
+    const account = await seed.account({ owner: owner.userId, contributors: [contributor.userId] });
+    const cardOf = (sharing: { contributors: { userId: string; hiddenFromCard: boolean }[] }) =>
+      sharing.contributors.find((c) => c.userId === contributor.userId)?.hiddenFromCard;
+
+    const hidden = await sharingOf(
+      await patch(account.publicId, owner.cookie, {
+        action: 'card',
+        userId: contributor.userId,
+        hidden: true,
+      }),
+    );
+    expect(cardOf(hidden)).toBe(true);
+    // The contributor keeps reading the settings (the player's view), and may not change this.
+    const asContributor = await patch(account.publicId, contributor.cookie, {
+      action: 'card',
+      userId: contributor.userId,
+      hidden: false,
+    });
+    expect(asContributor.status).toBe(403);
+    const shown = await sharingOf(
+      await patch(account.publicId, owner.cookie, {
+        action: 'card',
+        userId: contributor.userId,
+        hidden: false,
+      }),
+    );
+    expect(cardOf(shown)).toBe(false);
+
+    const self = await patch(account.publicId, owner.cookie, {
+      action: 'card',
+      userId: owner.userId,
+      hidden: true,
+    });
+    expect(self.status).toBe(400);
+  });
+
   it('400 invalid_request for malformed bodies, and nothing changes', async () => {
     const owner = await signedIn();
     const account = await seed.account({ owner: owner.userId });
@@ -358,6 +397,8 @@ describe('PATCH /api/app/accounts/[publicId]/sharing', () => {
       [{ action: 'claim', userId: 'x' }, ''],
       [{ action: 'hide' }, 'hidden'],
       [{ action: 'hide', hidden: 'yes' }, 'hidden'],
+      [{ action: 'card', userId: 'x' }, 'hidden'],
+      [{ action: 'card', hidden: true }, 'userId'],
       [{ action: 'explode' }, 'action'],
       [{}, 'action'],
     ];

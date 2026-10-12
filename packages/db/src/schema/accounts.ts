@@ -100,6 +100,11 @@ export const accountLinks = pgTable(
     lastSeen: tstz('last_seen').defaultNow().notNull(),
     blocked: boolean('blocked').default(false).notNull(),
     blockedAt: tstz('blocked_at'),
+    /**
+     * The owner keeps this contributor's guild card from listing the account (D-116). Only the guild
+     * page's member list reads it: the contributor keeps the player's view and their data is stored.
+     */
+    hiddenFromCard: boolean('hidden_from_card').default(false).notNull(),
   },
   (t) => [
     primaryKey({ name: 'account_links_pk', columns: [t.accountId, t.userId] }),

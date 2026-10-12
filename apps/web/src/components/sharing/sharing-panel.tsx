@@ -6,8 +6,8 @@
  *   the categories below say (they are kept for when it is shown again);
  * - per category an audience (Private / Guild / Selected people), the default marked, and for
  *   "Selected people" the members granted it with an "Add person" picker (CategoryAudiences);
- * - the account's players (owner and contributors) with block / unblock / remove, and handing
- *   ownership to one of them (confirmed in a dialog);
+ * - the account's players (owner and contributors) with block / unblock / remove, hiding the account
+ *   from a player's guild card (D-116), and handing ownership to one of them (confirmed in a dialog);
  * - "Claim ownership" for a player of an account that has no owner.
  * Every change is one PATCH /api/app/accounts/[publicId]/sharing (D-36, useSharing); the panel shows
  * the settings the server returns. A change of owner refreshes the page (the viewer's rights change).
@@ -24,6 +24,8 @@ import {
   BanIcon,
   CrownIcon,
   EllipsisVerticalIcon,
+  EyeIcon,
+  EyeOffIcon,
   LockIcon,
   UserCheckIcon,
   UserMinusIcon,
@@ -187,7 +189,8 @@ export function SharingPanel({ publicId, initial, hasOwner, relation, now }: Sha
         </h3>
         <p className="text-xs text-muted-foreground">
           Members whose RuneLite reported this account. A blocked player&apos;s data is dropped and
-          they lose the player&apos;s view.
+          they lose the player&apos;s view. Hiding the account from a player&apos;s guild card only
+          takes it off their name on the guild page.
         </p>
         {settings.contributors.length === 0 ? (
           <p className="text-sm text-muted-foreground">No players on record.</p>
@@ -206,6 +209,12 @@ export function SharingPanel({ publicId, initial, hasOwner, relation, now }: Sha
                       </Badge>
                     )}
                     {c.blocked && <Badge variant="destructive">Blocked</Badge>}
+                    {c.hiddenFromCard && !c.blocked && (
+                      <Badge variant="outline">
+                        <EyeOffIcon aria-hidden data-icon="inline-start" />
+                        Hidden from their card
+                      </Badge>
+                    )}
                   </p>
                   <p className="text-xs text-muted-foreground">
                     <RelativeTime date={c.lastSeen} now={now} prefix="Last reported" />
@@ -224,6 +233,13 @@ export function SharingPanel({ publicId, initial, hasOwner, relation, now }: Sha
                     onBlock={() =>
                       openConfirm({ kind: 'block', user: c }, () =>
                         document.getElementById(manageId(c.userId)),
+                      )
+                    }
+                    onToggleCard={() =>
+                      void apply(
+                        { action: 'card', userId: c.userId, hidden: !c.hiddenFromCard },
+                        { user: c.name },
+                        manageId(c.userId),
                       )
                     }
                     onUnblock={() =>
@@ -285,6 +301,7 @@ function PlayerMenu({
   player,
   disabled,
   onTransfer,
+  onToggleCard,
   onBlock,
   onUnblock,
   onRemove,
@@ -293,6 +310,7 @@ function PlayerMenu({
   player: SharingContributor;
   disabled: boolean;
   onTransfer: () => void;
+  onToggleCard: () => void;
   onBlock: () => void;
   onUnblock: () => void;
   onRemove: () => void;
@@ -314,6 +332,23 @@ function PlayerMenu({
         <DropdownMenuItem disabled={player.blocked} onSelect={onTransfer}>
           <CrownIcon aria-hidden />
           Make owner
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          disabled={player.blocked}
+          onSelect={onToggleCard}
+          title={player.blocked ? 'A blocked player is not on the guild page anyway' : undefined}
+        >
+          {player.hiddenFromCard ? (
+            <>
+              <EyeIcon aria-hidden />
+              Show on their guild card
+            </>
+          ) : (
+            <>
+              <EyeOffIcon aria-hidden />
+              Hide from their guild card
+            </>
+          )}
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         {player.blocked ? (
