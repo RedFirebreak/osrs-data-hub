@@ -24,6 +24,8 @@ export interface AdminUserRow {
   devices: number;
   /** Linked OSRS accounts (owner or non-blocked contributor). */
   accounts: number;
+  /** For an invited friend (D-117): the name of the member who invited them, while that stands. */
+  friendOf: string | null;
 }
 
 /**
@@ -47,6 +49,9 @@ export async function listUsers(db: Db): Promise<AdminUserRow[]> {
       // Written out: drizzle leaves column references in select fields unqualified.
       devices: sql<number>`(SELECT count(*) FROM devices d WHERE d.user_id = "users"."id" AND d.revoked_at IS NULL)::int`,
       accounts: sql<number>`(SELECT count(*) FROM account_links l WHERE l.user_id = "users"."id" AND NOT l.blocked)::int`,
+      friendOf: sql<
+        string | null
+      >`CASE WHEN "users"."access" = 'friend' THEN (SELECT inviter.name FROM friend_invites fi JOIN users inviter ON inviter.id = fi.invited_by_user_id WHERE fi.user_id = "users"."id") END`,
     })
     .from(users)
     .orderBy(sql`lower(${users.name})`, asc(users.id));

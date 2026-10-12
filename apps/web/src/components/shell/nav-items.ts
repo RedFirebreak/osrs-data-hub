@@ -4,6 +4,7 @@
  * (the admin pages also answer 404 to everyone else, requireAdmin).
  */
 import {
+  HeartHandshakeIcon,
   KeyRoundIcon,
   MonitorSmartphoneIcon,
   SettingsIcon,
@@ -32,6 +33,7 @@ export interface MenuItem extends NavItem {
 export const ACCOUNT_MENU_ITEMS: readonly MenuItem[] = [
   { href: '/devices', label: 'Devices', icon: MonitorSmartphoneIcon },
   { href: '/api-keys', label: 'API keys', icon: KeyRoundIcon },
+  { href: '/friends', label: 'Friends', icon: HeartHandshakeIcon },
   { href: '/settings', label: 'Settings', icon: SettingsIcon },
   { href: '/privacy', label: 'Privacy', icon: ShieldCheckIcon },
   { href: '/admin', label: 'Admin', icon: ShieldIcon, adminOnly: true },

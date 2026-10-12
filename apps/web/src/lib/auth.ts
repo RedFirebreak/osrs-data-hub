@@ -3,20 +3,30 @@
  *
  * The gate: our `getUserInfo` override is the only step that sees the fresh Discord token, so it
  * fetches the member object there and hands the verdict to `user.validateUserInfo`, which rejects
- * BEFORE any row is written (AUTH-6) and redirects to /login?error=<code>. The member snapshot reaches
+ * BEFORE any row is written (AUTH-6) and redirects to /login?error=<code>. Someone the guild turns
+ * away still gets in on a member's invite to their Discord username (findFriendInvite, D-117). The member snapshot reaches
  * the database hooks through request state (input:false fields can't come from the provider, AUTH-5).
  *
  * Created lazily: `next build` imports route modules without runtime secrets.
  */
 import { defineRequestState } from '@better-auth/core/context';
 import { getConfig, type HubConfig } from '@hub/core';
-import { getDb, pgErrorCode, safeDbErrorMessage, schema } from '@hub/db';
+import {
+  OFFBOARD_REASONS,
+  USER_ACCESS,
+  getDb,
+  pgErrorCode,
+  safeDbErrorMessage,
+  schema,
+  type UserAccess,
+} from '@hub/db';
 import {
   avatarUrl,
   displayName,
   evaluateMembership,
   fetchCurrentUser,
   fetchOwnGuildMember,
+  findFriendInvite,
   getLogger,
   isAdmin,
   recordSignIn,
@@ -41,6 +51,9 @@ interface MemberSnapshot {
   image: string;
   roles: string[];
   isAdmin: boolean;
+  /** A member of the guild, or a friend on the invite `inviteId` (D-117). */
+  access: UserAccess;
+  inviteId: string | null;
 }
 
 /** Request-scoped channel: getUserInfo (has the token) → database hooks (don't). */
@@ -135,12 +148,28 @@ function createAuth(config: HubConfig) {
               image: avatarUrl(me, policy.guildId, member),
               roles: member.roles,
               isAdmin: isAdmin(me.id, member.roles, policy),
+              access: 'member',
+              inviteId: null,
             });
           } else if (verdict.kind === 'error') {
             check = 'discord_unavailable';
             log.warn({ reason: verdict.reason }, 'discord membership check failed at sign-in');
           } else {
-            check = verdict.kind;
+            // Not in the guild (or without the role): a member may have invited them (D-117).
+            const invite = await findFriendInvite(db, { discordId: me.id, username: me.username });
+            check = invite ? 'ok' : verdict.kind;
+            if (invite) {
+              await memberSnapshot.set({
+                discordId: me.id,
+                name: displayName(me),
+                nickname: null,
+                image: avatarUrl(me, policy.guildId),
+                roles: [],
+                isAdmin: isAdmin(me.id, [], policy),
+                access: 'friend',
+                inviteId: invite.id,
+              });
+            }
           }
           return {
             user: {
@@ -167,12 +196,18 @@ function createAuth(config: HubConfig) {
         status: { type: ['active', 'grace'], required: true, defaultValue: 'active', input: false },
         graceUntil: { type: 'date', required: false, input: false },
         offboardReason: {
-          type: ['left_guild', 'lost_role', 'admin', 'self_delete'],
+          type: [...OFFBOARD_REASONS],
           required: false,
           input: false,
         },
         lastVerifiedAt: { type: 'date', required: false, input: false },
         verifyFailures: { type: 'number', required: true, defaultValue: 0, input: false },
+        access: {
+          type: [...USER_ACCESS],
+          required: true,
+          defaultValue: 'member',
+          input: false,
+        },
       },
       validateUserInfo: ({ source }) => {
         if (source.method !== 'oauth' || source.oauth?.providerId !== 'discord') {
@@ -233,6 +268,7 @@ function createAuth(config: HubConfig) {
                 offboardReason: null,
                 lastVerifiedAt: new Date(),
                 verifyFailures: 0,
+                access: snap.access,
               },
             };
           },

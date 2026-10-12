@@ -137,6 +137,7 @@ function UserRow({
               {user.name}
               {user.isAdmin && <AdminRoleBadge />}
               {isSelf && <Badge variant="outline">You</Badge>}
+              {user.friendOf && <Badge variant="outline">Friend of {user.friendOf}</Badge>}
             </span>
             <span className="font-mono text-xs text-muted-foreground">
               {user.discordId ?? 'no Discord id'}

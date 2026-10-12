@@ -20,16 +20,23 @@ export function normalizeErrorCode(raw: unknown): string | null {
 
 /**
  * The title and text for a sign-in error, or null when there is no (valid) code. `guildName` is
- * DISCORD_GUILD_NAME ("the guild" when unset).
+ * DISCORD_GUILD_NAME ("the guild" when unset). With `invites` (members may invite friends, D-117),
+ * someone outside the guild is told a member can invite them.
  */
-export function loginErrorMessage(raw: unknown, guildName: string): LoginErrorMessage | null {
+export function loginErrorMessage(
+  raw: unknown,
+  guildName: string,
+  opts: { invites?: boolean } = {},
+): LoginErrorMessage | null {
   if (raw === undefined || raw === null || raw === '') return null;
   const code = normalizeErrorCode(raw);
   switch (code) {
     case 'not_guild_member':
       return {
         title: 'Not a member',
-        message: `You're not a member of ${guildName}. Join the Discord server, then try again.`,
+        message: opts.invites
+          ? `You're not a member of ${guildName}. Join the Discord server, or ask a member to invite you by your Discord username, then try again.`
+          : `You're not a member of ${guildName}. Join the Discord server, then try again.`,
       };
     case 'missing_role':
       return {

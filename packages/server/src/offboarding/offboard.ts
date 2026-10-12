@@ -3,6 +3,7 @@ import {
   accountLinks,
   apiKeys,
   devices,
+  friendInvites,
   osrsAccounts,
   session,
   users,
@@ -43,6 +44,11 @@ export interface OffboardResult {
  * non-blocked contributor linked longest (audit entry), else hide it. Idempotent for a user already
  * in grace (keeps the earliest grace_until). All in one transaction. Once it commits, a user who was
  * active counts in hub_offboarded_users_total{reason}.
+ *
+ * Then the friends this user invited who are still active go the same way (D-117), each in its own
+ * transaction with reason 'inviter_left', the same grace and the same actor. A friend this misses
+ * (a lock timeout) is caught by offboardStrandedFriends in the hourly job, and can't sign in
+ * meanwhile: the guild gate wants an active inviter.
  */
 export async function offboardUser(
   db: Db,
@@ -127,7 +133,30 @@ export async function offboardUser(
     };
   });
   if (wasActive) (opts.metrics ?? getMetrics()).offboardedUsers.inc({ reason: opts.reason });
+  await offboardFriendsOf(db, { ...opts, now });
   return result;
+}
+
+/** offboardUser for every active friend `opts.userId` invited (D-117), with reason 'inviter_left'. */
+async function offboardFriendsOf(
+  db: Db,
+  opts: Parameters<typeof offboardUser>[1] & { now: Date },
+): Promise<void> {
+  const friends = await db
+    .select({ id: users.id })
+    .from(friendInvites)
+    .innerJoin(users, eq(users.id, friendInvites.userId))
+    .where(
+      and(
+        eq(friendInvites.invitedByUserId, opts.userId),
+        eq(users.status, 'active'),
+        eq(users.access, 'friend'),
+      ),
+    )
+    .orderBy(asc(users.id));
+  for (const friend of friends) {
+    await offboardUser(db, { ...opts, userId: friend.id, reason: 'inviter_left' });
+  }
 }
 
 /**
@@ -259,7 +288,8 @@ interface GraceState {
 /**
  * The grace state after offboarding again. A user already in grace keeps the earliest grace_until.
  * An admin decision sticks (D-35: logging in doesn't undo it), so 'admin' replaces a membership or
- * self-delete reason and nothing replaces 'admin'; otherwise the first reason stays. `changed` says
+ * self-delete reason and nothing replaces 'admin'. A blacklisting (D-117), the admin's word on a
+ * friend, likewise replaces any reason but 'admin'. Otherwise the first reason stays. `changed` says
  * whether anything worth an audit entry happened.
  */
 export function nextGraceState(
@@ -271,8 +301,11 @@ export function nextGraceState(
     return { graceUntil: proposedUntil, reason, changed: true };
   }
   const graceUntil = user.graceUntil <= proposedUntil ? user.graceUntil : proposedUntil;
+  const current = user.offboardReason;
   const nextReason =
-    reason === 'admin' || user.offboardReason === null ? reason : user.offboardReason;
+    current === null || reason === 'admin' || (reason === 'blacklisted' && current !== 'admin')
+      ? reason
+      : current;
   return {
     graceUntil,
     reason: nextReason,

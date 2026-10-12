@@ -22,3 +22,4 @@ export * from './api';
 export * from './export';
 export * from './hiscores';
 export * from './account-metrics';
+export * from './friends';

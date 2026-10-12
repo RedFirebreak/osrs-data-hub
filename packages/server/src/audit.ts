@@ -37,6 +37,12 @@ export const AUDIT_ACTIONS = [
   'hub.decommissioned',
   'hub.guild_feed_changed',
   'hub.map_link_changed',
+  'hub.invite_friends_changed',
+  'friend.invited',
+  'friend.removed',
+  'friend.became_member',
+  'friend.blacklisted',
+  'friend.unblacklisted',
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 

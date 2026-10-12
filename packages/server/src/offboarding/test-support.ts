@@ -16,6 +16,7 @@ import {
   type AccountStatus,
   type Db,
   type OffboardReason,
+  type UserAccess,
   type UserStatus,
 } from '@hub/db';
 import { sql } from 'drizzle-orm';
@@ -36,6 +37,7 @@ export async function seedUser(
     verifyFailures?: number;
     roles?: string[];
     image?: string | null;
+    access?: UserAccess;
   } = {},
 ): Promise<string> {
   const id = `u${++counter}-${randomUUID().slice(0, 8)}`;
@@ -52,6 +54,7 @@ export async function seedUser(
     lastVerifiedAt: opts.lastVerifiedAt ?? null,
     verifyFailures: opts.verifyFailures ?? 0,
     roles: opts.roles ?? [],
+    access: opts.access ?? 'member',
   });
   return id;
 }

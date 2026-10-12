@@ -11,6 +11,9 @@ describe('loginErrorMessage', () => {
     expect(loginErrorMessage('not_guild_member', 'Test Clan')?.message).toBe(
       "You're not a member of Test Clan. Join the Discord server, then try again.",
     );
+    expect(loginErrorMessage('not_guild_member', 'Test Clan', { invites: true })?.message).toBe(
+      "You're not a member of Test Clan. Join the Discord server, or ask a member to invite you by your Discord username, then try again.",
+    );
     expect(loginErrorMessage('missing_role', 'Test Clan')?.message).toBe(
       "You're in Test Clan but don't have a role that gives access. Ask an admin.",
     );

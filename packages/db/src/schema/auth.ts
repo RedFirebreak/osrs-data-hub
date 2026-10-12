@@ -28,9 +28,29 @@ const tstz = (name: string) => timestamp(name, { withTimezone: true });
 // Declared in @hub/core (the permission resolver reads it too); re-exported for this package's users.
 export { USER_STATUSES, type UserStatus };
 
-/** Why a user is in `grace`. Only membership reasons are undone by simply logging in again. */
-export const OFFBOARD_REASONS = ['left_guild', 'lost_role', 'admin', 'self_delete'] as const;
+/**
+ * Why a user is in `grace`. Logging in again undoes every reason but 'admin' (D-35), as long as the
+ * guild gate lets the user in. The last three are an invited friend's (D-117): their inviter was
+ * offboarded, their inviter removed them, or an admin blacklisted them.
+ */
+export const OFFBOARD_REASONS = [
+  'left_guild',
+  'lost_role',
+  'admin',
+  'self_delete',
+  'inviter_left',
+  'invite_removed',
+  'blacklisted',
+] as const;
 export type OffboardReason = (typeof OFFBOARD_REASONS)[number];
+
+/**
+ * How a user got past the guild gate at their last sign-in (D-117): `member` of the Discord guild,
+ * or `friend`, on a member's invite. Friends are not re-verified with Discord; their access follows
+ * their invite and their inviter.
+ */
+export const USER_ACCESS = ['member', 'friend'] as const;
+export type UserAccess = (typeof USER_ACCESS)[number];
 
 export const users = pgTable(
   'users',
@@ -59,10 +79,12 @@ export const users = pgTable(
     lastVerifiedAt: tstz('last_verified_at'),
     /** Consecutive Discord re-verification failures (errors, not "not a member"). */
     verifyFailures: integer('verify_failures').default(0).notNull(),
+    access: text('access', { enum: USER_ACCESS }).default('member').notNull(),
   },
   (t) => [
     check('users_status_chk', isOneOf(t.status, USER_STATUSES)),
     check('users_offboard_reason_chk', isNullOrOneOf(t.offboardReason, OFFBOARD_REASONS)),
+    check('users_access_chk', isOneOf(t.access, USER_ACCESS)),
   ],
 );
 

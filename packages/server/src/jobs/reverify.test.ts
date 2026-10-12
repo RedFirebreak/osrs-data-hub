@@ -142,6 +142,18 @@ describe('breakerTrips', () => {
 });
 
 describe('reverifyDueMembers', () => {
+  it('leaves invited friends to their invite: never looked up, never offboarded (D-117)', async () => {
+    const memberUser = await dueUser();
+    const friend = await dueUser({ access: 'friend' });
+    const { deps, calls } = setup({ [memberUser.discordId]: member(memberUser.discordId) });
+
+    const result = await reverifyDueMembers(deps);
+
+    expect(result).toEqual({ checked: 1, offboarded: 0, failures: 0, aborted: false });
+    expect(calls.map((c) => c.discordId)).toEqual([memberUser.discordId]);
+    expect(await userRow(friend.id)).toMatchObject({ status: 'active', lastVerifiedAt: null });
+  });
+
   it('refreshes members, offboards a definitive departure and fails open on errors', async () => {
     const ok = await Promise.all(
       Array.from({ length: 8 }, (_, i) => dueUser({ verifyFailures: i === 0 ? 3 : 0 })),
