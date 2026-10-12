@@ -17,6 +17,8 @@ const AUDIT_ACTION_LABELS: Readonly<Record<AuditAction, string>> = {
   'account.contributor_blocked': 'Contributor blocked',
   'account.contributor_unblocked': 'Contributor unblocked',
   'account.contributor_removed': 'Contributor removed',
+  'account.contributor_card_hidden': 'Hidden from a guild card',
+  'account.contributor_card_shown': 'Shown on a guild card again',
   'account.purged': 'Account purged',
   'sharing.audience_changed': 'Sharing audience changed',
   'sharing.grant_added': 'Sharing grant added',

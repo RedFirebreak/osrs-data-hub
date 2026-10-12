@@ -1,6 +1,6 @@
 /**
  * Sharing and ownership changes (handoff §10): audiences, grants, ownership transfer and claim,
- * blocking and removing contributors. Each change is one transaction that first takes ingest's
+ * blocking and removing contributors, hiding an account from a contributor's guild card. Each change is one transaction that first takes ingest's
  * per-account lock (lockAccountForChange), so it serializes with payloads, offboarding and other
  * changes of the same account; each change is audited with the actor and the account. A request that
  * changes nothing (same audience, existing grant, already blocked…) succeeds without an audit entry.
@@ -223,6 +223,43 @@ export async function setContributorBlocked(
       .set({ blocked, blockedAt: blocked ? sql`now()` : null })
       .where(and(eq(accountLinks.accountId, account.id), eq(accountLinks.userId, userId)));
     const action = blocked ? 'account.contributor_blocked' : 'account.contributor_unblocked';
+    await auditChange(tx, actor, asAdmin, account.publicId, action, { userId });
+  });
+}
+
+/**
+ * Hides the account from one contributor's card on the guild page, or lists it there again (D-116).
+ * Nothing else changes: they keep the player's view, and what their RuneLite sends is stored. The
+ * owner is always listed under their own name, so they can't be hidden. A blocked contributor isn't
+ * listed anyway; the flag is kept for when they are unblocked. Removing the contributor deletes it
+ * with the link. Setting the current value is a no-op.
+ */
+export async function setContributorHiddenFromCard(
+  db: Db,
+  actor: Viewer,
+  publicId: string,
+  userId: string,
+  hidden: boolean,
+): Promise<void> {
+  assertUserId(userId);
+  if (typeof hidden !== 'boolean') throw new SharingError('invalid', 'hidden must be a boolean');
+  await managed(db, actor, publicId, async (tx, { account, raw, asAdmin }) => {
+    if (userId === account.ownerUserId) {
+      throw new SharingError('invalid', 'the owner is always listed on their own guild card');
+    }
+    if (!raw.links.some((l) => l.userId === userId)) {
+      throw new SharingError('invalid', 'this user is not a contributor');
+    }
+    const [link] = await tx
+      .select({ hiddenFromCard: accountLinks.hiddenFromCard })
+      .from(accountLinks)
+      .where(and(eq(accountLinks.accountId, account.id), eq(accountLinks.userId, userId)));
+    if (!link || link.hiddenFromCard === hidden) return;
+    await tx
+      .update(accountLinks)
+      .set({ hiddenFromCard: hidden })
+      .where(and(eq(accountLinks.accountId, account.id), eq(accountLinks.userId, userId)));
+    const action = hidden ? 'account.contributor_card_hidden' : 'account.contributor_card_shown';
     await auditChange(tx, actor, asAdmin, account.publicId, action, { userId });
   });
 }

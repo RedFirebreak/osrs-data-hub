@@ -18,6 +18,8 @@ export const AUDIT_ACTIONS = [
   'account.contributor_blocked',
   'account.contributor_unblocked',
   'account.contributor_removed',
+  'account.contributor_card_hidden',
+  'account.contributor_card_shown',
   'account.purged',
   'sharing.audience_changed',
   'sharing.grant_added',

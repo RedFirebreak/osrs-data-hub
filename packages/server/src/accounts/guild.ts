@@ -3,7 +3,7 @@
  * gains leaderboards (day, week, month).
  */
 import { sortSkillsForDisplay, type GuildFeedFilter, type Principal, type Viewer } from '@hub/core';
-import { users, type DbOrTx } from '@hub/db';
+import { accountLinks, users, type DbOrTx } from '@hub/db';
 import { and, eq, inArray } from 'drizzle-orm';
 import type { FeedEvent } from '../feed';
 import { getGuildFeedFilter } from '../settings/guild-feed';
@@ -53,7 +53,8 @@ export interface GuildOverview {
  *   those accounts sorted by name. An account appears under its owner; it appears under its
  *   (non-blocked) contributors too only for viewers who may read its contributor list, i.e. the same
  *   rule as the sharing settings (owner, contributors, admins; D-68). A plain member can't learn from
- *   this page who else plays an account. An account the viewer sees only through the admin override
+ *   this page who else plays an account. A contributor the owner hid the account from (D-116) doesn't
+ *   get it on their card, for any viewer. An account the viewer sees only through the admin override
  *   (nothing of it is theirs to read: every category private, or hidden from the guild, D-104) isn't
  *   listed: this page shows what the guild sees, and the account page is where an admin manages it;
  * - feed: the newest GUILD_FEED_EVENTS events the viewer may see (listFeed rules, redacted) that
@@ -85,8 +86,13 @@ async function loadMembers(
   visible: readonly AccountWithAccess[],
   now: Date,
 ): Promise<GuildMember[]> {
+  const listed = visible.filter(isGuildListed);
+  const offCard = await loadHiddenFromCard(
+    db,
+    listed.map((e) => e.account.id),
+  );
   const accountsByUser = new Map<string, AccountWithAccess[]>();
-  for (const entry of visible.filter(isGuildListed)) {
+  for (const entry of listed) {
     // Contributors are listed only to viewers who may read them in the sharing settings (D-68).
     const seesContributors =
       entry.access.relation === 'owner' ||
@@ -94,7 +100,9 @@ async function loadMembers(
       entry.access.canManage;
     const players = new Set(
       seesContributors
-        ? entry.raw.links.filter((l) => l.blocked === false).map((l) => l.userId)
+        ? entry.raw.links
+            .filter((l) => l.blocked === false && !offCard.has(cardKey(entry.account.id, l.userId)))
+            .map((l) => l.userId)
         : [],
     );
     if (entry.raw.ownerUserId !== null) players.add(entry.raw.ownerUserId);
@@ -127,6 +135,22 @@ async function loadMembers(
         .sort((a, b) => byName(a.name, b.name)),
     }))
     .sort((a, b) => byName(a.name, b.name) || a.userId.localeCompare(b.userId));
+}
+
+/** The (account, contributor) pairs whose guild card leaves the account out (D-116), as cardKey. */
+async function loadHiddenFromCard(db: DbOrTx, accountIds: readonly number[]): Promise<Set<string>> {
+  if (accountIds.length === 0) return new Set();
+  const rows = await db
+    .select({ accountId: accountLinks.accountId, userId: accountLinks.userId })
+    .from(accountLinks)
+    .where(
+      and(inArray(accountLinks.accountId, [...accountIds]), eq(accountLinks.hiddenFromCard, true)),
+    );
+  return new Set(rows.map((r) => cardKey(r.accountId, r.userId)));
+}
+
+function cardKey(accountId: number, userId: string): string {
+  return `${accountId}:${userId}`;
 }
 
 /**

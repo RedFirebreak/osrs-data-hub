@@ -17,6 +17,8 @@ export const sharingChangeSchema = z.discriminatedUnion('action', [
   z.strictObject({ action: z.literal('claim') }),
   z.strictObject({ action: z.literal('hide'), hidden: z.boolean() }),
   z.strictObject({ action: z.enum(['block', 'unblock', 'remove']), userId }),
+  // Whether the account is listed on this player's guild card (D-116).
+  z.strictObject({ action: z.literal('card'), userId, hidden: z.boolean() }),
 ]);
 
 export type SharingChange = z.infer<typeof sharingChangeSchema>;

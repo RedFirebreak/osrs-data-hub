@@ -1,5 +1,7 @@
 import { CATEGORIES } from '@hub/core';
+import { accountLinks } from '@hub/db';
 import { createTestDatabase, type TestDatabase } from '@hub/db/testing';
+import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { LEADERBOARD_SIZE, getGuildOverview } from './guild';
 import {
@@ -169,6 +171,30 @@ describe('getGuildOverview', () => {
     ).toEqual(['alice', 'Bob']);
     // A plain member sees the owner only.
     expect(shared(await getGuildOverview(t.db, viewer.viewer, { now: NOW }))).toEqual(['alice']);
+  });
+
+  it("leaves an account off a contributor's card when the owner hid it there (D-116)", async () => {
+    const shared = (guild: Awaited<ReturnType<typeof getGuildOverview>>) =>
+      guild.members.filter((m) => m.accounts.some((a) => a.name === 'Zulu')).map((m) => m.name);
+    const setHidden = (hidden: boolean) =>
+      t.db
+        .update(accountLinks)
+        .set({ hiddenFromCard: hidden })
+        .where(and(eq(accountLinks.accountId, zulu.id), eq(accountLinks.userId, bob.id)));
+    await setHidden(true);
+    try {
+      // For everyone who could see Bob there: the owner, Bob himself and an admin.
+      for (const v of [alice.viewer, bob.viewer, { ...viewer.viewer, isAdmin: true }]) {
+        const guild = await getGuildOverview(t.db, v, { now: NOW });
+        expect(shared(guild)).toEqual(['alice']);
+        // Only the card changes: Bob's own account is still under his name.
+        const bobs = guild.members.find((m) => m.name === 'Bob')?.accounts.map((a) => a.name);
+        expect(bobs).toContain('Yankee');
+        expect(bobs).not.toContain('Zulu');
+      }
+    } finally {
+      await setHidden(false);
+    }
   });
 
   it('shows online only where the viewer may see activity', async () => {
