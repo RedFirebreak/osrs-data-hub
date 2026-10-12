@@ -9,6 +9,8 @@
  * viewer counts as signed out here, or requireUser and this page would redirect in a loop.
  */
 import { getConfig } from '@hub/core';
+import { getDb } from '@hub/db';
+import { getInviteFriends } from '@hub/server';
 import { CalendarClockIcon, TriangleAlertIcon } from 'lucide-react';
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
@@ -17,7 +19,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { getViewer } from '@/lib/session';
 import { deletedNotice } from './deleted-notice';
-import { loginErrorMessage } from './login-messages';
+import { loginErrorMessage, normalizeErrorCode } from './login-messages';
 import { SignInButton } from './sign-in-button';
 
 export function generateMetadata(): Metadata {
@@ -38,7 +40,7 @@ export default async function LoginPage(props: PageProps<'/login'>) {
   const { error, deleted } = await props.searchParams;
   const config = getConfig();
   const guildName = config.discord.guildName;
-  const problem = loginErrorMessage(error, guildName);
+  const problem = loginErrorMessage(error, guildName, { invites: await invitesOpen(error) });
   const deletion = deletedNotice(deleted);
   // Where the button sends the browser: Discord, or the stand-in of local development (D-101).
   const signInHost = config.discord.authorizeUrl
@@ -104,4 +106,17 @@ export default async function LoginPage(props: PageProps<'/login'>) {
       </CardContent>
     </Card>
   );
+}
+
+/**
+ * Whether someone turned away for not being in the guild may hear about invites (D-117). Read only
+ * for that error, and a database failure just leaves the hint out: the login page must still render.
+ */
+async function invitesOpen(error: unknown): Promise<boolean> {
+  if (normalizeErrorCode(error) !== 'not_guild_member') return false;
+  try {
+    return (await getInviteFriends(getDb().db)).enabled;
+  } catch {
+    return false;
+  }
 }

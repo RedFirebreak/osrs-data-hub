@@ -69,6 +69,7 @@ describe('listUsers', () => {
       createdAt: expect.any(Date),
       devices: 2,
       accounts: 1,
+      friendOf: null,
     });
     expect(rows.find((r) => r.id === anna)).toMatchObject({
       status: 'grace',

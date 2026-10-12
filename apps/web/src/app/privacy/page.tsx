@@ -182,6 +182,11 @@ export default async function PrivacyPage() {
               your email and doesn&apos;t keep your Discord login tokens.
             </li>
             <li>
+              Friends: the Discord usernames you invited, or, if a member invited you, your username
+              and who invited you. Admins see every invite, and keep a list of usernames nobody may
+              invite.
+            </li>
+            <li>
               Your devices: the name you give them, the plugin version, when and from which IP
               address they last sent data. Their access token is stored only as a one-way hash.
             </li>
@@ -267,6 +272,12 @@ export default async function PrivacyPage() {
             access and your hidden accounts come back; your devices have to be paired again, and an
             account handed to another player meanwhile stays theirs. If an admin removed you, only
             an admin can undo it.
+          </p>
+          <p>
+            Friends you invited leave with you, in the same way. If you are here as someone&apos;s
+            friend, the same happens when the member who invited you leaves {guild}, removes you
+            from their friends, or an admin blacklists you. Sign in again while a member of {guild}
+            has you on their friends and you are back.
           </p>
         </Section>
 

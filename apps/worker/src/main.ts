@@ -5,7 +5,7 @@
  * |----------------------------|----------------------------------|
  * | close-stale-sessions       | every minute                     |
  * | reverify-members           | every 15 min, a batch of users due (staggered 6-hourly checks) |
- * | expire-grace               | hourly: grace expiry, then the orphaned-account purge (D-61) |
+ * | expire-grace               | hourly: stranded invited friends into grace (D-117), grace expiry, then the orphaned-account purge (D-61) |
  * | prune-audit-log            | daily                            |
  * | sync-hiscores              | every minute, the accounts due on the official hiscores (D-105) |
  * | Timescale policies         | reconciled at startup            |
@@ -24,6 +24,7 @@ import {
   expireGracePeriods,
   getLogger,
   getMetrics,
+  offboardStrandedFriends,
   pruneAuditLog,
   purgeOrphanedAccounts,
   reverifyDueMembers,
@@ -126,11 +127,21 @@ async function main() {
       },
       'expire-grace': (run) =>
         run(async () => {
-          // Grace expiry first (it transfers or deletes the accounts of users who leave), then the
-          // time-gated purge of accounts nobody can reclaim (D-61). The purge runs even when some
-          // users failed to expire; the first failure is reported afterwards.
+          // Invited friends left without a way in go into grace first (D-117), then grace expiry (it
+          // transfers or deletes the accounts of users who leave), then the time-gated purge of
+          // accounts nobody can reclaim (D-61). The purge runs even when some users failed to
+          // expire; the first failure is reported afterwards.
           let expired: Awaited<ReturnType<typeof expireGracePeriods>> | null = null;
           let failure: unknown = null;
+          let strandedFriends = 0;
+          try {
+            strandedFriends = await offboardStrandedFriends(db, {
+              graceDays: config.offboardGraceDays,
+              metrics,
+            });
+          } catch (err) {
+            failure = err;
+          }
           try {
             expired = await expireGracePeriods(db, { metrics });
           } catch (err) {
@@ -141,7 +152,7 @@ async function main() {
             metrics,
           });
           if (failure) throw failure;
-          return { ...expired, ...purged };
+          return { strandedFriends, ...expired, ...purged };
         }),
       'prune-audit-log': (run) =>
         run(() => pruneAuditLog(db, { retentionDays: config.auditLogRetentionDays })),

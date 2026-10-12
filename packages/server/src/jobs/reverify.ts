@@ -213,7 +213,8 @@ async function breakerTripped(
  * re-verification (actor label 'worker', no actor user) since now − intervalHours who are still in
  * grace for a membership reason. The audit entry says when and by whom; the user row says whether it
  * still stands, so a restore or an admin's own offboarding takes the user out of the count. Only
- * the window's entries are read (audit_log_at_idx). `active`: users now active.
+ * the window's entries are read (audit_log_at_idx). `active`: members now active (invited friends
+ * aren't re-verified, D-117).
  */
 async function windowCounts(
   db: Db,
@@ -236,12 +237,18 @@ async function windowCounts(
         inArray(users.offboardReason, [...REVERIFY_REASONS]),
       ),
     );
-  const [active] = await db.select({ n: count() }).from(users).where(eq(users.status, 'active'));
+  const [active] = await db
+    .select({ n: count() })
+    .from(users)
+    .where(and(eq(users.status, 'active'), eq(users.access, 'member')));
   return { recent: recent?.n ?? 0, active: active?.n ?? 0 };
 }
 
 /**
- * Active users with a Discord id never verified or verified before now − intervalHours. Fewest
+ * Active members with a Discord id never verified or verified before now − intervalHours. Invited
+ * friends (D-117) are not in the guild by definition: their access follows their invite and their
+ * inviter (offboardStrandedFriends), and a friend who joins the guild becomes a member at their next
+ * sign-in. Fewest
  * consecutive failures first, then oldest: a failed check leaves last_verified_at as it was, so
  * ordering by it alone would put users whose lookups keep failing (a deleted Discord account, say)
  * at the head of every batch, and batchSize of them would starve everyone else for good.
@@ -259,6 +266,7 @@ async function loadDueUsers(
     .where(
       and(
         eq(users.status, 'active'),
+        eq(users.access, 'member'),
         isNotNull(users.discordId),
         or(isNull(users.lastVerifiedAt), lt(users.lastVerifiedAt, cutoff)),
       ),

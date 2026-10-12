@@ -10,6 +10,7 @@ describe('navigation', () => {
     expect(accountMenuItemsFor(false).map((i) => i.label)).toEqual([
       'Devices',
       'API keys',
+      'Friends',
       'Settings',
       'Privacy',
     ]);

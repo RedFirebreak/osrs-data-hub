@@ -48,6 +48,9 @@ const OFFBOARD_REASON_LABELS: Readonly<Record<OffboardReason, string>> = {
   lost_role: 'Lost the required role',
   admin: 'Offboarded by an admin',
   self_delete: 'Deleted their data',
+  inviter_left: 'Their inviter left',
+  invite_removed: 'Removed by their inviter',
+  blacklisted: 'Blacklisted by an admin',
 };
 
 /** The reason's label; "Unknown reason" for null or a value this version doesn't know. */
@@ -385,6 +388,10 @@ export const DECOMMISSION_API_PATH = '/api/app/admin/decommission';
 export const GUILD_FEED_API_PATH = '/api/app/admin/guild-feed';
 
 export const MAP_LINK_API_PATH = '/api/app/admin/map-link';
+
+export const INVITE_FRIENDS_API_PATH = '/api/app/admin/invite-friends';
+
+export const FRIEND_BLACKLIST_API_PATH = '/api/app/admin/friend-blacklist';
 
 /**
  * How a failed admin request is told (failureMessage, lib/api-client.ts): `fallback` when the hub

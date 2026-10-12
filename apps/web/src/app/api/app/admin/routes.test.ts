@@ -3,16 +3,39 @@
  * foreign Origin on mutations), and each route's happy path against seeded data.
  */
 import { randomUUID } from 'node:crypto';
-import { DAY_MS, DEFAULT_GUILD_FEED_FILTER, DEFAULT_MAP_LINK, setConfigForTests } from '@hub/core';
-import { auditLog, devices, rawPayloads, session, users } from '@hub/db';
-import { getGuildFeedFilter, getMapLink, isDecommissioned } from '@hub/server';
+import {
+  DAY_MS,
+  DEFAULT_GUILD_FEED_FILTER,
+  DEFAULT_INVITE_FRIENDS,
+  DEFAULT_MAP_LINK,
+  setConfigForTests,
+} from '@hub/core';
+import {
+  auditLog,
+  devices,
+  friendBlacklist,
+  friendInvites,
+  rawPayloads,
+  session,
+  users,
+} from '@hub/db';
+import {
+  getGuildFeedFilter,
+  getInviteFriends,
+  getMapLink,
+  inviteFriend,
+  isDecommissioned,
+} from '@hub/server';
 import { and, desc, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { withTestDb, type WebTestContext } from '@/lib/test-utils';
 import { GET as getAuditLog } from './audit-log/route';
 import { PUT as putDecommission } from './decommission/route';
 import { DELETE as revokeDevice } from './devices/[id]/route';
+import { DELETE as unblacklist } from './friend-blacklist/[username]/route';
+import { POST as blacklist } from './friend-blacklist/route';
 import { PUT as putGuildFeed } from './guild-feed/route';
+import { PUT as putInviteFriends } from './invite-friends/route';
 import { PUT as putMapLink } from './map-link/route';
 import { GET as getRawPayload } from './raw-payloads/[id]/route';
 import { POST as offboard } from './users/[id]/offboard/route';
@@ -598,5 +621,122 @@ describe('PUT /api/app/admin/map-link', () => {
       mutation: true,
     });
     expect(await getMapLink(ctx.t.db)).toEqual(DEFAULT_MAP_LINK);
+  });
+});
+
+function inviteFriendsCall(body: unknown): Caller {
+  return (cookie, opts = {}) =>
+    putInviteFriends(
+      ctx.request('/api/app/admin/invite-friends', {
+        method: 'PUT',
+        cookie,
+        json: body,
+        ...originOpts(opts.origin),
+      }),
+    );
+}
+
+function blacklistCall(body: unknown): Caller {
+  return (cookie, opts = {}) =>
+    blacklist(
+      ctx.request('/api/app/admin/friend-blacklist', {
+        method: 'POST',
+        cookie,
+        json: body,
+        ...originOpts(opts.origin),
+      }),
+    );
+}
+
+function unblacklistCall(username: string): Caller {
+  return (cookie, opts = {}) =>
+    unblacklist(
+      ctx.request(`/api/app/admin/friend-blacklist/${encodeURIComponent(username)}`, {
+        method: 'DELETE',
+        cookie,
+        ...originOpts(opts.origin),
+      }),
+      { params: Promise.resolve({ username }) },
+    );
+}
+
+describe('PUT /api/app/admin/invite-friends', () => {
+  it('stores the setting and audits it (D-117)', async () => {
+    const res = await inviteFriendsCall({ enabled: false, maxPerMember: 5 })(adminCookie);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ enabled: false, maxPerMember: 5 });
+    expect(await getInviteFriends(ctx.t.db)).toEqual({ enabled: false, maxPerMember: 5 });
+    const back = await inviteFriendsCall(DEFAULT_INVITE_FRIENDS)(adminCookie);
+    expect(back.status).toBe(200);
+    expect(await getInviteFriends(ctx.t.db)).toEqual(DEFAULT_INVITE_FRIENDS);
+  });
+
+  it('refuses a malformed body with 400', async () => {
+    for (const body of [
+      {},
+      { enabled: true },
+      { enabled: true, maxPerMember: 0 },
+      { enabled: true, maxPerMember: 26 },
+      { enabled: 'yes', maxPerMember: 3 },
+      { enabled: true, maxPerMember: 3, extra: 1 },
+    ]) {
+      expect((await inviteFriendsCall(body)(adminCookie)).status).toBe(400);
+    }
+    expect(await getInviteFriends(ctx.t.db)).toEqual(DEFAULT_INVITE_FRIENDS);
+  });
+
+  it('is guarded', async () => {
+    await expectGuarded(inviteFriendsCall({ enabled: false, maxPerMember: 3 }), {
+      mutation: true,
+    });
+    expect(await getInviteFriends(ctx.t.db)).toEqual(DEFAULT_INVITE_FRIENDS);
+  });
+});
+
+describe('the friend blacklist routes', () => {
+  it('blacklists an invited friend, then takes the name off again (D-117)', async () => {
+    const inviter = await ctx.seedUser({ name: 'Inviter' });
+    await inviteFriend(ctx.t.db, {
+      actor: { userId: inviter, status: 'active', isAdmin: false },
+      username: 'route.friend',
+    });
+    const res = await blacklistCall({ username: '@Route.Friend' })(adminCookie);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      username: 'route.friend',
+      removedInvite: true,
+      offboarded: false,
+    });
+    expect(
+      await ctx.t.db.select().from(friendInvites).where(eq(friendInvites.username, 'route.friend')),
+    ).toEqual([]);
+
+    const off = await unblacklistCall('route.friend')(adminCookie);
+    expect(off.status).toBe(200);
+    expect(
+      await ctx.t.db
+        .select()
+        .from(friendBlacklist)
+        .where(eq(friendBlacklist.username, 'route.friend')),
+    ).toEqual([]);
+    const again = await unblacklistCall('route.friend')(adminCookie);
+    expect(again.status).toBe(404);
+  });
+
+  it('refuses something that is not a Discord username with 400', async () => {
+    for (const body of [{}, { username: 'a' }, { username: 'two words' }, { username: 3 }]) {
+      expect((await blacklistCall(body)(adminCookie)).status).toBe(400);
+    }
+  });
+
+  it('is guarded', async () => {
+    await expectGuarded(blacklistCall({ username: 'guarded.name' }), { mutation: true });
+    await expectGuarded(unblacklistCall('guarded.name'), { mutation: true });
+    expect(
+      await ctx.t.db
+        .select()
+        .from(friendBlacklist)
+        .where(eq(friendBlacklist.username, 'guarded.name')),
+    ).toEqual([]);
   });
 });
