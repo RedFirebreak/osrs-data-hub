@@ -13,7 +13,7 @@
   "dependencies": {
     "@hub/core": "workspace:*",
     "@hub/db": "workspace:*",
-    "drizzle-orm": "0.45.3",
+    "drizzle-orm": "0.45.4",
     "pg": "8.23.1",
     "pino": "10.4.0",
     "prom-client": "15.1.3",
