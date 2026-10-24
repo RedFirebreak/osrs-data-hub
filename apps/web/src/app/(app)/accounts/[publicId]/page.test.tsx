@@ -203,6 +203,7 @@ describe('account page', () => {
     expect(html).toContain('OldName');
     expect(html).toContain('World 302');
     expect(sortedHeadings(html)).toEqual([
+      'Collection log',
       'Hiscores',
       'Inventory',
       'Latest',
@@ -251,6 +252,7 @@ describe('account page', () => {
     await signIn({ name: 'Member' });
     const html = await render(account.publicId);
     expect(sortedHeadings(html)).toEqual([
+      'Collection log',
       'Hiscores',
       'Latest',
       'Right now',
