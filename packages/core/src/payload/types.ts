@@ -77,6 +77,12 @@ export interface PlayerSnapshot {
    * none is on; absent when the player doesn't share them, and from older plugins (D-119).
    */
   activePrayers?: string[];
+  /**
+   * After plugin 1.6.2 (`player.bank`, plugin PR #50): the GE value of the bank as the plugin last read
+   * it, and when (epoch ms, the player's clock). Read on every bank visit and kept across logins, so
+   * it can be old; absent until the bank was opened once, and when the player doesn't share it (D-124).
+   */
+  bank?: { value: number; readAt: number };
   /** stats.skills keyed by skill display name ("Attack", …, "Sailing"). Never contains Overall. */
   skills?: Record<string, SkillValue>;
   inventory?: ItemData[];

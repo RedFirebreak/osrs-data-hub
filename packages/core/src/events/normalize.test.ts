@@ -190,7 +190,6 @@ describe('normalizeEvents: fixtures', () => {
     expect(normalizeEvents(rawEvents('snapshot-normal'), recv)).toEqual({
       events: [],
       shutdown: null,
-      bankValue: null,
       skipped: 0,
     });
   });
@@ -298,27 +297,11 @@ describe('normalizeEvents: levelUp edge cases', () => {
     ]);
   });
 
-  it('bankValue is not a row: the newest valid one is returned (D-124)', () => {
-    const result = normalizeEvents(
-      [
-        ev('bankValue', { value: 2_000_000_000 }, { timestamp: R - 60_000 }),
-        ev('bankValue', { value: 1_500_000_000 }, { timestamp: R - 120_000 }),
-        ev('bankValue', { value: -1 }, { timestamp: R - 1000 }),
-        ev('bankValue', 'lots', { timestamp: R - 1000 }),
-      ],
-      recv,
-    );
-    expect(result.events).toEqual([]);
-    expect(result.skipped).toBe(2);
-    expect(result.bankValue).toEqual({ value: 2_000_000_000, occurredAt: new Date(R - 60_000) });
-  });
-
   it('skips a non-array levelUp as one event', () => {
     for (const data of [{ skill: 'Attack', level: 50 }, 'Attack 50', null, 5]) {
       expect(normalizeEvents([ev('levelUp', data)], recv)).toEqual({
         events: [],
         shutdown: null,
-        bankValue: null,
         skipped: 1,
       });
     }
@@ -328,7 +311,6 @@ describe('normalizeEvents: levelUp edge cases', () => {
     expect(normalizeEvents([ev('levelUp', [])], recv)).toEqual({
       events: [],
       shutdown: null,
-      bankValue: null,
       skipped: 0,
     });
   });

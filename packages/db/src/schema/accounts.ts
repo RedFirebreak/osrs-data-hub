@@ -218,7 +218,7 @@ export const latestState = pgTable('latest_state', {
   /** Equipment items as sent, with equipmentSlot. */
   equipment: jsonb('equipment'),
   equipmentUpdatedAt: tstz('equipment_updated_at'),
-  /** GE value of the bank when the plugin last read it (bankValue event, D-124). */
+  /** GE value of the bank when the plugin last read it (player.bank, D-124). */
   bankValue: bigint('bank_value', { mode: 'number' }),
   /** The plugin's time of that reading. */
   bankValueAt: tstz('bank_value_at'),

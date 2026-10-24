@@ -95,6 +95,10 @@ const PLAYER = {
       .array(z.string().regex(PRAYER_NAME, 'expected a Prayer constant name'))
       .max(MAX_ACTIVE_PRAYERS, `more than ${MAX_ACTIVE_PRAYERS} prayers`),
   }),
+  bank: z.looseObject({
+    value: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+    readAt: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+  }),
   // z.custom keeps the object itself: zod's looseObject silently drops a "__proto__" key.
   stats: z.looseObject({
     skills: z.custom<Record<string, unknown>>(isPlainObject, 'expected an object'),
@@ -133,8 +137,8 @@ const eventEnvelope = z.looseObject({
  *   more points drops the whole section; [] is kept), health / prayerPoints ({current, max}: smallint integers → `health` /
  *   `prayer`), spellbook ({id: smallint integer, name: string}), activePrayers.prayers (after plugin 1.6.2,
  *   D-119: at most 64 names of 1..64 characters `A-Z 0-9 _`; one that isn't drops the section; []
- *   is kept), stats.skills (object of at most 64
- *   entries {xp: integer 0..2^31−1, level: integer 0..32767}, more → section `player.stats`; an
+ *   is kept), bank ({value, readAt}: safe integers ≥ 0, plugin PR #50, D-124), stats.skills
+ *   (object of at most 64 entries {xp: integer 0..2^31−1, level: integer 0..32767}, more → section `player.stats`; an
  *   invalid ENTRY, or a name that is empty, longer than 64 characters, "Overall" (hub-derived),
  *   "Combat" (levelUp-only) or "__proto__", drops only that skill and records
  *   `player.stats.skills.<name>`; with no valid entry left `skills` is omitted),
@@ -213,6 +217,8 @@ function parsePlayer(value: unknown, skipped: Skipped): PlayerSnapshot | null {
   if (spellbook !== undefined) player.spellbook = spellbook;
   const activePrayers = section('activePrayers', PLAYER.activePrayers);
   if (activePrayers !== undefined) player.activePrayers = activePrayers.prayers;
+  const bank = section('bank', PLAYER.bank);
+  if (bank !== undefined) player.bank = { value: bank.value, readAt: bank.readAt };
   const skills = parseSkills(section('stats', PLAYER.stats), skipped);
   if (skills !== undefined) player.skills = skills;
   const inventory = section('inventory', itemsSection);

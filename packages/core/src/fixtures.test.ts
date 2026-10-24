@@ -63,6 +63,7 @@ interface WirePlayer {
   stats?: { skills: Record<string, WireSkill> };
   inventory?: { items: WireItem[] };
   equipment?: { items: WireItem[] };
+  bank?: { value: number; readAt: number };
 }
 
 interface WireBody {
@@ -89,6 +90,7 @@ const WIRE_PLAYER_KEYS = [
   'stats',
   'inventory',
   'equipment',
+  'bank',
 ];
 
 function wire(name: FixtureName): WireBody {
@@ -275,7 +277,6 @@ const lifecycle = (who: Who | null, shutdown: ShutdownReason): Expected => ({
 
 const EXPECTED: Record<FixtureName, Expected> = {
   'disabled-login-screen': lifecycle(null, 'disabled'),
-  'event-bank-value': withEvents('zezima'),
   'event-collectionlog-unresolved': withEvents('ironMira', 'collection_log'),
   'event-collectionlog': withEvents('ironMira', 'collection_log'),
   'event-combattask': withEvents('zezima', 'combat_task'),
@@ -300,6 +301,7 @@ const EXPECTED: Record<FixtureName, Expected> = {
   'snapshot-combat-burst-2': snapshot('zezima'),
   'snapshot-combat-burst-3': snapshot('zezima'),
   'snapshot-active-prayers': snapshot('zezima'),
+  'snapshot-bank': snapshot('zezima'),
   'snapshot-location-trail': snapshot('zezima'),
   'snapshot-no-sections': snapshot('zezima'),
   'snapshot-normal': snapshot('zezima'),
@@ -343,7 +345,14 @@ function expectedPatch(w: WireBody, recv: Date, special: boolean): LatestStatePa
     ...(p.stats && { skills: p.stats.skills, skillsUpdatedAt: recv }),
     ...(p.inventory && { inventory: p.inventory.items, inventoryUpdatedAt: recv }),
     ...(p.equipment && { equipment: p.equipment.items, equipmentUpdatedAt: recv }),
+    ...expectedBank(w),
   };
+}
+
+/** The bank reading a payload carries (D-124). */
+function expectedBank(w: WireBody): LatestStatePatch {
+  const field = w.player?.bank;
+  return field ? { bankValue: field.value, bankValueAt: new Date(field.readAt) } : {};
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -461,12 +470,13 @@ describe('fixtures: every payload through parse → normalize → plan', () => {
     expect(plan.locationPoints).toEqual(
       !derived ? [] : (p.locationTrail?.map((t) => row(t, t.timestamp)) ?? sampled),
     );
+    const bank = expectedBank(w).bankValue ?? null;
     expect(plan.wealth).toEqual(
       derived && p.inventory && p.equipment
         ? {
             day: '2026-09-21',
-            value: gpSum(p.inventory.items) + gpSum(p.equipment.items),
-            bank: null,
+            value: gpSum(p.inventory.items) + gpSum(p.equipment.items) + (bank ?? 0),
+            bank,
           }
         : null,
     );
@@ -598,7 +608,6 @@ describe('fixtures: stored events', () => {
     expect(normalized).toEqual({
       events: [],
       shutdown: { reason, occurredAt: new Date(wire(name).events![0]!.timestamp) },
-      bankValue: null,
       skipped: 0,
     });
   });
@@ -712,6 +721,24 @@ describe('fixtures: active prayers (snapshot-active-prayers, after plugin 1.6.2)
     const { plan } = ingest('snapshot-normal');
     expect(plan.latestPatch).not.toHaveProperty('activePrayers');
     expect(plan.latestPatch).not.toHaveProperty('activePrayersUpdatedAt');
+  });
+});
+
+describe('fixtures: the bank as a player field (snapshot-bank, after plugin 1.6.2)', () => {
+  it('after snapshot-normal: the reading with its own time, counted in the wealth (D-124)', () => {
+    const [, bank] = replay(['snapshot-normal', 'snapshot-bank']);
+    const sent = wire('snapshot-bank').player!.bank!;
+    expect(bank.plan.stale).toBe(false);
+    expect(bank.plan.latestPatch).toMatchObject({
+      bankValue: sent.value,
+      bankValueAt: new Date(sent.readAt),
+    });
+    expect(bank.plan.wealth).toMatchObject({ bank: sent.value });
+  });
+
+  it('sent again in the next message, it changes nothing', () => {
+    const [, , again] = replay(['snapshot-normal', 'snapshot-bank', 'snapshot-bank']);
+    expect(again.plan.latestPatch).not.toHaveProperty('bankValue');
   });
 });
 

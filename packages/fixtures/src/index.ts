@@ -10,7 +10,6 @@ const HTTP_DIR = path.join(import.meta.dirname, '..', 'http');
 
 export const FIXTURES = [
   'disabled-login-screen',
-  'event-bank-value',
   'event-collectionlog-unresolved',
   'event-collectionlog',
   'event-combattask',
@@ -32,6 +31,7 @@ export const FIXTURES = [
   'retry-overtaking-snapshot',
   'shutdown',
   'snapshot-active-prayers',
+  'snapshot-bank',
   'snapshot-combat-burst-1',
   'snapshot-combat-burst-2',
   'snapshot-combat-burst-3',

@@ -22,8 +22,6 @@ export interface SnapshotContext {
   deviceId: string;
   /** min(root.timestamp, recv). */
   payloadTs: Date;
-  /** The payload's newest bankValue event (normalizeEvents), if any (D-124). */
-  bankValue?: { value: number; occurredAt: Date } | null;
 }
 
 export interface XpWrite {

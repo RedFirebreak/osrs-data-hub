@@ -589,45 +589,38 @@ describe('events', () => {
 
 // ---- staleness and ordering ----------------------------------------------------------------------
 
-describe('bank value (plugin bankValue event, D-124)', () => {
-  it('sets the bank on latest_state, counts it in the wealth and stores no event row', async () => {
+describe('bank value (player.bank, D-124)', () => {
+  it('sets the bank at the time it was read, counts it in the wealth, and a resend changes nothing', async () => {
     const device = await h.seedDevice();
     const hash = newHash();
-    const first = wire('snapshot-normal', { hash });
-    expect((await h.send(device, first)).status).toBe(200);
-    const body = wire('event-bank-value', { hash });
-    const recv = new Date(ts(body) + 1_000);
+    expect((await h.send(device, wire('snapshot-normal', { hash }))).status).toBe(200);
+    const body = wire('snapshot-bank', { hash });
     expect((await h.send(device, body)).status).toBe(200);
 
     const { id: accountId } = await account(hash);
-    const sent = body.events?.[0] as { timestamp: number; data: { value: number } };
+    const p = playerOf(body);
+    const bank = p.bank as { value: number; readAt: number };
     expect(await latest(accountId)).toMatchObject({
-      bankValue: sent.data.value,
-      bankValueAt: new Date(sent.timestamp),
+      bankValue: bank.value,
+      bankValueAt: new Date(bank.readAt),
     });
     expect(await eventRows(accountId)).toEqual([]);
-    const p = playerOf(body);
     const carried = carriedValue(p.inventory.items, p.equipment.items);
-    const wealth = await t.db
-      .select()
-      .from(wealthDaily)
-      .where(eq(wealthDaily.accountId, accountId));
-    expect(wealth).toEqual([
-      expect.objectContaining({
-        day: utcDay(recv),
-        lastValue: carried + sent.data.value,
-        bankValue: sent.data.value,
-      }),
-    ]);
-
-    // The same event sent again changes nothing; a later snapshot keeps counting the bank.
-    expect((await h.send(device, body)).status).toBe(200);
-    const later = wire('snapshot-normal', { hash });
-    later.timestamp = ts(body) + 60_000;
-    expect((await h.send(device, later)).status).toBe(200);
-    expect(await latest(accountId)).toMatchObject({ bankValue: sent.data.value });
     const [day] = await t.db.select().from(wealthDaily).where(eq(wealthDaily.accountId, accountId));
-    expect(day?.lastValue).toBe(carried + sent.data.value);
+    expect(day).toMatchObject({ lastValue: carried + bank.value, bankValue: bank.value });
+
+    // Every message carries the last reading: the next one has the same, and an older one loses.
+    const next = wire('snapshot-bank', { hash });
+    next.timestamp = ts(body) + 60_000;
+    expect((await h.send(device, next)).status).toBe(200);
+    const older = wire('snapshot-bank', { hash });
+    older.timestamp = ts(body) + 120_000;
+    playerOf(older).bank = { value: 1, readAt: bank.readAt - 3_600_000 };
+    expect((await h.send(device, older)).status).toBe(200);
+    expect(await latest(accountId)).toMatchObject({
+      bankValue: bank.value,
+      bankValueAt: new Date(bank.readAt),
+    });
   });
 });
 
@@ -1528,10 +1521,11 @@ describe('session wealth (D-125)', () => {
     ]);
 
     // The bank is read during the session: it counts from the start, so it is no gain.
-    const bank = wire('event-bank-value', { hash });
+    const bank = wire('snapshot-bank', { hash });
     bank.timestamp = ts(first) + 30_000;
+    const value = (playerOf(bank).bank as { value: number }).value;
+    playerOf(bank).bank = { value, readAt: ts(first) + 29_000 };
     expect((await h.send(device, bank)).status).toBe(200);
-    const value = (bank.events?.[0] as { data: { value: number } }).data.value;
 
     // A later payload carries less: the inventory's first item is gone.
     const later = wire('snapshot-normal', { hash });

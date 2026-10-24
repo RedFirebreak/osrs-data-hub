@@ -6,7 +6,6 @@ import { clampEventTime } from '../time';
 import { parseCombatTaskName } from './combat-task';
 import {
   knownPluginEventType,
-  type BankValue,
   type KnownEventType,
   type NormalizedEvent,
   type NormalizeResult,
@@ -51,8 +50,6 @@ const NO_COLUMNS: Columns = {
  * - occurredAt: clampEventTime(event.timestamp, recv).
  * - clientShutdown: not a row; data "Logout" | "Shutdown" | "Disabled" → shutdown reason
  *   logout | shutdown | disabled (anything else → 'shutdown'). The LAST one wins.
- * - bankValue (D-124): not a row; data {value: integer ≥ 0} → bankValue {value, occurredAt}, the one
- *   with the latest occurredAt winning (the last of equal ones). Anything else is skipped and counted.
  * - levelUp: data must be an array; each element {skill: string, level: int} becomes a row with
  *   subIndex = its index in the original array (stable across resends). Invalid elements are
  *   skipped and counted; a non-array levelUp is skipped as one event. skill "Combat" is kept. A
@@ -83,7 +80,6 @@ const NO_COLUMNS: Columns = {
 export function normalizeEvents(events: readonly RawEvent[], recv: Date): NormalizeResult {
   const rows: NormalizedEvent[] = [];
   let shutdown: NormalizeResult['shutdown'] = null;
-  let bankValue: BankValue | null = null;
   let skipped = 0;
 
   for (const event of events) {
@@ -98,15 +94,6 @@ export function normalizeEvents(events: readonly RawEvent[], recv: Date): Normal
           ? SHUTDOWN_REASONS[data]
           : undefined;
       shutdown = { reason: reason ?? 'shutdown', occurredAt };
-      continue;
-    }
-
-    if (pluginType === 'bankValue') {
-      const value = isRecord(event.data) ? gpOrNull(event.data.value) : null;
-      if (value === null) skipped += 1;
-      else if (bankValue === null || occurredAt >= bankValue.occurredAt) {
-        bankValue = { value, occurredAt };
-      }
       continue;
     }
 
@@ -139,7 +126,7 @@ export function normalizeEvents(events: readonly RawEvent[], recv: Date): Normal
     rows.push({ ...base, subIndex: 0, ...NO_COLUMNS, ...columnsFor(known, event.data) });
   }
 
-  return { events: rows, shutdown, bankValue, skipped };
+  return { events: rows, shutdown, skipped };
 }
 
 function parseLevelUp(element: unknown): { skill: string; level: number } | null {
@@ -205,11 +192,6 @@ function int32(value: unknown): number | null {
 
 function smallint(value: unknown): number | null {
   return intIn(value, SMALLINT_MIN, SMALLINT_MAX);
-}
-
-/** A non-negative integer gp amount up to Number.MAX_SAFE_INTEGER; null for anything else. */
-function gpOrNull(value: unknown): number | null {
-  return Number.isSafeInteger(value) && (value as number) >= 0 ? (value as number) : null;
 }
 
 /** A gp amount (a Java long) for a bigint column: an integer clamped to [0, MAX_SAFE_INTEGER]. */

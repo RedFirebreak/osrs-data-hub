@@ -541,6 +541,34 @@ describe('parsePayload: player sections', () => {
   });
 });
 
+describe('parsePayload: bank (D-124)', () => {
+  it('reads the value and the time it was read, above 2^31 too', () => {
+    const p = normal((b) => (b.player.bank = { value: 12_000_000_000, readAt: 1_790_000_000_000 }));
+    expect(p.skipped.sections).toEqual([]);
+    expect(p.player!.bank).toEqual({ value: 12_000_000_000, readAt: 1_790_000_000_000 });
+  });
+
+  it('is absent when not shared', () => {
+    expect(normal().player).not.toHaveProperty('bank');
+  });
+
+  it('drops the section for a value or time that is not a whole number ≥ 0', () => {
+    for (const bank of [
+      { value: -1, readAt: 1 },
+      { value: 1.5, readAt: 1 },
+      { value: '5', readAt: 1 },
+      { value: 5 },
+      { readAt: 1 },
+      { value: 5, readAt: -1 },
+      5,
+    ]) {
+      const p = normal((b) => (b.player.bank = bank));
+      expect(p.skipped.sections).toEqual(['player.bank']);
+      expect(p.player).not.toHaveProperty('bank');
+    }
+  });
+});
+
 describe('parsePayload: activePrayers (D-119)', () => {
   it('reads the names as sent, and keeps [] when no prayer is on', () => {
     const on = normal(

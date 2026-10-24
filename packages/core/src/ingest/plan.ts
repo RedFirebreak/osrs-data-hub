@@ -48,9 +48,10 @@ import type {
  * - locationPoints: with a locationTrail (plugin 1.6) → planTrail's rows; without one, when location
  *   is present → the one sample {ts: floorTo(recv, 1 min), x, y, plane, onBoat: isOnBoat ?? false,
  *   world: player.world ?? prev.world ?? null}.
- * - bank (D-124): ctx.bankValue is applied (latestPatch.bankValue/bankValueAt) when its occurredAt is
- *   after prev.bankValueAt (or none is known), on a normal world and not XP-guarded. A stale snapshot
- *   still applies it: the event is the plugin's own record of one moment, delivered once.
+ * - bank (D-124): player.bank (readAt raised to the epoch and capped at recv) is applied
+ *   (latestPatch.bankValue/bankValueAt) when it was read after prev.bankValueAt (or none is known), on
+ *   a normal world and not XP-guarded. A stale snapshot still applies it: a reading is the plugin's
+ *   record of one moment, and the newest reading wins whatever order payloads arrive in.
  * - wealth: when BOTH inventory and equipment are present → {day: utcDay(recv), value: carriedValue +
  *   bank, bank}, bank being the value just applied, else prev.bankValue, else null (counted as 0).
  * - session: open = state === 'LOGGED_IN'; extend = state in IN_GAME_STATES; world = player.world ?? null.
@@ -83,7 +84,7 @@ export function planSnapshot(
     // Once a snapshot is answered 200 the plugin never sends its trail points again, so one that
     // lost the race still has points to keep.
     if (!special) plan.locationPoints = planTrail(prev, payload, ctx.recv, false);
-    const bank = special ? null : newerBank(prev, ctx);
+    const bank = special ? null : newerBank(prev, ctx, player);
     if (bank !== null) plan.latestPatch = bank;
     return plan;
   }
@@ -170,7 +171,7 @@ export function planSnapshot(
       plan.equipmentChange = player.equipment;
     }
   }
-  const bankPatch = newerBank(prev, ctx);
+  const bankPatch = newerBank(prev, ctx, player);
   if (bankPatch !== null) Object.assign(patch, bankPatch);
   if (player.inventory !== undefined && player.equipment !== undefined) {
     const bank = bankPatch?.bankValue ?? prev?.bankValue ?? null;
@@ -189,8 +190,9 @@ export function planSnapshot(
 function newerBank(
   prev: PrevState | null,
   ctx: SnapshotContext,
+  player: PlayerSnapshot,
 ): { bankValue: number; bankValueAt: Date } | null {
-  const sent = ctx.bankValue ?? null;
+  const sent = bankReading(player, ctx.recv);
   if (sent === null) return null;
   const known = prev?.bankValueAt ?? null;
   if (known !== null && sent.occurredAt <= known) return null;
@@ -301,4 +303,19 @@ function sameSlots(a: ReadonlyMap<string, number>, b: ReadonlyMap<string, number
     if (b.get(slot) !== id) return false;
   }
   return true;
+}
+
+/**
+ * The payload's bank reading (D-124). readAt comes from the player's clock, so it is capped at recv: a
+ * clock running ahead must not make a reading look newer than the next one. It is not raised to
+ * recv − 15 min like an event time, as the plugin keeps the last reading across logins.
+ */
+function bankReading(
+  player: PlayerSnapshot,
+  recv: Date,
+): { value: number; occurredAt: Date } | null {
+  const field = player.bank;
+  if (field === undefined) return null;
+  const readAt = new Date(Math.min(Math.max(field.readAt, 0), recv.getTime()));
+  return { value: field.value, occurredAt: readAt };
 }
