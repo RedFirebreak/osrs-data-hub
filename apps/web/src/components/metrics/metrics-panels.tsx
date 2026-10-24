@@ -1,6 +1,6 @@
 /**
  * Deep dive's panels that are text rather than charts (D-106): the totals of the range, the session recaps with their records, the skills with
- * their progress and rates, and the bosses. Server components (links carry the page's filters).
+ * their progress and rates (the bosses are boss-cards.tsx). Server components (links carry the page's filters).
  */
 import {
   MAX_REAL_LEVEL,
@@ -9,7 +9,7 @@ import {
   metricsSearch,
   type MetricsQuery,
 } from '@hub/core';
-import type { AccountMetrics, BossMetrics, SessionCard, SkillMetrics } from '@hub/server';
+import type { AccountMetrics, SessionCard, SkillMetrics } from '@hub/server';
 import { TrophyIcon } from 'lucide-react';
 import type { Route } from 'next';
 import Link from 'next/link';
@@ -26,7 +26,6 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { formatInZone } from '@/lib/dates';
-import { bossHref } from '@/lib/routes';
 import { skillTint } from '@/lib/skill-colors';
 import { cn } from '@/lib/utils';
 import { formatEtaMs, formatMs, formatRate, formatShare } from './format';
@@ -411,82 +410,6 @@ export function SkillsProgress({ skills }: { skills: readonly SkillMetrics[] }) 
             <TableCell className="hidden text-right md:table-cell">
               {formatEtaMs(row.etaMs)}
             </TableCell>
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
-  );
-}
-
-// --- Bosses --------------------------------------------------------------------------------------
-
-export function BossesTable({
-  bosses,
-  publicId,
-  query,
-  showGp,
-  modeLabel,
-}: {
-  bosses: readonly BossMetrics[];
-  publicId: string;
-  query: MetricsQuery;
-  showGp: boolean;
-  /** The iron table's name for an iron account ("Ironman"), else null. */
-  modeLabel: string | null;
-}) {
-  // A boss page has a range of its own: it keeps this view's, not its measure or session.
-  const search = metricsSearch({ ...query, session: null, measure: 'xp', skills: [], bosses: [] });
-  return (
-    <Table className="tabular-nums">
-      <TableHeader>
-        <TableRow className="hover:bg-transparent">
-          <TableHead scope="col">Boss</TableHead>
-          <TableHead scope="col" className="text-right">
-            Kills
-          </TableHead>
-          <TableHead scope="col" className="text-right">
-            In range
-          </TableHead>
-          {showGp && (
-            <TableHead scope="col" className="hidden text-right sm:table-cell">
-              Loot in range
-            </TableHead>
-          )}
-          <TableHead scope="col" className="hidden text-right md:table-cell">
-            Rank
-          </TableHead>
-          {modeLabel !== null && (
-            <TableHead scope="col" className="hidden text-right md:table-cell">
-              {modeLabel} rank
-            </TableHead>
-          )}
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {bosses.map((b) => (
-          <TableRow key={b.activity} className={cn(b.gained === 0 && 'text-muted-foreground')}>
-            <TableHead scope="row" className="font-medium">
-              <Link href={bossHref(publicId, b.activity, search)} className="hover:underline">
-                {b.activity}
-              </Link>
-            </TableHead>
-            <TableCell className="text-right">{formatNumber(b.score)}</TableCell>
-            <TableCell className="text-right">
-              {b.gained > 0 ? `+${formatNumber(b.gained)}` : '—'}
-            </TableCell>
-            {showGp && (
-              <TableCell className="hidden text-right sm:table-cell">
-                {b.gp ? `${formatGp(b.gp)} gp` : '—'}
-              </TableCell>
-            )}
-            <TableCell className="hidden text-right md:table-cell">
-              {formatNumber(b.rank)}
-            </TableCell>
-            {modeLabel !== null && (
-              <TableCell className="hidden text-right md:table-cell">
-                {formatNumber(b.modeRank)}
-              </TableCell>
-            )}
           </TableRow>
         ))}
       </TableBody>

@@ -18,6 +18,7 @@ import {
 import { accountNames, latestState, users, type DbOrTx } from '@hub/db';
 import { and, desc, eq, ne } from 'drizzle-orm';
 import type { FeedEvent } from '../feed';
+import { readKillGains } from '../account-metrics/read';
 import { loadHiscoresViews, type HiscoresView } from '../hiscores/read';
 import { DEFAULT_TIMEZONE } from '../settings/user-settings';
 import {
@@ -122,8 +123,12 @@ export interface AccountPage {
    * hiscores (D-105): what the hub last read from the official hiscores. Never "not shared": the
    * view says whether the account was looked up yet (`status`, `fetchedAt`). Without `activity`,
    * `fetchedAt` carries only the day, like skills (D-50): a lookup follows a session's end.
+   * `weekGains` is the score gained per activity in the last 7 days, as the skills' `gains.week`
+   * (D-110: rises between two readings, never a baseline; an activity without a rise is absent).
    */
-  hiscores: { visible: false } | { visible: true; data: HiscoresView };
+  hiscores:
+    | { visible: false }
+    | { visible: true; data: HiscoresView & { weekGains: Record<string, number> } };
 }
 
 type LatestRow = typeof latestState.$inferSelect;
@@ -168,7 +173,12 @@ export async function getAccountPage(
       view.fetchedAt === null || can('activity')
         ? view.fetchedAt
         : startOfLocalDay(new Date(view.fetchedAt), timezone).toISOString();
-    hiscores = { visible: true, data: { ...view, fetchedAt } };
+    const weekGains: Record<string, number> = {};
+    const week = { from: periodStarts(opts.now, timezone).week, to: opts.now };
+    for (const g of await readKillGains(db, [account.id], week)) {
+      weekGains[g.activity] = (weekGains[g.activity] ?? 0) + g.kills;
+    }
+    hiscores = { visible: true, data: { ...view, fetchedAt, weekGains } };
   }
 
   return {

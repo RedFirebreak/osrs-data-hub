@@ -1,4 +1,4 @@
-import { accountNames } from '@hub/db';
+import { accountNames, activityScores } from '@hub/db';
 import { createTestDatabase, type TestDatabase } from '@hub/db/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PAGE_EVENTS, getAccountPage, type AccountPage } from './account-page';
@@ -318,5 +318,29 @@ describe('getAccountPage sections', () => {
       account: { publicId: zezima.publicId, name: 'Zezima' },
     });
     expect(page.recentEvents).toMatchObject({ updatedAt: events[0]?.receivedAt });
+  });
+});
+
+describe('getAccountPage hiscores', () => {
+  it('adds the kills gained in the last 7 days, never a baseline (D-110)', async () => {
+    const row = (activity: string, at: Date, score: number, baseline = false) => ({
+      accountId: zezima.id,
+      activity,
+      readAt: at,
+      score,
+      baseline,
+    });
+    await t.db.insert(activityScores).values([
+      // A baseline 10 days ago, +5 before the week, then +3 and +4 inside it.
+      row('Zulrah', ago(10 * 86_400_000), 100, true),
+      row('Zulrah', ago(8 * 86_400_000), 105),
+      row('Zulrah', ago(3 * 86_400_000), 108),
+      row('Zulrah', ago(86_400_000), 112),
+      // Only a baseline inside the week: nothing gained.
+      row('Vorkath', ago(86_400_000), 50, true),
+    ]);
+    const page = await getAccountPage(t.db, owner.viewer, zezima.publicId, { now: NOW });
+    if (!page?.hiscores.visible) throw new Error('hiscores hidden');
+    expect(page.hiscores.data.weekGains).toEqual({ Zulrah: 7 });
   });
 });
