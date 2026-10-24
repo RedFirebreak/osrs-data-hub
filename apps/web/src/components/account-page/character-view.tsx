@@ -314,7 +314,7 @@ function playtimeSection({ page, viewer, publicId, renderedAt, timezone }: Secti
 }
 
 /** Wealth reads the wealth history (`inventory`); its recent sessions also need `activity` (D-125). */
-function wealthSection({ page, viewer, publicId, renderedAt, timezone }: SectionContext) {
+function wealthSection({ page, viewer, publicId, renderedAt }: SectionContext) {
   if (!page.inventory.visible || !page.inventory.shared) return null;
   return (
     <Suspense
@@ -325,7 +325,7 @@ function wealthSection({ page, viewer, publicId, renderedAt, timezone }: Section
         </CardSkeleton>
       }
     >
-      <WealthCard publicId={publicId} viewer={viewer} now={renderedAt} timezone={timezone} />
+      <WealthCard publicId={publicId} viewer={viewer} now={renderedAt} />
     </Suspense>
   );
 }
