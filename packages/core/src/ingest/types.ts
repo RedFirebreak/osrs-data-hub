@@ -56,6 +56,8 @@ export interface LatestStatePatch {
   spellbookId?: number;
   spellbook?: string;
   spellbookUpdatedAt?: Date;
+  activePrayers?: string[];
+  activePrayersUpdatedAt?: Date;
   location?: Location;
   locationUpdatedAt?: Date;
   skills?: Record<string, { xp: number; level: number }>;

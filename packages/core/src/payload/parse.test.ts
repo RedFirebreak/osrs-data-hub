@@ -541,6 +541,43 @@ describe('parsePayload: player sections', () => {
   });
 });
 
+describe('parsePayload: activePrayers (D-119)', () => {
+  it('reads the names as sent, and keeps [] when no prayer is on', () => {
+    const on = normal(
+      (b) => (b.player.activePrayers = { prayers: ['PROTECT_FROM_MELEE', 'RP_TRINITAS', 'ZEAL'] }),
+    );
+    expect(on.skipped.sections).toEqual([]);
+    expect(on.player!.activePrayers).toEqual(['PROTECT_FROM_MELEE', 'RP_TRINITAS', 'ZEAL']);
+    expect(normal((b) => (b.player.activePrayers = { prayers: [] })).player!.activePrayers).toEqual(
+      [],
+    );
+  });
+
+  it('is absent when not shared', () => {
+    const p = normal();
+    expect(p.player).not.toHaveProperty('activePrayers');
+    expect(p.skipped.sections).toEqual([]);
+  });
+
+  it('drops the whole section for a name that is not a Prayer constant, or too many', () => {
+    for (const prayers of [
+      ['PIETY', 'piety'],
+      ['PIETY', ''],
+      ['PIETY', 7],
+      ['A'.repeat(65)],
+      'PIETY',
+      Array.from({ length: 65 }, () => 'PIETY'),
+    ]) {
+      const p = normal((b) => (b.player.activePrayers = { prayers }));
+      expect(p.skipped.sections).toEqual(['player.activePrayers']);
+      expect(p.player).not.toHaveProperty('activePrayers');
+    }
+    expect(normal((b) => (b.player.activePrayers = ['PIETY'])).skipped.sections).toEqual([
+      'player.activePrayers',
+    ]);
+  });
+});
+
 describe('parsePayload: stats.skills', () => {
   it('drops only an invalid skill entry and records its path', () => {
     const p = normal((b) => {

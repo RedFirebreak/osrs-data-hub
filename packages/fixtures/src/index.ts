@@ -1,5 +1,5 @@
 /**
- * HA Exporter payload fixtures (v1.5, and one of v1.6; wire-exact, anonymized). See ../README.md for
+ * HA Exporter payload fixtures (v1.5, one of v1.6 and one after 1.6.2; wire-exact, anonymized). See ../README.md for
  * what each file is and which plugin code path produces it.
  */
 import { readFileSync, readdirSync } from 'node:fs';
@@ -30,6 +30,7 @@ export const FIXTURES = [
   'retry-duplicate-b',
   'retry-overtaking-snapshot',
   'shutdown',
+  'snapshot-active-prayers',
   'snapshot-combat-burst-1',
   'snapshot-combat-burst-2',
   'snapshot-combat-burst-3',

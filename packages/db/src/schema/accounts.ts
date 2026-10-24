@@ -202,6 +202,9 @@ export const latestState = pgTable('latest_state', {
   spellbookId: smallint('spellbook_id'),
   spellbook: text('spellbook'),
   spellbookUpdatedAt: tstz('spellbook_updated_at'),
+  /** RuneLite Prayer names that were on in the last snapshot, prayer book order (D-119). */
+  activePrayers: text('active_prayers').array(),
+  activePrayersUpdatedAt: tstz('active_prayers_updated_at'),
   /** {x, y, plane, isOnBoat} */
   location: jsonb('location'),
   locationUpdatedAt: tstz('location_updated_at'),

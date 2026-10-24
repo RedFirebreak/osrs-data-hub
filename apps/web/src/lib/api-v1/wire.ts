@@ -179,6 +179,7 @@ export function wireSnapshotAccount(a: ApiSnapshotAccount): WireSnapshotAccount 
   if (a.hp !== undefined) out.hp = a.hp;
   if (a.prayer !== undefined) out.prayer = a.prayer;
   if (a.spellbook !== undefined) out.spellbook = a.spellbook;
+  if (a.activePrayers !== undefined) out.active_prayers = a.activePrayers;
   if (a.location !== undefined) {
     out.location = a.location && { ...wireLocation(a.location), updated_at: a.location.updatedAt };
   }

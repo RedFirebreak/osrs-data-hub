@@ -7,9 +7,8 @@
 import { DAY_MS, floorTo, itemsValue, type Category } from '@hub/core';
 import { latestState, type DbOrTx } from '@hub/db';
 import { getTableColumns, inArray, sql } from 'drizzle-orm';
-import { locationOf, skillLevels, vitalsOf } from '../accounts/account-page';
+import { locationOf, skillLevels, vitalsOf, vitalsUpdatedAt } from '../accounts/account-page';
 import { toPresence } from '../accounts/load';
-import { latestOf } from '../accounts/sections';
 import { parseSkills } from '../accounts/xp';
 import type { ApiItem, ApiMeter, ApiSection } from './types';
 import { toApiItems } from './types';
@@ -30,11 +29,13 @@ export interface ApiPresence {
   lastSeen: string;
 }
 
-/** HP, prayer and spellbook (`activity`); each null until the plugin first sent it. */
+/** HP, prayer, spellbook and active prayers (`activity`); each null until the plugin first sent it. */
 export interface ApiVitals {
   hp: ApiMeter | null;
   prayer: ApiMeter | null;
   spellbook: string | null;
+  /** RuneLite `Prayer` names in prayer book order (D-119); [] when none is on or the player is offline. */
+  activePrayers: string[] | null;
 }
 
 export interface ApiSkill {
@@ -102,11 +103,6 @@ export async function loadLatestRows(
     .where(inArray(latestState.accountId, [...accountIds]));
   for (const row of rows) out.set(row.accountId, row);
   return out;
-}
-
-/** When the vitals section was last received: the newest of its three parts, or null. */
-function vitalsUpdatedAt(row: LatestRow): Date | null {
-  return latestOf(row.healthUpdatedAt, row.prayerUpdatedAt, row.spellbookUpdatedAt);
 }
 
 /** Skills, or null when the plugin never sent stats (or they aren't readable). */
@@ -178,8 +174,12 @@ export function accountSections(
   const stamp = (at: Date | null) => (at === null || can('activity') ? at : floorTo(at, DAY_MS));
   const out: ApiStateSections = {};
   if (can('activity')) {
-    out.presence = section(row?.lastSeen ?? null, row ? toPresence(row, now) : null);
-    out.vitals = section(row ? vitalsUpdatedAt(row) : null, row ? vitalsOf(row) : null);
+    const presence = row ? toPresence(row, now) : null;
+    out.presence = section(row?.lastSeen ?? null, presence);
+    out.vitals = section(
+      row ? vitalsUpdatedAt(row) : null,
+      row && presence ? vitalsOf(row, presence.online) : null,
+    );
   }
   if (can('stats')) {
     out.skills = section(stamp(row?.skillsUpdatedAt ?? null), row ? skillsOf(row) : null);

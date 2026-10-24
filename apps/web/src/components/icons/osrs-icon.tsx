@@ -12,12 +12,14 @@
  *   <ItemIcon itemId={995} quantity={250} fallback={<span>Coins</span>} />
  *   <SkillIcon skill="Attack" />
  *   <SlotIcon slot="AMULET" fallback={<span>Neck</span>} />
+ *   <PrayerIcon prayer="PIETY" fallback={<span>Piety</span>} />
  */
 import { useCallback, useState } from 'react';
 import {
   eventIconUrl,
   eventItemQuantity,
   itemIconUrl,
+  prayerIconUrl,
   skillIconUrl,
   slotIconUrl,
   type EventIconSource,
@@ -210,6 +212,32 @@ export function EventGameIcon({
       src={eventIconUrl(base, stacks, event)}
       width={20}
       height={20}
+      className={box}
+      fallback={fallbackFor(base, { holdSpace, fallback }, box)}
+      {...rest}
+    />
+  );
+}
+
+/**
+ * A prayer's lit prayer-book icon (RuneLite Prayer name, D-119) in a 30 px square: the sprites are
+ * 14–30 px and not square, so the box keeps a row even. Only ever scaled down. Size it with
+ * className (`size-*`).
+ */
+export function PrayerIcon({
+  prayer,
+  className,
+  holdSpace,
+  fallback,
+  ...rest
+}: IconProps & { prayer: string }) {
+  const { base } = useIconConfig();
+  const box = cn('size-[30px] shrink-0 object-scale-down', className);
+  return (
+    <OsrsImage
+      src={prayerIconUrl(base, prayer)}
+      width={30}
+      height={30}
       className={box}
       fallback={fallbackFor(base, { holdSpace, fallback }, box)}
       {...rest}

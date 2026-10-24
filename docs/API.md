@@ -63,7 +63,7 @@ For the guild's own services (its live map, a shared bot) an admin creates a **s
 |---|---|
 | `stats` | skills, XP history, gains, levels |
 | `events` | loot, level-ups, deaths, collection log, diaries, combat tasks, superiors |
-| `activity` | online status, world, sessions and playtime, HP, prayer, spellbook |
+| `activity` | online status, world, sessions and playtime, HP, prayer, active prayers, spellbook |
 | `location_live` | current coordinates (for the live map) |
 | `location_history` | the 30-day trail |
 | `equipment` | current gear and its change log |
@@ -215,7 +215,7 @@ Each section sent by the plugin carries `shared: true` and `updated_at`.
      "categories":["stats","events","activity","location_live"],
      "presence":{"shared":true,"updated_at":"2026-09-29T14:13:42.046Z","online":true,"world":302,"special_world":false,
                  "game_state":"LOGGED_IN","last_seen":"2026-09-29T14:13:42.046Z"},
-     "vitals":{"shared":true,"updated_at":"…","hp":{"current":99,"max":99},"prayer":{"current":99,"max":99},"spellbook":"lunar"},
+     "vitals":{"shared":true,"updated_at":"…","hp":{"current":99,"max":99},"prayer":{"current":99,"max":99},"spellbook":"lunar","active_prayers":[],"active_prayers":["PROTECT_FROM_MELEE","PIETY"]},
      "skills":{"shared":true,"updated_at":"…","total_level":2372,"overall_xp":534951983,
                "skills":[{"skill":"Overall","level":2372,"real_level":2372,"xp":534951983},
                          {"skill":"Attack","level":108,"real_level":99,"xp":34517847},…]},
@@ -245,7 +245,9 @@ Each account has `id`, `name`, `type`, `type_label`, `owner` and `categories` (a
 service key). The other fields depend on the key's categories on that account:
 
 - `activity`: `online`, `world`, `special_world`, `game_state`, `last_seen`, `hp`, `prayer`,
-  `spellbook`;
+  `spellbook`, `active_prayers` (RuneLite `Prayer` names in prayer book order, such as
+  `PROTECT_FROM_MELEE`, `PIETY`, `RP_TRINITAS`; `[]` when none is on or the account is offline, `null`
+  until the plugin first sent them; D-119);
 - `location_live`: `location` (with `stale` and `updated_at`);
 - `stats`: `skills`;
 - `equipment`: `equipment`;

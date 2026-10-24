@@ -59,6 +59,7 @@ interface WirePlayer {
   health?: WireMeter;
   prayerPoints?: WireMeter;
   spellbook?: { id: number; name: string };
+  activePrayers?: { prayers: string[] };
   stats?: { skills: Record<string, WireSkill> };
   inventory?: { items: WireItem[] };
   equipment?: { items: WireItem[] };
@@ -84,6 +85,7 @@ const WIRE_PLAYER_KEYS = [
   'health',
   'prayerPoints',
   'spellbook',
+  'activePrayers',
   'stats',
   'inventory',
   'equipment',
@@ -292,6 +294,7 @@ const EXPECTED: Record<FixtureName, Expected> = {
   'snapshot-combat-burst-1': snapshot('zezima'),
   'snapshot-combat-burst-2': snapshot('zezima'),
   'snapshot-combat-burst-3': snapshot('zezima'),
+  'snapshot-active-prayers': snapshot('zezima'),
   'snapshot-location-trail': snapshot('zezima'),
   'snapshot-no-sections': snapshot('zezima'),
   'snapshot-normal': snapshot('zezima'),
@@ -326,6 +329,10 @@ function expectedPatch(w: WireBody, recv: Date, special: boolean): LatestStatePa
       spellbookId: p.spellbook.id,
       spellbook: p.spellbook.name,
       spellbookUpdatedAt: recv,
+    }),
+    ...(p.activePrayers && {
+      activePrayers: p.activePrayers.prayers,
+      activePrayersUpdatedAt: recv,
     }),
     ...(p.location && { location: p.location, locationUpdatedAt: recv }),
     ...(p.stats && { skills: p.stats.skills, skillsUpdatedAt: recv }),
@@ -675,6 +682,26 @@ describe('fixtures: players', () => {
     expect(payload).toMatchObject({ player: null, state: 'LOGIN_SCREEN', events: [{}] });
     expect(normalized.shutdown?.reason).toBe('logout');
     expect(plan.session).toEqual({ open: false, extend: false, world: null });
+  });
+});
+
+describe('fixtures: active prayers (snapshot-active-prayers, after plugin 1.6.2)', () => {
+  it('after snapshot-normal: the names as sent, in prayer book order, with their own time (D-119)', () => {
+    const [, prayers] = replay(['snapshot-normal', 'snapshot-active-prayers']);
+    expect(prayers.payload.player?.activePrayers).toEqual(['PROTECT_FROM_MELEE', 'PIETY']);
+    expect(prayers.plan.stale).toBe(false);
+    expect(prayers.plan.latestPatch).toMatchObject({
+      activePrayers: ['PROTECT_FROM_MELEE', 'PIETY'],
+      activePrayersUpdatedAt: prayers.recv,
+    });
+    // Nothing else changed: same gear, same XP.
+    expect(prayers.plan).toMatchObject({ xpWrites: [], equipmentChange: null });
+  });
+
+  it('snapshot-normal, without the section, leaves the active prayers out of the patch', () => {
+    const { plan } = ingest('snapshot-normal');
+    expect(plan.latestPatch).not.toHaveProperty('activePrayers');
+    expect(plan.latestPatch).not.toHaveProperty('activePrayersUpdatedAt');
   });
 });
 
