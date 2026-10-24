@@ -1,6 +1,7 @@
 'use client';
 /**
- * Carried wealth per day (inventory + equipment, GE value): the day's end value and its high, drawn
+ * Wealth per day (inventory + equipment + the last known bank, GE value; D-124): the day's end value
+ * and its high, drawn
  * by the lazy EChart, with the numbers in a table below (newest day first: ChartWithTable's rule)
  * for screen readers.
  */
@@ -21,13 +22,17 @@ export function WealthChart({ days, className }: WealthChartProps) {
     <ChartWithTable
       className={className}
       option={option}
-      label={`Carried wealth per day over ${days.length} days${
+      label={`Wealth per day over ${days.length} days${
         newest ? `, ${formatGp(newest.lastValue)} gp at the end of ${newest.day}` : ''
       }`}
-      columns={['Day (UTC)', WEALTH_SERIES.last, WEALTH_SERIES.max]}
+      columns={['Day (UTC)', WEALTH_SERIES.last, WEALTH_SERIES.max, 'Bank']}
       rows={days.map((d) => ({
         day: d.day,
-        values: [formatGp(d.lastValue), formatGp(d.maxValue)],
+        values: [
+          formatGp(d.lastValue),
+          formatGp(d.maxValue),
+          d.bankValue == null ? '–' : formatGp(d.bankValue),
+        ],
       }))}
     />
   );

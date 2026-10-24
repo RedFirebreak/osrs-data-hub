@@ -3627,17 +3627,29 @@
                     },
                     "last_value": {
                       "type": "integer",
-                      "description": "Carried value at the day’s last update (GE)."
+                      "description": "Wealth at the day’s last update (GE): inventory and equipment, plus the bank as the plugin last read it (`bank_value`)."
                     },
                     "max_value": {
                       "type": "integer",
-                      "description": "The day’s highest carried value."
+                      "description": "The day’s highest wealth."
+                    },
+                    "bank_value": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "description": "The bank value counted in `last_value`; null on days before the plugin sent one (plugin bankValue event)."
                     }
                   },
                   "required": [
                     "day",
                     "last_value",
-                    "max_value"
+                    "max_value",
+                    "bank_value"
                   ]
                 },
                 "description": "Oldest first."

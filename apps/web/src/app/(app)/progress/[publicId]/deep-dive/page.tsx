@@ -4,7 +4,7 @@
  * the effective-hours heatmap, the sessions scatter, the rate through a session, where the time
  * goes, the session recaps, the skills, the bosses and the goals, all from @hub/server
  * getAccountMetrics, which leaves out every panel whose sharing category the viewer lacks. Under
- * them, whatever the range: playtime per day with the recent sessions, and carried wealth per day.
+ * them, whatever the range: playtime per day with the recent sessions, and wealth (carried plus bank) per day.
  *
  * Not at /metrics: that is the hub's Prometheus endpoint. The visibility check runs before anything
  * streams, so an unknown account is a real 404 (NEXT-14).
@@ -262,7 +262,7 @@ async function MetricsContent({ publicId, query }: { publicId: string; query: Me
             <SectionCard
               id="wealth"
               title="Wealth"
-              description={`Carried value (inventory and gear) per day, last ${HISTORY_DAYS} days.`}
+              description={`Bank, inventory and gear at GE value per day, last ${HISTORY_DAYS} days. The bank counts from the first time the plugin read it.`}
             >
               <Suspense fallback={<Skeleton className="h-64 w-full rounded-lg" />}>
                 <WealthLoader publicId={publicId} />
@@ -288,7 +288,7 @@ async function ActivityLoader({ publicId, timezone }: { publicId: string; timezo
   return <ActivityContent sessions={sessions} playtime={playtime} timezone={timezone} />;
 }
 
-/** Carried wealth per day: the `inventory` category. */
+/** Wealth per day (carried plus bank, D-124): the `inventory` category. */
 async function WealthLoader({ publicId }: { publicId: string }) {
   const { viewer } = await requireUser();
   const to = new Date();

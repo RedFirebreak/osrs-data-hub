@@ -389,6 +389,8 @@ export interface WealthPoint {
   day: string;
   lastValue: number;
   maxValue: number;
+  /** The bank value counted in lastValue (D-124); null or absent before one was known. */
+  bankValue?: number | null;
 }
 
 export const WEALTH_SERIES = { last: 'End of day', max: 'Daily high' } as const;
@@ -396,14 +398,19 @@ export const WEALTH_SERIES = { last: 'End of day', max: 'Daily high' } as const;
 /** Most days the wealth chart spans (a longer history keeps its newest days). */
 const MAX_WEALTH_DAYS = 400;
 
+export interface WealthCalendarDay {
+  day: string;
+  lastValue: number | null;
+  maxValue: number | null;
+  bankValue: number | null;
+}
+
 /**
  * Every UTC day from the first to the last in `days` (oldest first), each with its values or null
  * where the hub has no row for that day (the account wasn't seen with a shared inventory then).
  * Capped at the newest MAX_WEALTH_DAYS days; malformed day strings are dropped.
  */
-export function wealthCalendar(
-  days: readonly WealthPoint[],
-): { day: string; lastValue: number | null; maxValue: number | null }[] {
+export function wealthCalendar(days: readonly WealthPoint[]): WealthCalendarDay[] {
   const byDay = new Map<number, WealthPoint>();
   for (const d of days) {
     const t = Date.parse(`${d.day}T00:00:00Z`);
@@ -413,22 +420,23 @@ export function wealthCalendar(
   const times = [...byDay.keys()];
   const last = Math.max(...times);
   const first = Math.max(Math.min(...times), last - (MAX_WEALTH_DAYS - 1) * DAY_MS);
-  const out: { day: string; lastValue: number | null; maxValue: number | null }[] = [];
+  const out: WealthCalendarDay[] = [];
   for (let t = first; t <= last; t += DAY_MS) {
     const d = byDay.get(t);
     out.push({
       day: new Date(t).toISOString().slice(0, 10),
       lastValue: d ? d.lastValue : null,
       maxValue: d ? d.maxValue : null,
+      bankValue: d?.bankValue ?? null,
     });
   }
   return out;
 }
 
 /**
- * Carried wealth per day: two lines (end of day and the day's high) on one GP axis over every day of
- * the period (days without data are gaps the line bridges), with a legend (two series) and a
- * crosshair tooltip listing both.
+ * Wealth per day (carried plus the last known bank value, D-124): two lines (end of day and the day's
+ * high) on one GP axis over every day of the period (days without data are gaps the line bridges),
+ * with a legend (two series) and a crosshair tooltip listing both and, once one is known, the bank.
  */
 export function wealthOption(days: readonly WealthPoint[], theme: ChartTheme): ChartOption {
   const [lastColor, maxColor] = theme.series;
@@ -454,7 +462,10 @@ export function wealthOption(days: readonly WealthPoint[], theme: ChartTheme): C
       return (
         title +
         tooltipRow(lastColor, `${formatGp(entry.lastValue)} gp`, WEALTH_SERIES.last) +
-        tooltipRow(maxColor, `${formatGp(entry.maxValue)} gp`, WEALTH_SERIES.max)
+        tooltipRow(maxColor, `${formatGp(entry.maxValue)} gp`, WEALTH_SERIES.max) +
+        (entry.bankValue === null
+          ? '<div style="opacity:.7">Bank not known yet: carried items only</div>'
+          : `<div style="opacity:.7">Of which bank ${formatGp(entry.bankValue)} gp</div>`)
       );
     }),
     xAxis: categoryAxis(

@@ -116,7 +116,7 @@ export function TotalsTiles({ m }: { m: AccountMetrics }) {
             : NOT_SHARED
         }
         muted={!m.access.inventory || t.wealthChange === null}
-        lines={m.access.inventory ? ['carried, start to end'] : []}
+        lines={m.access.inventory ? ['bank and carried, start to end'] : []}
       />
       <Tile
         label="Active time"

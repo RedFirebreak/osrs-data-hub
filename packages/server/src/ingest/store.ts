@@ -206,6 +206,7 @@ async function storeInTransaction(
     recv,
     deviceId: device.id,
     payloadTs: payloadTime(payload.timestamp, recv),
+    bankValue: input.normalized.bankValue,
   });
 
   await upsertLatestState(tx, accountId, input, plan);
@@ -460,6 +461,8 @@ async function loadPrevState(tx: Tx, accountId: number): Promise<PrevState | nul
       world: latestState.world,
       location: latestState.location,
       locationUpdatedAt: latestState.locationUpdatedAt,
+      bankValue: latestState.bankValue,
+      bankValueAt: latestState.bankValueAt,
     })
     .from(latestState)
     .where(eq(latestState.accountId, accountId));
@@ -590,7 +593,7 @@ async function writeXpSamples(
 }
 
 /**
- * Equipment change log, the location points and the day's carried wealth. A point whose
+ * Equipment change log, the location points and the day's wealth (carried plus bank, D-124). A point whose
  * (account, ts) exists is left alone: the first sample of a minute wins, and a trail that arrives
  * twice (a resend, a second paired device) is stored once (D-102). That takes both copies getting
  * the same times, which a PC clock more than 10 s ahead undoes (PLUGIN-14).
@@ -613,14 +616,22 @@ async function writeDerived(
       .onConflictDoNothing();
   }
   if (plan.wealth !== null) {
-    const { day, value } = plan.wealth;
+    const { day, value, bank } = plan.wealth;
     await tx
       .insert(wealthDaily)
-      .values({ accountId, day, lastValue: value, maxValue: value, updatedAt: recv })
+      .values({
+        accountId,
+        day,
+        lastValue: value,
+        maxValue: value,
+        bankValue: bank,
+        updatedAt: recv,
+      })
       .onConflictDoUpdate({
         target: [wealthDaily.accountId, wealthDaily.day],
         set: {
           lastValue: value,
+          bankValue: bank,
           maxValue: sql`GREATEST(${wealthDaily.maxValue}, excluded.max_value)`,
           updatedAt: recv,
         },

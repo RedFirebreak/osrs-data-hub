@@ -93,6 +93,12 @@ export interface AccountHeader {
  * periodic update and the exact time would be the last-seen time the owner hid (D-50). The live
  * location keeps its time: a live position is presence by nature, and whoever may see it may see that.
  */
+/** The bank's GE value and when the plugin read it (ISO). */
+export interface BankValue {
+  value: number;
+  at: string;
+}
+
 export interface AccountPage {
   account: AccountHeader;
   /** activity */
@@ -104,8 +110,12 @@ export interface AccountPage {
   /** stats: rows in the in-game grid order with Overall first. */
   skills: Section<{ totalLevel: number; overallXp: number; rows: SkillRow[] }>;
   equipment: Section<{ items: ItemData[] }>;
-  /** `value` is the inventory's GE value (Σ gePrice × quantity). */
-  inventory: Section<{ items: ItemData[]; value: number }>;
+  /**
+   * `value` is the inventory's GE value (Σ gePrice × quantity). `bank` is the bank's GE value when
+   * the plugin last read it (D-124), with that time (only its local day without `activity`); null
+   * until one was sent.
+   */
+  inventory: Section<{ items: ItemData[]; value: number; bank: BankValue | null }>;
   /** events: the newest PAGE_EVENTS, redacted; "not shared" when the account has no events at all. */
   recentEvents: Section<FeedEvent[]>;
   /**
@@ -180,6 +190,7 @@ export async function getAccountPage(
       itemsSection(can('inventory'), state?.inventory, state?.inventoryUpdatedAt, (items) => ({
         items,
         value: itemsValue(items) ?? 0,
+        bank: bankOf(state, can('activity') ? null : timezone),
       })),
     ),
     recentEvents,
@@ -297,6 +308,13 @@ function parseLocation(value: unknown): Omit<LiveLocation, 'stale'> | null {
   const { x, y, plane, isOnBoat } = value as Record<string, unknown>;
   if (typeof x !== 'number' || typeof y !== 'number' || typeof plane !== 'number') return null;
   return { x, y, plane, isOnBoat: isOnBoat === true };
+}
+
+/** latest_state's bank value; `dayIn` set → the time is cut to the local day there (D-50). */
+function bankOf(state: LatestRow | undefined, dayIn: string | null): BankValue | null {
+  if (!state || state.bankValue === null || state.bankValueAt === null) return null;
+  const at = dayIn === null ? state.bankValueAt : startOfLocalDay(state.bankValueAt, dayIn);
+  return { value: state.bankValue, at: at.toISOString() };
 }
 
 function itemsSection<T>(

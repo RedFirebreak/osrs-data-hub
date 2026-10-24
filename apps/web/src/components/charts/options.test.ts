@@ -37,14 +37,14 @@ describe('wealthCalendar', () => {
   it('fills every day between the first and the last with nulls where there is no row', () => {
     expect(
       wealthCalendar([
-        { day: '2026-09-29', lastValue: 3, maxValue: 4 },
+        { day: '2026-09-29', lastValue: 3, maxValue: 4, bankValue: 2 },
         { day: '2026-09-27', lastValue: 1, maxValue: 2 },
         { day: 'nonsense', lastValue: 9, maxValue: 9 },
       ]),
     ).toEqual([
-      { day: '2026-09-27', lastValue: 1, maxValue: 2 },
-      { day: '2026-09-28', lastValue: null, maxValue: null },
-      { day: '2026-09-29', lastValue: 3, maxValue: 4 },
+      { day: '2026-09-27', lastValue: 1, maxValue: 2, bankValue: null },
+      { day: '2026-09-28', lastValue: null, maxValue: null, bankValue: null },
+      { day: '2026-09-29', lastValue: 3, maxValue: 4, bankValue: 2 },
     ]);
     expect(wealthCalendar([])).toEqual([]);
   });
@@ -248,7 +248,8 @@ describe('the full option of each chart', () => {
     expect(formatterOf(option)([{ dataIndex: 0 }])).toBe(
       title(longDay('2026-09-27')) +
         row('#aa0000', '1M gp', 'End of day') +
-        row('#00bb00', '2.5M gp', 'Daily high'),
+        row('#00bb00', '2.5M gp', 'Daily high') +
+        '<div style="opacity:.7">Bank not known yet: carried items only</div>',
     );
     expect(formatterOf(option)([{ dataIndex: 1 }])).toBe(
       title(longDay('2026-09-28')) + '<div style="opacity:.7">No data this day</div>',

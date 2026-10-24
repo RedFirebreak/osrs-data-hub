@@ -522,8 +522,8 @@ describe('exportUserData', () => {
       },
     ]);
     expect(acc.wealth_days).toEqual([
-      { day: '2026-09-20', last_value: 10, max_value: 20 },
-      { day: '2026-09-21', last_value: 30, max_value: 40 },
+      { day: '2026-09-20', last_value: 10, max_value: 20, bank_value: null },
+      { day: '2026-09-21', last_value: 30, max_value: 40, bank_value: null },
     ]);
     expect(acc.location_trail).toEqual([
       { at: iso(RECENT), x: 3200, y: 3201, plane: 0, world: 302, is_on_boat: false },

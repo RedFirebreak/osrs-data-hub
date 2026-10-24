@@ -67,7 +67,7 @@ describe('describeEvent: fixtures', () => {
     expect(describeFixture('event-death-dangerous')).toEqual([
       {
         title: 'Death',
-        line: 'Iron Mira was killed by Lynx Titan (inventory value lost: 34.9K)',
+        line: 'Iron Mira was killed by Lynx Titan (items lost: 34.9K)',
         icon: 'skull',
       },
     ]);
@@ -185,13 +185,37 @@ describe('describeEvent: loot', () => {
 });
 
 describe('describeEvent: death', () => {
-  it('ignores the "?" killer and describes a dangerous death without one', () => {
-    const data = stored('death', { danger: 'DANGEROUS', killerName: '?', valueLost: 34_906 });
+  it('ignores the "?" killer; a dangerous death outside the Wilderness costs a grave fee', () => {
+    const lostItems = [
+      { name: 'Twisted bow', id: 20997, gePrice: 1_400_000_000, haPrice: 1, quantity: 1 },
+      { name: 'Masori body (f)', id: 27235, gePrice: 60_000_000, haPrice: 1, quantity: 1 },
+      { name: 'Super restore(4)', id: 3024, gePrice: 12_000, haPrice: 1, quantity: 4 },
+    ];
+    const data = stored('death', {
+      danger: 'DANGEROUS',
+      killerName: '?',
+      valueLost: 1_460_048_000,
+      lostItems,
+      location: { x: 3222, y: 3218, plane: 0 },
+    });
+    expect(describeEvent('Zezima', row('death', data, { valueGp: 1_460_048_000 })).line).toBe(
+      'Zezima died (reclaim fee up to 200K)',
+    );
+  });
+
+  it('a death to a monster in the Wilderness loses the items', () => {
+    const data = stored('death', {
+      danger: 'DANGEROUS',
+      killerName: 'Callisto',
+      killerNpcId: 6503,
+      valueLost: 34_906,
+      location: { x: 3290, y: 3850, plane: 0 },
+    });
     expect(describeEvent('Zezima', row('death', data, { valueGp: 34_906 })).line).toBe(
-      'Zezima died (inventory value lost: 34.9K)',
+      'Zezima was killed by Callisto (items lost: 34.9K)',
     );
     expect(describeEvent('Zezima', row('death', data)).line).toBe(
-      'Zezima died (inventory value lost: 34.9K)',
+      'Zezima was killed by Callisto (items lost: 34.9K)',
     );
   });
 
@@ -203,11 +227,26 @@ describe('describeEvent: death', () => {
   });
 
   it('works on redacted data (location stripped) and without data', () => {
-    const redacted = stored('death', { danger: 'DANGEROUS', killerName: 'Vorkath', lostItems: [] });
+    const redacted = stored('death', {
+      danger: 'DANGEROUS',
+      killerName: 'Vorkath',
+      killerNpcId: 8061,
+      lostItems: [],
+    });
     expect(describeEvent('Zezima', row('death', redacted, { valueGp: 0 })).line).toBe(
-      'Zezima was killed by Vorkath (inventory value lost: 0)',
+      'Zezima was killed by Vorkath (free to reclaim)',
     );
-    expect(describeEvent('Zezima', row('death', null)).line).toBe('Zezima died');
+    const noItems = stored('death', {
+      danger: 'DANGEROUS',
+      killerName: 'Vorkath',
+      killerNpcId: 8061,
+    });
+    expect(describeEvent('Zezima', row('death', noItems)).line).toBe(
+      'Zezima was killed by Vorkath (items in the grave)',
+    );
+    expect(describeEvent('Zezima', row('death', null)).line).toBe(
+      'Zezima died (items in the grave)',
+    );
   });
 });
 

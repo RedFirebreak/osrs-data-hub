@@ -113,6 +113,13 @@
       "when": 1792835449424,
       "tag": "0015_active_prayers",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1792858284365,
+      "tag": "0016_bank_value",
+      "breakpoints": true
     }
   ]
 }

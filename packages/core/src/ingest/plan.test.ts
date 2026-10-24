@@ -100,6 +100,8 @@ const NO_STATE: PrevState = {
   world: null,
   location: null,
   locationUpdatedAt: null,
+  bankValue: null,
+  bankValueAt: null,
 };
 
 /** What the caller would read back from latest_state after applying a plan's patch. */
@@ -211,7 +213,7 @@ describe('planSnapshot: first snapshot', () => {
 
   it('computes carried wealth from per-slot inventory entries plus equipment', () => {
     // Inventory 18,502,335 (4 Anglerfish entries, 2 Prayer potion entries) + equipment 65,972,609.
-    expect(plan.wealth).toEqual({ day: '2026-09-21', value: 84_474_944 });
+    expect(plan.wealth).toEqual({ day: '2026-09-21', value: 84_474_944, bank: null });
   });
 
   it('opens and extends a session on LOGGED_IN', () => {
@@ -228,6 +230,8 @@ describe('planSnapshot: first snapshot', () => {
       world: 301,
       location: null,
       locationUpdatedAt: null,
+      bankValue: null,
+      bankValueAt: null,
     };
     const again = planSnapshot(prev, p, ctx);
     expect(again.xpWrites).toHaveLength(25);
@@ -614,6 +618,8 @@ describe('planSnapshot: equipment changes', () => {
     world: 302,
     location: null,
     locationUpdatedAt: null,
+    bankValue: null,
+    bankValueAt: null,
   });
   const change = (before: ItemData[] | null, after: ItemData[]) => {
     const p = payload({ equipment: after });
@@ -679,6 +685,7 @@ describe('planSnapshot: wealth', () => {
     expect(planSnapshot(null, p, ctx).wealth).toEqual({
       day: '2026-09-21',
       value: 963 * 2 + 25_000 + 809_574,
+      bank: null,
     });
     const q = payload({ inventory });
     expect(planSnapshot(null, q, ctxFor(q)).wealth).toBeNull();
@@ -699,6 +706,62 @@ describe('planSnapshot: wealth', () => {
       payloadTs: new Date('2026-09-21T23:59:50.000Z'),
     };
     expect(planSnapshot(null, p, ctx).wealth?.day).toBe('2026-09-22');
+  });
+});
+
+describe('planSnapshot: bank value (D-124)', () => {
+  const equipment: ItemData[] = [
+    { name: 'Abyssal whip', id: 4151, gePrice: 800_000, quantity: 1, equipmentSlot: 'WEAPON' },
+  ];
+  const at = (iso: string) => new Date(iso);
+  const prevBank = (value: number | null, when: Date | null): PrevState => ({
+    ...NO_STATE,
+    sourceDeviceId: DEVICE,
+    sourceTs: new Date(0),
+    bankValue: value,
+    bankValueAt: when,
+  });
+
+  it('applies a newer bank value and counts it in the wealth', () => {
+    const p = payload({ inventory: [], equipment });
+    const sent = { value: 1_200_000_000, occurredAt: at('2026-09-22T11:59:00Z') };
+    const plan = planSnapshot(null, p, { ...ctxFor(p), bankValue: sent });
+    expect(plan.latestPatch).toMatchObject({
+      bankValue: 1_200_000_000,
+      bankValueAt: sent.occurredAt,
+    });
+    expect(plan.wealth).toMatchObject({ value: 1_200_800_000, bank: 1_200_000_000 });
+  });
+
+  it('keeps counting the stored bank value when none is sent', () => {
+    const p = payload({ inventory: [], equipment: [] });
+    const plan = planSnapshot(prevBank(500, at('2026-09-01T00:00:00Z')), p, ctxFor(p));
+    expect(plan.latestPatch).not.toHaveProperty('bankValue');
+    expect(plan.wealth).toMatchObject({ value: 500, bank: 500 });
+  });
+
+  it('ignores a bank value that is not newer than the stored one', () => {
+    const p = payload({ inventory: [], equipment: [] });
+    const known = at('2026-09-22T11:00:00Z');
+    const plan = planSnapshot(prevBank(900, known), p, {
+      ...ctxFor(p),
+      bankValue: { value: 1, occurredAt: known },
+    });
+    expect(plan.latestPatch).not.toHaveProperty('bankValue');
+    expect(plan.wealth).toMatchObject({ value: 900, bank: 900 });
+  });
+
+  it('a stale snapshot still applies a newer bank value, a special world never', () => {
+    const p = payload({ inventory: [], equipment: [] });
+    const prev: PrevState = { ...prevBank(null, null), sourceTs: new Date(HAND_BUILT_TS + 60_000) };
+    const sent = { value: 42, occurredAt: at('2026-09-22T11:59:00Z') };
+    const stale = planSnapshot(prev, p, { ...ctxFor(p), bankValue: sent });
+    expect(stale.stale).toBe(true);
+    expect(stale.latestPatch).toEqual({ bankValue: 42, bankValueAt: sent.occurredAt });
+
+    const special = payload({ inventory: [], equipment: [], worldTypes: ['SEASONAL'] });
+    const plan = planSnapshot(null, special, { ...ctxFor(special), bankValue: sent });
+    expect(plan.latestPatch).not.toHaveProperty('bankValue');
   });
 });
 

@@ -63,8 +63,11 @@ export interface EquipmentChange {
 export interface WealthDay {
   /** UTC day, YYYY-MM-DD. */
   day: string;
+  /** Wealth at the day's last snapshot: carried (inventory + equipment) plus bankValue (D-124). */
   lastValue: number;
   maxValue: number;
+  /** The bank value counted in lastValue; null on days before a bank value was known. */
+  bankValue: number | null;
 }
 
 export interface LocationPoint {
@@ -219,7 +222,7 @@ export async function readEquipmentHistory(
 }
 
 /**
- * Carried wealth (inventory + equipment, GE value) per UTC day for the days from `from` to `to`,
+ * Wealth (inventory + equipment + the last known bank value, GE value; D-124) per UTC day for the days from `from` to `to`,
  * oldest first. Gated by `inventory` (handoff §10: "current inventory and wealth history").
  */
 export async function getWealthHistory(
@@ -243,6 +246,7 @@ export async function readWealthHistory(
       day: wealthDaily.day,
       lastValue: wealthDaily.lastValue,
       maxValue: wealthDaily.maxValue,
+      bankValue: wealthDaily.bankValue,
     })
     .from(wealthDaily)
     .where(

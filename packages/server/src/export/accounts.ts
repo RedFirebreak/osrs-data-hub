@@ -529,9 +529,9 @@ function wireChange(r: ChangeRow) {
   return { changed_at: r.changedAt.toISOString(), items: toApiItems(r.equipment).map(wireItem) };
 }
 
-type WealthRow = { day: string; lastValue: number; maxValue: number };
+type WealthRow = { day: string; lastValue: number; maxValue: number; bankValue: number | null };
 
-/** `wealth_days`: carried wealth per UTC day, oldest first. */
+/** `wealth_days`: wealth (carried plus bank) per UTC day, oldest first. */
 function wealthPages(ctx: AccountExportContext, accountId: number) {
   return keysetPages<WealthRow>(
     (last, limit) =>
@@ -540,6 +540,7 @@ function wealthPages(ctx: AccountExportContext, accountId: number) {
           day: wealthDaily.day,
           lastValue: wealthDaily.lastValue,
           maxValue: wealthDaily.maxValue,
+          bankValue: wealthDaily.bankValue,
         })
         .from(wealthDaily)
         .where(

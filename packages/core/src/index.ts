@@ -29,6 +29,7 @@ export * from './events/combat-task';
 export * from './events/values';
 export * from './events/stored';
 export * from './events/describe';
+export * from './events/death';
 export * from './ingest/types';
 export * from './ingest/plan';
 export * from './metrics/bosses';

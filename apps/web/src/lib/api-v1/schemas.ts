@@ -638,8 +638,15 @@ const WealthData = z.object({
     .array(
       z.object({
         day: z.iso.date().meta({ description: 'UTC day.' }),
-        last_value: int.meta({ description: 'Carried value at the day’s last update (GE).' }),
-        max_value: int.meta({ description: 'The day’s highest carried value.' }),
+        last_value: int.meta({
+          description:
+            'Wealth at the day’s last update (GE): inventory and equipment, plus the bank as the plugin last read it (`bank_value`).',
+        }),
+        max_value: int.meta({ description: 'The day’s highest wealth.' }),
+        bank_value: int.nullable().meta({
+          description:
+            'The bank value counted in `last_value`; null on days before the plugin sent one (plugin bankValue event).',
+        }),
       }),
     )
     .meta({ description: 'Oldest first.' }),

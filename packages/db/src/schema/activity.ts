@@ -151,6 +151,8 @@ export const wealthDaily = pgTable(
     day: date('day', { mode: 'string' }).notNull(),
     lastValue: bigint('last_value', { mode: 'number' }).notNull(),
     maxValue: bigint('max_value', { mode: 'number' }).notNull(),
+    /** The bank value counted in last_value (D-124); null while none was known. */
+    bankValue: bigint('bank_value', { mode: 'number' }),
     updatedAt: tstz('updated_at').defaultNow().notNull(),
   },
   (t) => [primaryKey({ name: 'wealth_daily_pk', columns: [t.accountId, t.day] })],

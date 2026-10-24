@@ -90,13 +90,15 @@ export interface ApiEquipmentHistory extends ApiHistory {
 export interface ApiWealthDay {
   /** UTC day, YYYY-MM-DD. */
   day: string;
-  /** Carried value (inventory + equipment, GE prices) at the day's last update. */
+  /** Wealth at the day's last update: inventory + equipment + the last known bank (GE; D-124). */
   lastValue: number;
-  /** The day's highest carried value. */
+  /** The day's highest wealth. */
   maxValue: number;
+  /** The bank value counted in lastValue; null on days before the plugin sent one. */
+  bankValue: number | null;
 }
 
-/** Carried wealth per UTC day in the range, oldest first. */
+/** Wealth (carried plus bank) per UTC day in the range, oldest first. */
 export interface ApiWealth extends ApiHistory {
   days: ApiWealthDay[];
 }
@@ -228,7 +230,7 @@ export async function apiEquipmentHistory(
   );
 }
 
-/** Carried wealth per day (`inventory`); null when the key can't read it. */
+/** Wealth (carried plus bank) per day (`inventory`); null when the key can't read it. */
 export async function apiWealth(
   db: DbOrTx,
   principal: ApiPrincipal,
@@ -240,7 +242,12 @@ export async function apiWealth(
   return (
     found && {
       ...found.head,
-      days: found.rows.map((d) => ({ day: d.day, lastValue: d.lastValue, maxValue: d.maxValue })),
+      days: found.rows.map((d) => ({
+        day: d.day,
+        lastValue: d.lastValue,
+        maxValue: d.maxValue,
+        bankValue: d.bankValue,
+      })),
     }
   );
 }

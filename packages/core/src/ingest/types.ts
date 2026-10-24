@@ -11,6 +11,9 @@ export interface PrevState {
   /** The last location applied, and when the hub received it. */
   location: Location | null;
   locationUpdatedAt: Date | null;
+  /** The last bank value applied (D-124), and the plugin time it was read at. */
+  bankValue: number | null;
+  bankValueAt: Date | null;
 }
 
 export interface SnapshotContext {
@@ -19,6 +22,8 @@ export interface SnapshotContext {
   deviceId: string;
   /** min(root.timestamp, recv). */
   payloadTs: Date;
+  /** The payload's newest bankValue event (normalizeEvents), if any (D-124). */
+  bankValue?: { value: number; occurredAt: Date } | null;
 }
 
 export interface XpWrite {
@@ -66,6 +71,8 @@ export interface LatestStatePatch {
   inventoryUpdatedAt?: Date;
   equipment?: ItemData[];
   equipmentUpdatedAt?: Date;
+  bankValue?: number;
+  bankValueAt?: Date;
 }
 
 /** Everything a snapshot (the `player` part of a payload) should write, decided purely. */
@@ -90,8 +97,11 @@ export interface SnapshotPlan {
    * or the 1-minute sample of an older one. A stale snapshot still has its trail points.
    */
   locationPoints: LocationWrite[];
-  /** Carried wealth when both inventory and equipment are present (UTC day of recv). */
-  wealth: { day: string; value: number } | null;
+  /**
+   * Wealth when both inventory and equipment are present (UTC day of recv): carried value plus the
+   * last known bank value (D-124). `bank` is that bank value, null while none is known.
+   */
+  wealth: { day: string; value: number; bank: number | null } | null;
   /** Session bookkeeping for this payload. */
   session: { open: boolean; extend: boolean; world: number | null };
   /** latest_state columns to write; null when the snapshot is stale. */

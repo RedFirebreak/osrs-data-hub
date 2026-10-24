@@ -201,6 +201,8 @@ describe('first snapshot of a new account', () => {
       inventoryUpdatedAt: recv,
       equipment: p.equipment.items,
       equipmentUpdatedAt: recv,
+      bankValue: null,
+      bankValueAt: null,
       updatedAt: recv,
     });
   });
@@ -248,7 +250,14 @@ describe('first snapshot of a new account', () => {
     const value = carriedValue(p.inventory.items, p.equipment.items);
     expect(value).toBeGreaterThan(0);
     expect(wealth).toEqual([
-      { accountId, day: utcDay(recv), lastValue: value, maxValue: value, updatedAt: recv },
+      {
+        accountId,
+        day: utcDay(recv),
+        lastValue: value,
+        maxValue: value,
+        bankValue: null,
+        updatedAt: recv,
+      },
     ]);
   });
 
@@ -578,6 +587,48 @@ describe('events', () => {
 });
 
 // ---- staleness and ordering ----------------------------------------------------------------------
+
+describe('bank value (plugin bankValue event, D-124)', () => {
+  it('sets the bank on latest_state, counts it in the wealth and stores no event row', async () => {
+    const device = await h.seedDevice();
+    const hash = newHash();
+    const first = wire('snapshot-normal', { hash });
+    expect((await h.send(device, first)).status).toBe(200);
+    const body = wire('event-bank-value', { hash });
+    const recv = new Date(ts(body) + 1_000);
+    expect((await h.send(device, body)).status).toBe(200);
+
+    const { id: accountId } = await account(hash);
+    const sent = body.events?.[0] as { timestamp: number; data: { value: number } };
+    expect(await latest(accountId)).toMatchObject({
+      bankValue: sent.data.value,
+      bankValueAt: new Date(sent.timestamp),
+    });
+    expect(await eventRows(accountId)).toEqual([]);
+    const p = playerOf(body);
+    const carried = carriedValue(p.inventory.items, p.equipment.items);
+    const wealth = await t.db
+      .select()
+      .from(wealthDaily)
+      .where(eq(wealthDaily.accountId, accountId));
+    expect(wealth).toEqual([
+      expect.objectContaining({
+        day: utcDay(recv),
+        lastValue: carried + sent.data.value,
+        bankValue: sent.data.value,
+      }),
+    ]);
+
+    // The same event sent again changes nothing; a later snapshot keeps counting the bank.
+    expect((await h.send(device, body)).status).toBe(200);
+    const later = wire('snapshot-normal', { hash });
+    later.timestamp = ts(body) + 60_000;
+    expect((await h.send(device, later)).status).toBe(200);
+    expect(await latest(accountId)).toMatchObject({ bankValue: sent.data.value });
+    const [day] = await t.db.select().from(wealthDaily).where(eq(wealthDaily.accountId, accountId));
+    expect(day?.lastValue).toBe(carried + sent.data.value);
+  });
+});
 
 describe('staleness (D-17, D-33)', () => {
   it('a resend older than the overtaking snapshot from the same device is stale; its events are stored', async () => {
