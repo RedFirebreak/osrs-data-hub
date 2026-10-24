@@ -223,7 +223,10 @@ export async function readKillGains(
  * Wealth at the end of the range minus at its start (wealth_daily, UTC days: the last value of the
  * range's last day with data minus that of the last day before the range, or of its first day when
  * there is none before). Null without any day. When the start has no bank value yet and the end has
- * one (D-124), the end's bank is left out, so the first bank reading isn't counted as a gain.
+ * one (D-124), the change is measured from the range's first day with a bank value instead; null
+ * when that is the end day itself. A bank value can't be guessed backwards: what was carried before
+ * may be in the bank by the time it is first read, so neither "no bank" nor "the first reading" is
+ * right for the days before it.
  */
 export async function readWealthChange(
   db: DbOrTx,
@@ -237,6 +240,9 @@ export async function readWealthChange(
     start_bank: number | null;
     end: number | null;
     end_bank: number | null;
+    end_day: string | null;
+    banked: number | null;
+    banked_day: string | null;
   }>(sql`
     WITH s AS (
       SELECT last_value, bank_value FROM (
@@ -249,16 +255,28 @@ export async function readWealthChange(
           ORDER BY day ASC LIMIT 1)
       ) c ORDER BY pick LIMIT 1
     ), e AS (
-      SELECT last_value, bank_value FROM wealth_daily
+      SELECT day, last_value, bank_value FROM wealth_daily
         WHERE account_id = ${accountId} AND day >= ${from}::date AND day <= ${to}::date
         ORDER BY day DESC LIMIT 1
+    ), b AS (
+      SELECT day, last_value FROM wealth_daily
+        WHERE account_id = ${accountId} AND day >= ${from}::date AND day <= ${to}::date
+          AND bank_value IS NOT NULL
+        ORDER BY day ASC LIMIT 1
     )
     SELECT (SELECT last_value FROM s) AS start, (SELECT bank_value FROM s) AS start_bank,
-           (SELECT last_value FROM e) AS end, (SELECT bank_value FROM e) AS end_bank`);
+           (SELECT last_value FROM e) AS end, (SELECT bank_value FROM e) AS end_bank,
+           (SELECT day::text FROM e) AS end_day,
+           (SELECT last_value FROM b) AS banked, (SELECT day::text FROM b) AS banked_day`);
   const row = result.rows[0];
   if (!row || row.start === null || row.end === null) return null;
-  const firstBank = row.start_bank === null && row.end_bank !== null ? Number(row.end_bank) : 0;
-  return Number(row.end) - Number(row.start) - firstBank;
+  if (row.start_bank === null && row.end_bank !== null) {
+    // The bank was first read inside the range: measure from that day, if it isn't the last.
+    if (row.banked === null || row.banked_day === null || row.banked_day === row.end_day)
+      return null;
+    return Number(row.end) - Number(row.banked);
+  }
+  return Number(row.end) - Number(row.start);
 }
 
 function utcDay(date: Date): string {

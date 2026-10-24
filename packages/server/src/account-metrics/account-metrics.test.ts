@@ -25,6 +25,7 @@ import { getBossMetrics } from './boss';
 import { GoalError, deleteGoal, setGoal } from './goals';
 import { getBossLeaderboards } from './leaderboards';
 import { resolveMetricsRange, startOfLocalDate } from './range';
+import { readWealthChange } from './read';
 
 const NOW = new Date('2026-10-09T12:00:00Z');
 const MIN = 60_000;
@@ -618,5 +619,48 @@ describe('resolveMetricsRange', () => {
       at('2026-10-08T10:00:00Z'),
     );
     expect(startOfLocalDate('bad', 'UTC')).toBeNull();
+  });
+});
+
+describe('readWealthChange and the first bank reading (D-124)', () => {
+  const range = { from: at('2026-10-20T00:00:00Z'), to: at('2026-10-24T23:00:00Z') };
+  const row = (accountId: number, day: string, lastValue: number, bankValue: number | null) => ({
+    accountId,
+    day,
+    lastValue,
+    maxValue: lastValue,
+    bankValue,
+  });
+
+  it('measures from the first day with a bank, never guessing the bank before it', async () => {
+    const a = await seedAccount(t.db, { owner: owner.id });
+    // 2.7B carried, then banked: the first reading already holds that gear.
+    await t.db
+      .insert(wealthDaily)
+      .values([
+        row(a.id, '2026-10-19', 2_700_000_000, null),
+        row(a.id, '2026-10-22', 2_060_000_000, 2_050_000_000),
+        row(a.id, '2026-10-24', 2_065_000_000, 2_050_000_000),
+      ]);
+    expect(await readWealthChange(t.db, a.id, range)).toBe(5_000_000);
+  });
+
+  it('is null when the bank was first read on the last day', async () => {
+    const a = await seedAccount(t.db, { owner: owner.id });
+    await t.db
+      .insert(wealthDaily)
+      .values([
+        row(a.id, '2026-10-19', 2_700_000_000, null),
+        row(a.id, '2026-10-24', 2_060_000_000, 2_050_000_000),
+      ]);
+    expect(await readWealthChange(t.db, a.id, range)).toBeNull();
+  });
+
+  it('compares carried with carried while no bank is known', async () => {
+    const a = await seedAccount(t.db, { owner: owner.id });
+    await t.db
+      .insert(wealthDaily)
+      .values([row(a.id, '2026-10-19', 1_000, null), row(a.id, '2026-10-24', 1_500, null)]);
+    expect(await readWealthChange(t.db, a.id, range)).toBe(500);
   });
 });
