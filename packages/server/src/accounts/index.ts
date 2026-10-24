@@ -20,12 +20,14 @@ export {
   MAX_LOCATION_POINTS,
   getEquipmentHistory,
   getLocationHistory,
+  getPlaytimeTotal,
   getSessions,
   getWealthHistory,
   type EquipmentChange,
   type HistoryRange,
   type LocationTrail,
   type PlaySession,
+  type PlaytimeTotal,
 } from './history';
 export { FEED_DEFAULT_LIMIT, FEED_MAX_LIMIT, listFeed } from './list-feed';
 export { loadVisibleAccount, loadVisibleAccounts, type Presence } from './load';

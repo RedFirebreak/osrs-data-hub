@@ -6,6 +6,7 @@ import {
   MAX_LOCATION_POINTS,
   getEquipmentHistory,
   getLocationHistory,
+  getPlaytimeTotal,
   getSessions,
   getWealthHistory,
 } from './history';
@@ -113,6 +114,35 @@ describe('getSessions', () => {
     await expect(
       getSessions(t.db, owner.viewer, account.publicId, { from: d('nope'), to: NOW }),
     ).rejects.toThrow(RangeError);
+  });
+});
+
+describe('getPlaytimeTotal', () => {
+  it('adds up every session ever stored, an open one up to its last payload', async () => {
+    expect(await getPlaytimeTotal(t.db, member.viewer, account.publicId, { now: NOW })).toEqual({
+      totalMs: (120 + 120 + 60 + 90) * 60_000,
+      sessions: 4,
+      since: '2026-08-01T00:00:00.000Z',
+    });
+  });
+
+  it('is zero without sessions and null for unknown accounts', async () => {
+    const empty = await seedAccount(t.db, { owner: owner.id });
+    expect(await getPlaytimeTotal(t.db, owner.viewer, empty.publicId, { now: NOW })).toEqual({
+      totalMs: 0,
+      sessions: 0,
+      since: null,
+    });
+    expect(await getPlaytimeTotal(t.db, member.viewer, 'unknown', { now: NOW })).toBeNull();
+  });
+
+  it('is null without activity', async () => {
+    const hidden = await seedAccount(t.db, { owner: owner.id });
+    await seedSharing(t.db, hidden.id, 'activity', 'private');
+    expect(await getPlaytimeTotal(t.db, member.viewer, hidden.publicId, { now: NOW })).toBeNull();
+    expect(
+      await getPlaytimeTotal(t.db, owner.viewer, hidden.publicId, { now: NOW }),
+    ).not.toBeNull();
   });
 });
 

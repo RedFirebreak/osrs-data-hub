@@ -139,6 +139,46 @@ export async function readSessions(
   });
 }
 
+/** Every play session of an account added up (getPlaytimeTotal). */
+export interface PlaytimeTotal {
+  /** The summed durations; an open session counts up to its last payload. */
+  totalMs: number;
+  sessions: number;
+  /** The start of the first session the hub stored, null without any. */
+  since: string | null;
+}
+
+/**
+ * All play sessions the hub has of an account, summed in the database (sessions are kept forever,
+ * so this is everything since the account's first payload). Gated by `activity`, as getSessions.
+ */
+export async function getPlaytimeTotal(
+  db: DbOrTx,
+  viewer: Principal,
+  publicId: string,
+  opts: { now: Date },
+): Promise<PlaytimeTotal | null> {
+  const accountId = await gate(db, viewer, publicId, 'activity', { from: opts.now, to: opts.now });
+  if (accountId === null) return null;
+  const end = sql`coalesce(${playSessions.endedAt}, ${playSessions.lastSeenAt})`;
+  const [row] = await db
+    .select({
+      totalMs: sql<
+        string | null
+      >`sum(greatest(0, extract(epoch from (${end} - ${playSessions.startedAt})) * 1000))`,
+      sessions: sql<number>`count(*)::int`,
+      since: sql<Date | null>`min(${playSessions.startedAt})`.mapWith(playSessions.startedAt),
+    })
+    .from(playSessions)
+    .where(eq(playSessions.accountId, accountId));
+  return {
+    // sum() over numeric arrives as a string.
+    totalMs: Math.round(Number(row?.totalMs ?? 0)),
+    sessions: row?.sessions ?? 0,
+    since: row?.since ? row.since.toISOString() : null,
+  };
+}
+
 /**
  * Equipment changes (a row per change of the slot → item map) in [from, to], newest first (at most
  * MAX_EQUIPMENT_CHANGES). Gated by `equipment`.
