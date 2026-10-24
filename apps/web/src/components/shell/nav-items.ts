@@ -44,9 +44,9 @@ export function accountMenuItemsFor(isAdmin: boolean): MenuItem[] {
   return ACCOUNT_MENU_ITEMS.filter((item) => !item.adminOnly || isAdmin);
 }
 
-/** The public id of the character page `pathname` is, or null. */
+/** The public id of the character page (or its collection log) `pathname` is, or null. */
 function characterOf(pathname: string): string | null {
-  return /^\/accounts\/([^/]+)$/.exec(pathname)?.[1] ?? null;
+  return /^\/accounts\/([^/]+)(?:\/collection-log)?$/.exec(pathname)?.[1] ?? null;
 }
 
 /**
