@@ -242,7 +242,7 @@ describe('DoneStep', () => {
       />,
     );
     expect(text(html)).toContain('Bob owns Shared Main and decides who in the guild sees it.');
-    expect(html).toContain('href="/accounts/AbCdEf123456#sharing"');
+    expect(html).toContain('href="/settings?account=AbCdEf123456#sharing"');
     expect(text(html)).toContain('Who can see Shared Main');
     expect(text(html)).not.toContain('Loading the sharing settings');
     expect(text(html)).not.toContain('A new account shares');
@@ -291,7 +291,7 @@ describe('DoneSharingControls', () => {
     expect(html).not.toMatch(/role="combobox"[^>]* disabled=""/);
     expect(text(html).match(/Guild/g)).toHaveLength(CATEGORIES.length - 1);
     expect(text(html).match(/Private/g)).toHaveLength(1);
-    expect(html).toContain('href="/accounts/AbCdEf123456#sharing"');
+    expect(html).toContain('href="/settings?account=AbCdEf123456#sharing"');
     expect(text(html)).toContain('More sharing options for Zezima');
   });
 });

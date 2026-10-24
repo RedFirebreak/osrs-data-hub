@@ -10,10 +10,10 @@ import { LoaderCircleIcon } from 'lucide-react';
 import type { Route } from 'next';
 import Link from 'next/link';
 import { useEffect, useId, useRef, useState } from 'react';
-import { accountHref } from '@/components/accounts/account-link';
 import { CategoryAudiences } from '@/components/sharing/category-audiences';
 import { useSharing } from '@/components/sharing/use-sharing';
 import { headingOfSection } from '@/lib/focus';
+import { sharingHref as sharingSettingsHref } from '@/lib/routes';
 
 export interface DoneSharingAccount {
   publicId: string;
@@ -23,9 +23,9 @@ export interface DoneSharingAccount {
 type Loaded =
   { kind: 'loading' } | { kind: 'failed' } | { kind: 'ready'; settings: SharingSettings };
 
-/** The account page's sharing section. */
+/** The account's sharing settings, on the settings page (D-122). */
 export function sharingHref(account: DoneSharingAccount): Route {
-  return `${accountHref(account.publicId)}#sharing` as Route;
+  return sharingSettingsHref(account.publicId);
 }
 
 export function DoneSharing({ account }: { account: DoneSharingAccount }) {

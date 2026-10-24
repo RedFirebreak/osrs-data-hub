@@ -1,6 +1,7 @@
 'use client';
 /**
- * The guild's "Online now" strip on Home (handoff §12): the server-rendered list (getOnlineNow:
+ * The guild's "Online now" strip on top of the guild page (handoff §12, D-122; and on Home before the
+ * viewer has a character): the server-rendered list (getOnlineNow:
  * every visible account whose activity the viewer may see) kept current by live
  * 'presence' messages — accounts come online, go offline, or expire client-side after the message's
  * onlineForMs (mergeOnlineNow in live-state.ts).

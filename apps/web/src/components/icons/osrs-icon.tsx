@@ -13,11 +13,13 @@
  *   <SkillIcon skill="Attack" />
  *   <SlotIcon slot="AMULET" fallback={<span>Neck</span>} />
  *   <PrayerIcon prayer="PIETY" fallback={<span>Piety</span>} />
+ *   <HiscoreIcon activity="Zulrah" fallback={<span>Z</span>} />
  */
 import { useCallback, useState } from 'react';
 import {
   eventIconUrl,
   eventItemQuantity,
+  hiscoreIconUrl,
   itemIconUrl,
   prayerIconUrl,
   skillIconUrl,
@@ -238,6 +240,31 @@ export function PrayerIcon({
       src={prayerIconUrl(base, prayer)}
       width={30}
       height={30}
+      className={box}
+      fallback={fallbackFor(base, { holdSpace, fallback }, box)}
+      {...rest}
+    />
+  );
+}
+
+/**
+ * A hiscores activity's icon (a boss, "Clue Scrolls (all)", a clue tier's scroll) in a 28 px square:
+ * the sprites RuneLite's hiscore panel draws, about 25 px and not square. Only ever scaled down.
+ */
+export function HiscoreIcon({
+  activity,
+  className,
+  holdSpace,
+  fallback,
+  ...rest
+}: IconProps & { activity: string }) {
+  const { base } = useIconConfig();
+  const box = cn('size-7 shrink-0 object-scale-down', className);
+  return (
+    <OsrsImage
+      src={hiscoreIconUrl(base, activity)}
+      width={28}
+      height={28}
       className={box}
       fallback={fallbackFor(base, { holdSpace, fallback }, box)}
       {...rest}

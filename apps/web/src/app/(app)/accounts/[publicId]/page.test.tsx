@@ -194,7 +194,7 @@ describe('account page', () => {
     expect(own).not.toContain('Updated today');
   });
 
-  it('shows the owner every section, the sharing panel and the header', async () => {
+  it('shows the owner every section, the header and the way to the sharing settings', async () => {
     page.headers = new Headers({ cookie: await ctx.signIn(ownerId) });
     const html = await render(account.publicId);
     expect(html).toMatch(/<h1[^>]*>Zezima<\/h1>/);
@@ -202,6 +202,8 @@ describe('account page', () => {
     expect(html).toContain('Your account');
     expect(html).toContain('OldName');
     expect(html).toContain('World 302');
+    // Settings are on the settings page (D-122): the header links there.
+    expect(html).toContain(`href="/settings?account=${account.publicId}#sharing"`);
     expect(sortedHeadings(html)).toEqual([
       'Collection log',
       'Hiscores',
@@ -209,7 +211,6 @@ describe('account page', () => {
       'Latest',
       'Playtime',
       'Right now',
-      'Sharing',
       'Skills',
       'This week',
       'Worn',
@@ -269,12 +270,12 @@ describe('account page', () => {
     expect(html).not.toContain('Your account');
   });
 
-  it('gives a contributor the read-only sharing panel', async () => {
+  it('leads a contributor to the sharing settings too, and shows no panel here', async () => {
     const contributor = await signIn({ name: 'Second Player' });
     await seed.link(account.id, contributor);
     const html = await render(account.publicId);
-    expect(headings(html)).toContain('Sharing');
-    expect(html).toContain('Only the owner can change who sees what.');
+    expect(headings(html)).not.toContain('Sharing');
+    expect(html).toContain(`href="/settings?account=${account.publicId}#sharing"`);
     expect(html).toContain('You play this');
   });
 });

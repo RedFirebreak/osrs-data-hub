@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { formatPlaytime, summarizePlaytime } from './playtime-card';
+import { barLabel } from './playtime-bars';
+import { formatPlaytime, sessionsPerDay, summarizePlaytime } from './playtime-card';
+import { deepDiveDayHref, sharingHref } from '@/lib/routes';
 
 const MIN = 60_000;
 
@@ -25,5 +27,32 @@ describe('summarizePlaytime', () => {
       ]),
     ).toEqual({ todayMs: 90 * MIN, totalMs: 120 * MIN, daysPlayed: 2 });
     expect(summarizePlaytime([])).toEqual({ todayMs: 0, totalMs: 0, daysPlayed: 0 });
+  });
+});
+
+describe('sessionsPerDay', () => {
+  it('counts a session on every local day it ran on', () => {
+    const sessions = [
+      { startedAt: '2026-10-22T20:00:00Z', durationMs: 60 * MIN }, // 22:00–23:00 in Amsterdam
+      { startedAt: '2026-10-22T21:30:00Z', durationMs: 90 * MIN }, // 23:30–01:00: both days
+      { startedAt: 'not a date', durationMs: MIN },
+    ];
+    expect(
+      sessionsPerDay(sessions, ['2026-10-21', '2026-10-22', '2026-10-23'], 'Europe/Amsterdam'),
+    ).toEqual([0, 2, 1]);
+  });
+});
+
+describe('the bars', () => {
+  it('say the day, the time and the sessions, and open the day in the deep dive', () => {
+    const bar = { day: '2026-10-20', ms: 1, label: 'Tue 20 Oct', href: null };
+    expect(barLabel({ ...bar, sessions: 0, played: null })).toBe('Tue 20 Oct: not played');
+    expect(barLabel({ ...bar, sessions: 1, played: '10h 20m' })).toBe(
+      'Tue 20 Oct: 10h 20m in 1 session. Opens the day in Deep dive',
+    );
+    expect(deepDiveDayHref('AbC', '2026-10-20')).toBe(
+      '/progress/AbC/deep-dive?range=custom&from=2026-10-20&to=2026-10-20',
+    );
+    expect(sharingHref('AbC')).toBe('/settings?account=AbC#sharing');
   });
 });

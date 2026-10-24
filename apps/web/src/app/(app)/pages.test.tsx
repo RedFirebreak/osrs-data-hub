@@ -19,6 +19,7 @@ import { renderToReadableStream } from 'react-dom/server';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { withTestDb, type WebTestContext } from '@/lib/test-utils';
+import GuildPage from './guild/page';
 import AppLayout from './layout';
 import HomePage from './page';
 import SettingsPage from './settings/page';
@@ -162,7 +163,7 @@ describe('home without characters', () => {
 });
 
 describe('home with characters', () => {
-  it("is the viewer's own character, with the online accounts it may see", async () => {
+  it("is the viewer's own character; who is online is on the guild page (D-122)", async () => {
     const other = await ctx.seedUser();
     await seedOnlineAccount('Guildie', other);
     const secret = await seedOnlineAccount('Hermit', other);
@@ -183,12 +184,20 @@ describe('home with characters', () => {
     const html = await render(() => HomePage());
     expect(html).toMatch(/<h1[^>]*>Zezima<\/h1>/);
     expect(html).toContain('Your account');
-    expect(html).toContain('>Guildie</span>'); // in "Online now"
-    expect(html).not.toContain('Hermit');
-    expect(html).not.toContain('Ghost');
+    expect(html).not.toContain('Online now');
+    expect(html).not.toContain('Guildie');
     expect(html).not.toContain('Connect RuneLite');
     // One character: nothing to pick.
     expect(html).not.toContain('Choose another character');
+    // Its settings are a link away, on the settings page.
+    expect(html).toMatch(/href="\/settings\?account=[^"#]+#sharing"/);
+
+    const guild = await render(() => GuildPage());
+    // On top: before the leaderboards.
+    const online = guild.slice(guild.indexOf('Online now'), guild.indexOf('Leaderboards'));
+    expect(online).toContain('>Guildie</span>');
+    expect(online).not.toContain('Hermit');
+    expect(online).not.toContain('Ghost');
   });
 
   it('opens on the character played last and offers the others', async () => {
