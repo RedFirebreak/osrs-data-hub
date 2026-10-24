@@ -1,8 +1,8 @@
 /**
  * Home: the viewer's own character as it is now, the one they played last
- * (components/account-page/character-view.tsx, the character page's body), with the guild's "Online
- * now" strip under it. With more characters the header offers the others. Without any: who is
- * online, and a pointer to the pairing wizard. Live parts update from the LiveProvider; the rest
+ * (components/account-page/character-view.tsx, the character page's body). With more characters the
+ * header offers the others. Who in the guild is online is on the guild page (D-122). Without any
+ * character: a pointer to the pairing wizard, and who is online, since there is nothing else yet. Live parts update from the LiveProvider; the rest
  * refreshes every minute.
  */
 import { getConfig, type Viewer } from '@hub/core';
@@ -36,7 +36,7 @@ export default async function HomePage() {
   if (latest) {
     return (
       <Suspense fallback={<AccountSkeleton />}>
-        <CharacterView publicId={latest.publicId} home />
+        <CharacterView publicId={latest.publicId} />
       </Suspense>
     );
   }

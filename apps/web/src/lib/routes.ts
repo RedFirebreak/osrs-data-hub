@@ -9,6 +9,7 @@
  *   /progress/<id>/deep-dive            the detailed charts and their filters (D-106)
  *   /accounts/<id>/collection-log       the collection log (D-118)
  *   /guild/collection-log?q=            the guild board and the lookup
+ *   /settings?account=<id>#sharing      a character's sharing settings (D-122)
  */
 import type { Route } from 'next';
 
@@ -42,6 +43,19 @@ export function bossHref(publicId: string, activity: string, search?: string): R
 /** The detailed charts. `search` is a Metrics query string (metricsSearch). */
 export function deepDiveHref(publicId: string, search?: string): Route {
   return withSearch(`/progress/${part(publicId)}/deep-dive`, search);
+}
+
+/**
+ * The deep dive of one local day (YYYY-MM-DD in the viewer's time zone): a custom range of that day
+ * alone: its totals on top, then its sessions. What the playtime card's bars open (D-122).
+ */
+export function deepDiveDayHref(publicId: string, day: string): Route {
+  return deepDiveHref(publicId, `range=custom&from=${part(day)}&to=${part(day)}`);
+}
+
+/** A character's sharing settings, on the settings page (D-122). */
+export function sharingHref(publicId: string): Route {
+  return `/settings?account=${part(publicId)}#sharing` as Route;
 }
 
 /** A character's collection log (D-118). Not a progress page: it is what the log holds now. */

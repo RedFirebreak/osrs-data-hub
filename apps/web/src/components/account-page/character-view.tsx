@@ -5,7 +5,8 @@
  * week in one glance, the latest events, where the character is and how it stands, its playtime
  * (today, 30 days and all of it), what it wears and carries, the collection log (D-118), and the
  * hiscores. What changed over time (XP, sessions, wealth) lives on the progress pages, which the
- * skills, the week and the playtime link to.
+ * skills, the week and the playtime link to. Settings live on the settings page (D-122): whoever may
+ * change the account's sharing gets a "Sharing" button in the header that leads there.
  *
  * Each section follows the read model's three states (handoff §10, D-4): hidden when the viewer may
  * not see its category, a "Not shared" card when the plugin never sent it, or the data (`dataSection`
@@ -20,14 +21,13 @@ import { DAY_MS, formatGp, formatNumber, itemsValue } from '@hub/core';
 import type { Viewer } from '@hub/core';
 import { getDb } from '@hub/db';
 import {
-  PAGE_EVENTS,
   getAccountPage,
   getEquipmentHistory,
-  getOnlineNow,
-  getSharingSettings,
   getUserSettings,
   type AccountPage,
 } from '@hub/server';
+import { SlidersHorizontalIcon } from 'lucide-react';
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Suspense, cache } from 'react';
 import { AccountHeader } from '@/components/account-page/account-header';
@@ -47,16 +47,18 @@ import { CardSkeleton } from '@/components/common/card-skeleton';
 import { NotSharedCard, SectionCard, dataSection } from '@/components/common/section-card';
 import { EventTimeline } from '@/components/events/event-timeline';
 import { eventTypeOptions } from '@/components/events/event-types';
-import { OnlineNow } from '@/components/live/online-now';
 import { AutoRefresh } from '@/components/shell/auto-refresh';
-import { SharingPanel } from '@/components/sharing/sharing-panel';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { loadOwnAccounts } from '@/lib/own-accounts';
+import { sharingHref } from '@/lib/routes';
 import { requireUser } from '@/lib/session';
 import { cn } from '@/lib/utils';
 
 /** Days of gear changes listed. */
 const HISTORY_DAYS = 90;
+/** Events in "Latest" before "Load more", and per "Load more". */
+export const LATEST_EVENTS = 10;
 
 /** The view's data (inside the caller's Suspense boundary). */
 const loadAccount = cache(async (publicId: string) => {
@@ -70,11 +72,9 @@ const loadAccount = cache(async (publicId: string) => {
 
 export interface CharacterViewProps {
   publicId: string;
-  /** Home: the guild's "Online now" strip under the character. */
-  home?: boolean;
 }
 
-export async function CharacterView({ publicId, home = false }: CharacterViewProps) {
+export async function CharacterView({ publicId }: CharacterViewProps) {
   const { viewer, timezone, renderedAt, page } = await loadAccount(publicId);
   // Hidden since the route's check a moment ago (rare): the not-found UI, if no longer a 404 status.
   if (!page) notFound();
@@ -84,6 +84,11 @@ export async function CharacterView({ publicId, home = false }: CharacterViewPro
   const ctx: SectionContext = { viewer, publicId, page, now, timezone, renderedAt, dayOnlyIn };
   const own = await loadOwnAccounts();
   const isOwn = own.some((account) => account.publicId === publicId);
+  // getSharingSettings admits exactly these viewers (the settings page shows the panel).
+  const canChangeSharing =
+    page.account.relation === 'owner' ||
+    page.account.relation === 'contributor' ||
+    page.account.canManage;
 
   const main = [
     skillsSection(ctx),
@@ -107,11 +112,26 @@ export async function CharacterView({ publicId, home = false }: CharacterViewPro
         now={now}
         timezone={timezone}
         action={
-          isOwn && own.length > 1 ? (
-            <CharacterPicker
-              current={publicId}
-              options={own.map((account) => ({ ...account, href: accountHref(account.publicId) }))}
-            />
+          canChangeSharing || (isOwn && own.length > 1) ? (
+            <div className="flex flex-wrap items-center gap-2">
+              {canChangeSharing && (
+                <Button asChild variant="outline" className="pressable rounded-full">
+                  <Link href={sharingHref(publicId)}>
+                    <SlidersHorizontalIcon aria-hidden data-icon="inline-start" />
+                    Sharing
+                  </Link>
+                </Button>
+              )}
+              {isOwn && own.length > 1 && (
+                <CharacterPicker
+                  current={publicId}
+                  options={own.map((account) => ({
+                    ...account,
+                    href: accountHref(account.publicId),
+                  }))}
+                />
+              )}
+            </div>
           ) : undefined
         }
       />
@@ -139,26 +159,6 @@ export async function CharacterView({ publicId, home = false }: CharacterViewPro
             aside
           )}
         </div>
-      )}
-      {home && (
-        <Suspense fallback={<Skeleton className="h-24 w-full rounded-xl" />}>
-          <GuildOnline viewer={viewer} now={renderedAt} />
-        </Suspense>
-      )}
-      {/* getSharingSettings admits exactly these viewers; for anyone else a skeleton would flash
-          and vanish on every visit. */}
-      {(page.account.relation === 'owner' ||
-        page.account.relation === 'contributor' ||
-        page.account.canManage) && (
-        <Suspense
-          fallback={
-            <CardSkeleton>
-              <ContentSkeleton rows={6} />
-            </CardSkeleton>
-          }
-        >
-          <SharingSection viewer={viewer} publicId={publicId} account={page.account} now={now} />
-        </Suspense>
       )}
       <AutoRefresh />
     </div>
@@ -213,8 +213,8 @@ function eventsSection({ page, publicId, now }: SectionContext) {
       action={events.shared ? undefined : <NotSharedBadge what="events" />}
     >
       <EventTimeline
-        initial={events.shared ? events.data : []}
-        pageSize={PAGE_EVENTS}
+        initial={events.shared ? events.data.slice(0, LATEST_EVENTS) : []}
+        pageSize={LATEST_EVENTS}
         accountPublicId={publicId}
         typeOptions={eventTypeOptions()}
         now={now}
@@ -233,7 +233,7 @@ function eventsSection({ page, publicId, now }: SectionContext) {
   );
 }
 
-function hiscoresSection({ page, now, dayOnlyIn }: SectionContext) {
+function hiscoresSection({ page, publicId, now, dayOnlyIn }: SectionContext) {
   const hiscores = page.hiscores;
   if (!hiscores.visible) return null;
   const view = hiscores.data;
@@ -247,7 +247,7 @@ function hiscoresSection({ page, now, dayOnlyIn }: SectionContext) {
       now={now}
       updatedDayIn={dayOnlyIn}
     >
-      <HiscoresContent view={view} />
+      <HiscoresContent view={view} publicId={publicId} />
     </SectionCard>
   );
 }
@@ -417,48 +417,6 @@ function inventorySection({ page, now, dayOnlyIn }: SectionContext) {
     ),
     content: (inventory) => <InventoryContent items={inventory.items} />,
   });
-}
-
-// --- Under the columns ---------------------------------------------------------------------------
-
-async function GuildOnline({ viewer, now }: { viewer: Viewer; now: Date }) {
-  return <OnlineNow initial={await getOnlineNow(getDb().db, viewer, { now })} />;
-}
-
-async function SharingSection({
-  viewer,
-  publicId,
-  account,
-  now,
-}: {
-  viewer: Viewer;
-  publicId: string;
-  account: AccountPage['account'];
-  now: string;
-}) {
-  const settings = await getSharingSettings(getDb().db, viewer, publicId);
-  if (!settings) return null;
-  return (
-    <SectionCard
-      id="sharing"
-      title="Sharing"
-      description={
-        settings.canManage
-          ? 'Choose who in the guild sees each part of this account.'
-          : 'Who in the guild sees each part of this account.'
-      }
-    >
-      <SharingPanel
-        // A new owner (transfer, claim) remounts the panel with the refreshed settings.
-        key={`${account.owner?.userId ?? 'none'}:${settings.canManage}`}
-        publicId={publicId}
-        initial={settings}
-        hasOwner={account.owner !== null}
-        relation={account.relation}
-        now={now}
-      />
-    </SectionCard>
-  );
 }
 
 // --- Skeletons -----------------------------------------------------------------------------------

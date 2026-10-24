@@ -1,19 +1,19 @@
 /**
- * The official hiscores on the account page (D-105): boss kill counts (most kills first), clues and
- * the other activities, each with its rank, and the rank on the account's own iron table beside it
- * for an iron account. Server component.
+ * The official hiscores on the character page (D-105, D-122): tiles in the way of the skills panel,
+ * each with the icon RuneLite's hiscore panel draws (osrs-icons `/hiscores/`), the name and the
+ * score, the ranks in its tooltip. Bosses come first, most kills first; a boss tile opens the boss's
+ * page. The first BOSSES_SHOWN show, the rest fold under "All N bosses". Clue scrolls (in Jagex's
+ * order) and the minigames follow as tiles that don't link anywhere. Server component.
  */
 import { formatNumber, type HiscoreMode } from '@hub/core';
 import type { HiscoresActivityView, HiscoresView } from '@hub/server';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import Link from 'next/link';
+import { HiscoreIcon } from '@/components/icons/osrs-icon';
+import { bossHref } from '@/lib/routes';
 import { cn } from '@/lib/utils';
+
+/** Boss tiles shown before the rest fold away: four rows of the panel's three columns. */
+export const BOSSES_SHOWN = 12;
 
 /** The iron table's name, for its rank column ("Ironman rank"). */
 export const MODE_LABELS: Readonly<Record<HiscoreMode, string | null>> = {
@@ -24,7 +24,6 @@ export const MODE_LABELS: Readonly<Record<HiscoreMode, string | null>> = {
 };
 
 const GROUPS = [
-  { kind: 'boss', title: 'Bosses' },
   { kind: 'clue', title: 'Clue scrolls' },
   { kind: 'activity', title: 'Minigames and more' },
 ] as const;
@@ -69,85 +68,126 @@ function statusNote(view: HiscoresView): string | null {
   }
 }
 
-export function HiscoresContent({ view }: { view: HiscoresView }) {
+export function HiscoresContent({ view, publicId }: { view: HiscoresView; publicId: string }) {
   const note = statusNote(view);
   const mode = MODE_LABELS[view.mode];
+  // Most kills first: the bosses someone plays stand out; ties keep Jagex's (alphabetical) order.
+  const bosses = view.activities.filter((a) => a.kind === 'boss').sort((a, b) => b.score - a.score);
   const groups = GROUPS.map((g) => ({
     ...g,
     rows: view.activities.filter((a) => a.kind === g.kind),
   })).filter((g) => g.rows.length > 0);
-  // Most kills first: the bosses someone plays stand out; ties keep Jagex's (alphabetical) order.
-  for (const g of groups) {
-    if (g.kind === 'boss') g.rows = [...g.rows].sort((a, b) => b.score - a.score);
-  }
+  const tile = (row: HiscoresActivityView, href?: ReturnType<typeof bossHref>) => (
+    <li key={row.activity} className="min-w-0">
+      <ActivityTile row={row} mode={mode} href={href} />
+    </li>
+  );
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-5">
       {note && <p className="text-sm text-muted-foreground">{note}</p>}
-      {view.fetchedAt !== null && groups.length === 0 && (
+      {view.fetchedAt !== null && bosses.length === 0 && groups.length === 0 && (
         <p className="text-sm text-muted-foreground">
           No kill counts, clues or minigames on the hiscores yet. Most bosses show from 5 kills.
         </p>
       )}
+      {bosses.length > 0 && (
+        <section aria-label="Bosses" className="flex flex-col gap-2">
+          <h3 className="text-xs font-medium text-muted-foreground">Bosses</h3>
+          <ul className={GRID}>
+            {bosses
+              .slice(0, BOSSES_SHOWN)
+              .map((row) => tile(row, bossHref(publicId, row.activity)))}
+          </ul>
+          {bosses.length > BOSSES_SHOWN && (
+            <details className="group flex flex-col gap-2">
+              <summary className="w-fit cursor-pointer rounded-md text-sm font-medium underline-offset-4 hover:underline focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none">
+                <span className="group-open:hidden">All {bosses.length} bosses</span>
+                <span className="hidden group-open:inline">Fewer bosses</span>
+              </summary>
+              <ul className={cn(GRID, 'mt-2')}>
+                {bosses
+                  .slice(BOSSES_SHOWN)
+                  .map((row) => tile(row, bossHref(publicId, row.activity)))}
+              </ul>
+            </details>
+          )}
+        </section>
+      )}
       {groups.map((g) => (
-        <ActivityTable key={g.kind} title={g.title} rows={g.rows} mode={mode} />
+        <section key={g.kind} aria-label={g.title} className="flex flex-col gap-2">
+          <h3 className="text-xs font-medium text-muted-foreground">{g.title}</h3>
+          <ul className={GRID}>{g.rows.map((row) => tile(row))}</ul>
+        </section>
       ))}
     </div>
   );
 }
 
-function ActivityTable({
-  title,
-  rows,
+const GRID = 'grid grid-cols-2 gap-1.5 sm:grid-cols-3 sm:gap-2';
+
+/** What a tile says to a screen reader, and in its tooltip: the score and the ranks. */
+export function activityTileLabel(row: HiscoresActivityView, mode: string | null): string {
+  const parts = [`${row.activity}: ${formatNumber(row.score)}`];
+  if (row.rank !== null) parts.push(`rank ${formatNumber(row.rank)}`);
+  if (mode !== null && row.modeRank !== null) {
+    parts.push(`${mode} rank ${formatNumber(row.modeRank)}`);
+  }
+  return parts.join(', ');
+}
+
+/** The name on a tile: a clue tier alone under "Clue scrolls" ("Beginner", "All"), else the name. */
+export function tileName(row: HiscoresActivityView): string {
+  const tier = row.kind === 'clue' ? /\(([^)]+)\)\s*$/.exec(row.activity)?.[1] : undefined;
+  return tier ? tier.charAt(0).toUpperCase() + tier.slice(1) : row.activity;
+}
+
+function ActivityTile({
+  row,
   mode,
+  href,
 }: {
-  title: string;
-  rows: readonly HiscoresActivityView[];
+  row: HiscoresActivityView;
   mode: string | null;
+  href?: ReturnType<typeof bossHref>;
 }) {
-  return (
-    <div>
-      <h3 className="mb-1 text-xs font-medium text-muted-foreground">{title}</h3>
-      <Table className="tabular-nums">
-        <TableHeader>
-          <TableRow className="hover:bg-transparent">
-            <TableHead scope="col">{title === 'Bosses' ? 'Boss' : 'Name'}</TableHead>
-            <TableHead scope="col" className="text-right">
-              Score
-            </TableHead>
-            <TableHead scope="col" className="text-right">
-              Rank
-            </TableHead>
-            {mode !== null && (
-              <TableHead scope="col" className="hidden text-right sm:table-cell">
-                {mode} rank
-              </TableHead>
-            )}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {rows.map((row) => (
-            <TableRow key={row.activity}>
-              <TableHead scope="row" className="font-medium">
-                {row.activity}
-              </TableHead>
-              <TableCell className="text-right">{formatNumber(row.score)}</TableCell>
-              <TableCell className={cn('text-right', row.rank === null && 'text-muted-foreground')}>
-                {row.rank === null ? '–' : formatNumber(row.rank)}
-              </TableCell>
-              {mode !== null && (
-                <TableCell
-                  className={cn(
-                    'hidden text-right sm:table-cell',
-                    row.modeRank === null && 'text-muted-foreground',
-                  )}
-                >
-                  {row.modeRank === null ? '–' : formatNumber(row.modeRank)}
-                </TableCell>
-              )}
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+  const label = activityTileLabel(row, mode);
+  const inner = (
+    <>
+      <HiscoreIcon
+        activity={row.activity}
+        holdSpace
+        fallback={
+          <span
+            aria-hidden
+            className="grid size-7 shrink-0 place-items-center rounded-md bg-foreground/10 text-xs font-semibold text-muted-foreground"
+          >
+            {row.activity
+              .replace(/^the\s+/i, '')
+              .charAt(0)
+              .toUpperCase()}
+          </span>
+        }
+      />
+      <span className="min-w-0 flex-1 truncate text-sm">{tileName(row)}</span>
+      <span className="text-base leading-none font-semibold tabular-nums">
+        {formatNumber(row.score)}
+      </span>
+    </>
+  );
+  const box =
+    'flex items-center gap-2 rounded-lg border bg-muted/50 px-2.5 py-1.5 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none';
+  return href ? (
+    <Link
+      href={href}
+      aria-label={label}
+      title={label}
+      className={cn(box, 'pressable hover:border-foreground/30')}
+    >
+      {inner}
+    </Link>
+  ) : (
+    <div aria-label={label} title={label} role="group" className={box}>
+      {inner}
     </div>
   );
 }

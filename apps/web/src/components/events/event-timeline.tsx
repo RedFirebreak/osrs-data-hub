@@ -1,8 +1,8 @@
 'use client';
 /**
  * An events timeline that keeps itself current: the server-rendered first page, "load more" through
- * GET /api/app/feed?before=<oldest seq>, optional type filter chips (a filter change reloads the first
- * page from the feed), and live events from the LiveProvider prepended as they arrive (the stream has
+ * GET /api/app/feed?before=<oldest seq>, optional type filter chips (one type at a time, or All; a
+ * filter change reloads the first page from the feed), and live events from the LiveProvider prepended as they arrive (the stream has
  * already applied the viewer's permissions and redaction). Used by the account page (one account) and
  * the guild page (every account the viewer can see).
  *
@@ -121,12 +121,10 @@ export function EventTimeline({
     }
   }
 
-  function toggleType(type: string | null): void {
-    const set = new Set(types);
-    if (type === null) set.clear();
-    else if (set.has(type)) set.delete(type);
-    else set.add(type);
-    const nextTypes = (typeOptions ?? []).map((o) => o.value).filter((v) => set.has(v));
+  /** Shows only `type`, or every type for null. Pressing the type already shown changes nothing. */
+  function selectType(type: string | null): void {
+    const nextTypes = type === null ? [] : [type];
+    if (nextTypes.join() === types.join()) return;
     setTypes(nextTypes);
     void load({ accountPublicId, types: nextTypes, guildFilter }, undefined);
   }
@@ -136,14 +134,14 @@ export function EventTimeline({
     <div className={cn('flex flex-col gap-3', className)}>
       {typeOptions && typeOptions.length > 0 && (
         <div role="group" aria-label="Filter events by type" className="flex flex-wrap gap-1.5">
-          <Chip pressed={!filtered} onClick={() => toggleType(null)}>
+          <Chip pressed={!filtered} onClick={() => selectType(null)}>
             All
           </Chip>
           {typeOptions.map((o) => (
             <Chip
               key={o.value}
               pressed={types.includes(o.value)}
-              onClick={() => toggleType(o.value)}
+              onClick={() => selectType(o.value)}
             >
               {o.label}
             </Chip>
@@ -162,7 +160,7 @@ export function EventTimeline({
           empty={
             filtered ? (
               <p className="py-4 text-sm text-muted-foreground">
-                No events of the selected types yet. Choose other types or All.
+                No events of this type yet. Choose another type or All.
               </p>
             ) : (
               empty

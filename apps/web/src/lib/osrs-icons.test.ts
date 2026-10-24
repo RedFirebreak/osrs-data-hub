@@ -6,6 +6,8 @@ import {
   itemIconUrl,
   parseStacks,
   prayerIconUrl,
+  hiscoreIconUrl,
+  hiscoreSlug,
   skillIconUrl,
   slotIconUrl,
   stackedItemId,
@@ -103,6 +105,22 @@ describe('icon URLs', () => {
     expect(prayerIconUrl(null, 'PIETY')).toBeNull();
     expect(skillIconUrl(base, '')).toBeNull();
     expect(skillIconUrl(null, 'Attack')).toBeNull();
+  });
+
+  it('builds hiscores URLs from the activity name, as osrs-icons slugs it', () => {
+    expect(hiscoreSlug("Kree'Arra")).toBe('kreearra');
+    expect(hiscoreSlug('K\u2019ril Tsutsaroth')).toBe('kril_tsutsaroth');
+    expect(hiscoreSlug('Chambers of Xeric: Challenge Mode')).toBe(
+      'chambers_of_xeric_challenge_mode',
+    );
+    expect(hiscoreSlug('LMS - Rank')).toBe('lms_rank');
+    expect(hiscoreIconUrl(base, 'Zulrah')).toBe(`${base}/hiscores/zulrah.png`);
+    expect(hiscoreIconUrl(base, 'Clue Scrolls (all)')).toBe(
+      `${base}/hiscores/clue_scrolls_all.png`,
+    );
+    expect(hiscoreIconUrl(base, 'Clue Scrolls (elite)')).toBe(`${base}/items/12073.webp`);
+    expect(hiscoreIconUrl(base, ' - ')).toBeNull();
+    expect(hiscoreIconUrl(null, 'Zulrah')).toBeNull();
   });
 
   it('builds empty-slot URLs from the RuneLite slot name', () => {

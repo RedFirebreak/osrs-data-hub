@@ -1,22 +1,23 @@
 /**
  * "Playtime" on the character page and Home: everything the hub has of the character's play time in
  * one card, so it doesn't take a trip to the deep dive. The total since the hub's first session of
- * the character, today and the last 30 days, and a bar per day for the last two weeks. The sessions
- * themselves and the 30-day chart stay on the deep dive ("Sessions"). Gated by `activity`, as the
+ * the character, today and the last 30 days, and a bar per day for the last two weeks. A bar shows the
+ * day's time and sessions on hover and opens that day in the deep dive (D-122); the sessions
+ * themselves and the 30-day chart stay there ("Sessions"). Gated by `activity`, as the
  * sessions are: renders nothing without it. Async server component; the page streams it behind a
  * skeleton.
  */
-import { DAY_MS, HOUR_MS, formatNumber, type Viewer } from '@hub/core';
+import { DAY_MS, formatNumber, type Viewer } from '@hub/core';
 import { getDb } from '@hub/db';
-import { getPlaytimeTotal, getSessions } from '@hub/server';
+import { getPlaytimeTotal, getSessions, type PlaySession } from '@hub/server';
 import Link from 'next/link';
 import type { PlaytimeDay } from '@/components/charts/options';
 import { SectionCard } from '@/components/common/section-card';
 import { Stat } from '@/components/common/stat';
-import { formatInZone } from '@/lib/dates';
-import { deepDiveHref } from '@/lib/routes';
-import { cn } from '@/lib/utils';
+import { formatInZone, localDate } from '@/lib/dates';
+import { deepDiveDayHref, deepDiveHref } from '@/lib/routes';
 import { playtimeByDay } from './playtime';
+import { PlaytimeBars, type PlaytimeBar } from './playtime-bars';
 
 /** Days behind "30 days" and "Days played". */
 export const PLAYTIME_DAYS = 30;
@@ -42,6 +43,28 @@ export function summarizePlaytime(days: readonly PlaytimeDay[]) {
     totalMs: days.reduce((sum, d) => sum + d.ms, 0),
     daysPlayed: days.filter((d) => d.ms > 0).length,
   };
+}
+
+/**
+ * How many sessions ran on each of `days` (local YYYY-MM-DD): a session counts on every local day from
+ * the one it started on to the one it ended on (an open one: its last payload).
+ */
+export function sessionsPerDay(
+  sessions: readonly Pick<PlaySession, 'startedAt' | 'durationMs'>[],
+  days: readonly string[],
+  timezone: string,
+): number[] {
+  return days.map((day) => {
+    let n = 0;
+    for (const session of sessions) {
+      const start = Date.parse(session.startedAt);
+      if (!Number.isFinite(start)) continue;
+      const first = localDate(new Date(start), timezone);
+      const last = localDate(new Date(start + Math.max(0, session.durationMs)), timezone);
+      if (first <= day && day <= last) n++;
+    }
+    return n;
+  });
 }
 
 export interface PlaytimeCardProps {
@@ -112,53 +135,51 @@ export async function PlaytimeCard({
             <Stat label="30 days" value={formatPlaytime(totalMs)} muted={totalMs === 0} />
             <Stat label="Days played" value={`${daysPlayed} of ${days.length}`} />
           </dl>
-          <PlaytimeBars days={days.slice(-Math.min(bars, PLAYTIME_DAYS))} />
+          <Bars
+            days={days.slice(-Math.min(bars, PLAYTIME_DAYS))}
+            sessions={sessions}
+            publicId={publicId}
+            timezone={timezone}
+          />
         </div>
       )}
     </SectionCard>
   );
 }
 
-/**
- * A bar per day, today last and in the foreground colour. Plain HTML, so it renders on the server;
- * each bar's day and time are in its title and in a visually hidden list for screen readers.
- */
-function PlaytimeBars({ days }: { days: readonly PlaytimeDay[] }) {
+/** The bars' days as the client draws them: labels, times and where each day leads. */
+function Bars({
+  days,
+  sessions,
+  publicId,
+  timezone,
+}: {
+  days: readonly PlaytimeDay[];
+  sessions: readonly PlaySession[];
+  publicId: string;
+  timezone: string;
+}) {
   if (days.length === 0) return null;
-  // At least an hour high, so a quiet fortnight doesn't draw ten minutes as a full bar.
-  const max = Math.max(HOUR_MS, ...days.map((d) => d.ms));
   // A local day (YYYY-MM-DD) as a date: noon UTC of it is that day in UTC.
   const dayText = (day: string, options: Intl.DateTimeFormatOptions) =>
     formatInZone(`${day}T12:00:00Z`, 'UTC', options) ?? day;
-  const label = (d: PlaytimeDay) =>
-    `${dayText(d.day, { weekday: 'short', day: 'numeric', month: 'short' })}: ${
-      d.ms > 0 ? formatPlaytime(d.ms) : 'not played'
-    }`;
+  const counts = sessionsPerDay(
+    sessions,
+    days.map((d) => d.day),
+    timezone,
+  );
+  const bars: PlaytimeBar[] = days.map((d, i) => ({
+    day: d.day,
+    ms: d.ms,
+    sessions: counts[i] ?? 0,
+    label: dayText(d.day, { weekday: 'short', day: 'numeric', month: 'short' }),
+    played: d.ms > 0 ? formatPlaytime(d.ms) : null,
+    href: d.ms > 0 ? deepDiveDayHref(publicId, d.day) : null,
+  }));
   return (
-    <figure className="flex flex-col gap-1">
-      <div aria-hidden className="flex h-12 items-end gap-1">
-        {days.map((d, i) => (
-          <div
-            key={d.day}
-            title={label(d)}
-            className={cn(
-              'flex-1 rounded-sm',
-              i === days.length - 1 ? 'bg-foreground' : 'bg-foreground/35',
-              d.ms === 0 && 'bg-muted',
-            )}
-            style={{ height: d.ms > 0 ? `${Math.max(8, (d.ms / max) * 100)}%` : '3px' }}
-          />
-        ))}
-      </div>
-      <figcaption className="flex justify-between text-xs text-muted-foreground">
-        <span>{dayText((days[0] as PlaytimeDay).day, { day: 'numeric', month: 'short' })}</span>
-        <span>Today</span>
-      </figcaption>
-      <ul className="sr-only">
-        {days.map((d) => (
-          <li key={d.day}>{label(d)}</li>
-        ))}
-      </ul>
-    </figure>
+    <PlaytimeBars
+      days={bars}
+      firstLabel={dayText((days[0] as PlaytimeDay).day, { day: 'numeric', month: 'short' })}
+    />
   );
 }

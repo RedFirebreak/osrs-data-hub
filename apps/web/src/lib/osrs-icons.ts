@@ -8,6 +8,7 @@
  *   skillIconUrl(base, 'Attack')        // → `${base}/skills/attack.png`
  *   slotIconUrl(base, 'AMULET')         // → `${base}/slots/amulet.png`
  *   prayerIconUrl(base, 'PIETY')        // → `${base}/prayers/piety.png`
+ *   hiscoreIconUrl(base, "Kree'Arra")   // → `${base}/hiscores/kreearra.png`
  */
 import { highestValueItem } from '@hub/core';
 
@@ -104,6 +105,43 @@ export function prayerIconUrl(
 ): string | null {
   if (!base || !prayer || !/^[A-Z0-9_]+$/.test(prayer)) return null;
   return `${base}/prayers/${prayer.toLowerCase()}.png`;
+}
+
+/**
+ * A hiscores activity name ("Kree'Arra", "Clue Scrolls (all)", "LMS - Rank") → its slug on the CDN
+ * ("kreearra", "clue_scrolls_all", "lms_rank"): lowercase, apostrophes dropped, every other run of
+ * characters that aren't a-z or 0-9 one "_". osrs-icons' hiscoreSlug.
+ */
+export function hiscoreSlug(activity: string | null | undefined): string {
+  return (activity ?? '')
+    .toLowerCase()
+    .replace(/['\u2019]/g, '')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+/** The clue scroll item of each tier (the CDN's hiscores sprites stop at "Clue Scrolls (all)"). */
+const CLUE_ITEMS: Readonly<Record<string, number>> = {
+  clue_scrolls_beginner: 23182,
+  clue_scrolls_easy: 2677,
+  clue_scrolls_medium: 2801,
+  clue_scrolls_hard: 2722,
+  clue_scrolls_elite: 12073,
+  clue_scrolls_master: 19835,
+};
+
+/**
+ * A hiscores activity (a boss, "Clue Scrolls (all)", "LMS - Rank") → the sprite RuneLite's hiscore
+ * panel draws for it (`/hiscores/{slug}.png`), or a clue tier's scroll item. A 404 means none.
+ */
+export function hiscoreIconUrl(
+  base: string | null,
+  activity: string | null | undefined,
+): string | null {
+  const slug = hiscoreSlug(activity);
+  if (!base || !slug) return null;
+  const clue = CLUE_ITEMS[slug];
+  return clue === undefined ? `${base}/hiscores/${slug}.png` : `${base}/items/${clue}.webp`;
 }
 
 /** The event fields that pick its game icon (FeedEvent has them). */
