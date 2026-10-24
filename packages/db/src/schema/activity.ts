@@ -115,6 +115,15 @@ export const playSessions = pgTable(
       .array()
       .default(sql`'{}'::integer[]`)
       .notNull(),
+    /**
+     * Carried wealth (inventory + equipment, GE value) at the session's first and latest payload
+     * with an inventory, and the bank value known then (D-125). Null on sessions from before the hub
+     * kept them, and the bank's until the plugin first sends one.
+     */
+    carriedStart: bigint('carried_start', { mode: 'number' }),
+    carriedEnd: bigint('carried_end', { mode: 'number' }),
+    bankStart: bigint('bank_start', { mode: 'number' }),
+    bankEnd: bigint('bank_end', { mode: 'number' }),
   },
   (t) => [
     uniqueIndex('play_sessions_open_uidx')
@@ -151,6 +160,8 @@ export const wealthDaily = pgTable(
     day: date('day', { mode: 'string' }).notNull(),
     lastValue: bigint('last_value', { mode: 'number' }).notNull(),
     maxValue: bigint('max_value', { mode: 'number' }).notNull(),
+    /** The bank value counted in last_value (D-124); null while none was known. */
+    bankValue: bigint('bank_value', { mode: 'number' }),
     updatedAt: tstz('updated_at').defaultNow().notNull(),
   },
   (t) => [primaryKey({ name: 'wealth_daily_pk', columns: [t.accountId, t.day] })],

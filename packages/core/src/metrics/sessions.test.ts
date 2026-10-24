@@ -12,6 +12,7 @@ import {
   rateThroughSession,
   sessionRecords,
   sessionValue,
+  sessionWealthChange,
   summarizeSessions,
   timeByActivity,
   type BuildSessionsInput,
@@ -282,4 +283,41 @@ describe('timeByActivity', () => {
 
 it('uses the 5-minute bucket of xp_samples', () => {
   expect(METRICS_BUCKET_MS).toBe(5 * MIN);
+});
+
+describe('sessionWealthChange (D-125)', () => {
+  const w = (
+    carriedStart: number | null,
+    carriedEnd: number | null,
+    bankStart: number | null,
+    bankEnd: number | null,
+  ) => ({
+    carriedStart,
+    carriedEnd,
+    bankStart,
+    bankEnd,
+  });
+
+  it('is carried plus bank at the end minus the same at the start', () => {
+    expect(sessionWealthChange(w(10_000_000, 12_500_000, 500_000_000, 503_000_000))).toBe(
+      5_500_000,
+    );
+    expect(sessionWealthChange(w(10_000_000, 4_000_000, 500_000_000, 500_000_000))).toBe(
+      -6_000_000,
+    );
+  });
+
+  it('counts banking items as no change', () => {
+    expect(sessionWealthChange(w(80_000_000, 5_000_000, 500_000_000, 575_000_000))).toBe(0);
+  });
+
+  it('counts a bank first read at the end at the start too', () => {
+    expect(sessionWealthChange(w(10_000_000, 11_000_000, null, 900_000_000))).toBe(1_000_000);
+    expect(sessionWealthChange(w(10_000_000, 11_000_000, null, null))).toBe(1_000_000);
+  });
+
+  it('is null without the carried wealth', () => {
+    expect(sessionWealthChange(w(null, null, null, null))).toBeNull();
+    expect(sessionWealthChange(w(null, 5, null, 7))).toBeNull();
+  });
 });

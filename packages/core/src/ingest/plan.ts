@@ -48,7 +48,11 @@ import type {
  * - locationPoints: with a locationTrail (plugin 1.6) → planTrail's rows; without one, when location
  *   is present → the one sample {ts: floorTo(recv, 1 min), x, y, plane, onBoat: isOnBoat ?? false,
  *   world: player.world ?? prev.world ?? null}.
- * - wealth: when BOTH inventory and equipment are present → {day: utcDay(recv), value: carriedValue}.
+ * - bank (D-124): ctx.bankValue is applied (latestPatch.bankValue/bankValueAt) when its occurredAt is
+ *   after prev.bankValueAt (or none is known), on a normal world and not XP-guarded. A stale snapshot
+ *   still applies it: the event is the plugin's own record of one moment, delivered once.
+ * - wealth: when BOTH inventory and equipment are present → {day: utcDay(recv), value: carriedValue +
+ *   bank, bank}, bank being the value just applied, else prev.bankValue, else null (counted as 0).
  * - session: open = state === 'LOGGED_IN'; extend = state in IN_GAME_STATES; world = player.world ?? null.
  * - A payload without a usable player (null) is planned as a player with no sections.
  */
@@ -79,6 +83,8 @@ export function planSnapshot(
     // Once a snapshot is answered 200 the plugin never sends its trail points again, so one that
     // lost the race still has points to keep.
     if (!special) plan.locationPoints = planTrail(prev, payload, ctx.recv, false);
+    const bank = special ? null : newerBank(prev, ctx);
+    if (bank !== null) plan.latestPatch = bank;
     return plan;
   }
 
@@ -164,15 +170,31 @@ export function planSnapshot(
       plan.equipmentChange = player.equipment;
     }
   }
+  const bankPatch = newerBank(prev, ctx);
+  if (bankPatch !== null) Object.assign(patch, bankPatch);
   if (player.inventory !== undefined && player.equipment !== undefined) {
+    const bank = bankPatch?.bankValue ?? prev?.bankValue ?? null;
     plan.wealth = {
       day: utcDay(ctx.recv),
-      value: carriedValue(player.inventory, player.equipment),
+      value: carriedValue(player.inventory, player.equipment) + (bank ?? 0),
+      bank,
     };
   }
 
   plan.latestPatch = patch;
   return plan;
+}
+
+/** The bank columns to write when the payload's bank value is newer than the stored one (D-124). */
+function newerBank(
+  prev: PrevState | null,
+  ctx: SnapshotContext,
+): { bankValue: number; bankValueAt: Date } | null {
+  const sent = ctx.bankValue ?? null;
+  if (sent === null) return null;
+  const known = prev?.bankValueAt ?? null;
+  if (known !== null && sent.occurredAt <= known) return null;
+  return { bankValue: sent.value, bankValueAt: sent.occurredAt };
 }
 
 /**

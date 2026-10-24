@@ -17,7 +17,7 @@
  * Live: presence follows the LiveProvider (AccountPresence), new events are prepended to the
  * timeline, and the server-rendered numbers refresh every minute (AutoRefresh).
  */
-import { DAY_MS, formatGp, formatNumber, itemsValue } from '@hub/core';
+import { DAY_MS, formatGp, formatNumber, itemsValue, relativeTime } from '@hub/core';
 import type { Viewer } from '@hub/core';
 import { getDb } from '@hub/db';
 import {
@@ -36,6 +36,7 @@ import { HiscoresContent, hiscoresDescription } from '@/components/account-page/
 import { InventoryContent } from '@/components/account-page/inventory-content';
 import { LocationContent } from '@/components/account-page/location-content';
 import { PLAYTIME_DAYS, PlaytimeCard } from '@/components/account-page/playtime-card';
+import { WealthCard } from '@/components/account-page/wealth-card';
 import { SkillsPanel } from '@/components/account-page/skills-panel';
 import { VitalsContent } from '@/components/account-page/vitals-content';
 import { WeekSummary } from '@/components/account-page/week-summary';
@@ -93,6 +94,7 @@ export async function CharacterView({ publicId }: CharacterViewProps) {
   const main = [
     skillsSection(ctx),
     playtimeSection(ctx),
+    wealthSection(ctx),
     eventsSection(ctx),
     hiscoresSection(ctx),
   ].filter(Boolean);
@@ -311,6 +313,23 @@ function playtimeSection({ page, viewer, publicId, renderedAt, timezone }: Secti
   );
 }
 
+/** Wealth reads the wealth history (`inventory`); its recent sessions also need `activity` (D-125). */
+function wealthSection({ page, viewer, publicId, renderedAt }: SectionContext) {
+  if (!page.inventory.visible || !page.inventory.shared) return null;
+  return (
+    <Suspense
+      key="wealth"
+      fallback={
+        <CardSkeleton>
+          <ContentSkeleton rows={4} />
+        </CardSkeleton>
+      }
+    >
+      <WealthCard publicId={publicId} viewer={viewer} now={renderedAt} />
+    </Suspense>
+  );
+}
+
 /** Where the character is and how it stands: the live location and HP, prayer and spellbook. */
 function rightNowSection({ page, now }: SectionContext) {
   const { location, vitals } = page;
@@ -387,7 +406,7 @@ async function GearTripsLoader({ ctx }: { ctx: SectionContext }) {
   return <GearTrips changes={changes} timezone={ctx.timezone} now={to} />;
 }
 
-function inventorySection({ page, now, dayOnlyIn }: SectionContext) {
+function inventorySection({ page, now, renderedAt, dayOnlyIn }: SectionContext) {
   const gear =
     page.equipment.visible && page.equipment.shared
       ? (itemsValue(page.equipment.data.items) ?? 0)
@@ -398,25 +417,42 @@ function inventorySection({ page, now, dayOnlyIn }: SectionContext) {
     what: 'the inventory',
     now,
     updatedDayIn: dayOnlyIn,
-    description: (inventory) => (
-      <span>
-        Worth{' '}
-        <span className="font-medium text-foreground tabular-nums">
-          {formatGp(inventory.value)} gp
-        </span>
-        {gear !== null && (
-          <>
-            {' '}
-            · carried with gear{' '}
-            <span className="font-medium text-foreground tabular-nums">
-              {formatGp(inventory.value + gear)} gp
+    description: (inventory) => {
+      const carried = inventory.value + (gear ?? 0);
+      const { bank } = inventory;
+      return (
+        <span className="flex flex-col gap-0.5">
+          <span>
+            Worth <Gp value={inventory.value} />
+            {gear !== null && (
+              <>
+                {' '}
+                · carried with gear <Gp value={carried} />
+              </>
+            )}
+          </span>
+          {bank !== null && (
+            // D-124: the bank as the plugin last read it, so walking off without gear isn't "poor".
+            <span>
+              Bank <Gp value={bank.value} />
+              {dayOnlyIn === undefined && (
+                <span className="text-muted-foreground">
+                  {' '}
+                  (read {relativeTime(new Date(bank.at), renderedAt)})
+                </span>
+              )}{' '}
+              · total wealth <Gp value={carried + bank.value} />
             </span>
-          </>
-        )}
-      </span>
-    ),
+          )}
+        </span>
+      );
+    },
     content: (inventory) => <InventoryContent items={inventory.items} />,
   });
+}
+
+function Gp({ value }: { value: number }) {
+  return <span className="font-medium text-foreground tabular-nums">{formatGp(value)} gp</span>;
 }
 
 // --- Skeletons -----------------------------------------------------------------------------------

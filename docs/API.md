@@ -385,10 +385,10 @@ days.
 
 ### GET /accounts/{id}/wealth?from=&to=
 
-Carried value (inventory + equipment at GE prices) per UTC day, oldest first (`inventory`). Default: 30
-days.
+Wealth per UTC day, oldest first (`inventory`): inventory and equipment at GE prices plus the bank as
+the plugin last read it (`bank_value`, null on days before it sent one; D-124). Default: 30 days.
 
-    {"data":{"account":{…},"from":"…","to":"…","days":[{"day":"2026-09-29","last_value":84474944,"max_value":84474944}]},"meta":{…}}
+    {"data":{"account":{…},"from":"…","to":"…","days":[{"day":"2026-09-29","last_value":2931668594,"max_value":2931668594,"bank_value":2847193650}]},"meta":{…}}
 
 ### GET /accounts/{id}/locations?from=&to=
 

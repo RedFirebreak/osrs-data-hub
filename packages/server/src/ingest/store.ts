@@ -206,6 +206,7 @@ async function storeInTransaction(
     recv,
     deviceId: device.id,
     payloadTs: payloadTime(payload.timestamp, recv),
+    bankValue: input.normalized.bankValue,
   });
 
   await upsertLatestState(tx, accountId, input, plan);
@@ -460,6 +461,8 @@ async function loadPrevState(tx: Tx, accountId: number): Promise<PrevState | nul
       world: latestState.world,
       location: latestState.location,
       locationUpdatedAt: latestState.locationUpdatedAt,
+      bankValue: latestState.bankValue,
+      bankValueAt: latestState.bankValueAt,
     })
     .from(latestState)
     .where(eq(latestState.accountId, accountId));
@@ -590,7 +593,7 @@ async function writeXpSamples(
 }
 
 /**
- * Equipment change log, the location points and the day's carried wealth. A point whose
+ * Equipment change log, the location points and the day's wealth (carried plus bank, D-124). A point whose
  * (account, ts) exists is left alone: the first sample of a minute wins, and a trail that arrives
  * twice (a resend, a second paired device) is stored once (D-102). That takes both copies getting
  * the same times, which a PC clock more than 10 s ahead undoes (PLUGIN-14).
@@ -613,14 +616,22 @@ async function writeDerived(
       .onConflictDoNothing();
   }
   if (plan.wealth !== null) {
-    const { day, value } = plan.wealth;
+    const { day, value, bank } = plan.wealth;
     await tx
       .insert(wealthDaily)
-      .values({ accountId, day, lastValue: value, maxValue: value, updatedAt: recv })
+      .values({
+        accountId,
+        day,
+        lastValue: value,
+        maxValue: value,
+        bankValue: bank,
+        updatedAt: recv,
+      })
       .onConflictDoUpdate({
         target: [wealthDaily.accountId, wealthDaily.day],
         set: {
           lastValue: value,
+          bankValue: bank,
           maxValue: sql`GREATEST(${wealthDaily.maxValue}, excluded.max_value)`,
           updatedAt: recv,
         },
@@ -650,17 +661,26 @@ async function updateSession(
   if (open === undefined) {
     if (plan.session.open && shutdown === null) {
       const world = plan.session.world;
+      const wealth = sessionWealth(plan);
       await tx.insert(playSessions).values({
         accountId,
         deviceId,
         startedAt: recv,
         lastSeenAt: recv,
         worlds: world === null ? [] : [world],
+        ...(wealth && {
+          carriedStart: wealth.carried,
+          carriedEnd: wealth.carried,
+          bankStart: wealth.bank,
+          bankEnd: wealth.bank,
+        }),
       });
     }
     return;
   }
-  if (plan.session.extend) await extendSession(tx, open.id, deviceId, recv, plan.session.world);
+  if (plan.session.extend) {
+    await extendSession(tx, open.id, deviceId, recv, plan.session.world, sessionWealth(plan));
+  }
   if (shutdown !== null) {
     await tx
       .update(playSessions)
@@ -672,12 +692,24 @@ async function updateSession(
   }
 }
 
+/** The payload's carried wealth and the bank known with it (D-125), null without an inventory. */
+function sessionWealth(plan: SnapshotPlan): { carried: number; bank: number | null } | null {
+  if (plan.wealth === null) return null;
+  const { value, bank } = plan.wealth;
+  return { carried: value - (bank ?? 0), bank };
+}
+
+/**
+ * The session's last payload and world, and its wealth (D-125): the end is the latest, the start the
+ * first one the session had (a session opened without an inventory gets it from a later payload).
+ */
 async function extendSession(
   tx: Tx,
   sessionId: string,
   deviceId: string,
   recv: Date,
   world: number | null,
+  wealth: { carried: number; bank: number | null } | null,
 ): Promise<void> {
   const worlds =
     world === null
@@ -690,6 +722,12 @@ async function extendSession(
       lastSeenAt: sql`GREATEST(${playSessions.lastSeenAt}, ${recv.toISOString()}::timestamptz)`,
       deviceId,
       worlds,
+      ...(wealth && {
+        carriedStart: sql`COALESCE(${playSessions.carriedStart}, ${wealth.carried}::bigint)`,
+        carriedEnd: wealth.carried,
+        bankStart: sql`COALESCE(${playSessions.bankStart}, ${wealth.bank}::bigint)`,
+        bankEnd: wealth.bank,
+      }),
     })
     .where(eq(playSessions.id, sessionId));
 }

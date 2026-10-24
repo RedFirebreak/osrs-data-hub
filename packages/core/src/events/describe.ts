@@ -2,6 +2,7 @@ import { formatGp, formatNumber } from '../format';
 import { isRecord } from '../guards';
 import { INT32_MAX } from '../ints';
 import { parseCombatTaskName } from './combat-task';
+import { deathOutcome } from './death';
 import { highestValueItem, storedEventData } from './stored';
 import {
   EVENT_TYPES,
@@ -30,7 +31,7 @@ export interface EventDescription {
   /**
    * One line for toasts and feeds, starting with the account name, e.g.
    * "Zezima received Dragon warhammer (38.2M) from Lizardman shaman",
-   * "Zezima reached level 85 Strength", "Zezima died (inventory value lost: 34.9K)",
+   * "Zezima reached level 85 Strength", "Zezima died (reclaim fee up to 500K)",
    * "Zezima completed a Grandmaster combat task: No Pressure (6 points)",
    * "Zezima completed an Easy Varrock diary task", "Zezima: new collection log item Tanzanite fang",
    * "A superior Nechryarch spawned for Zezima", unknown types: "Zezima: questComplete".
@@ -57,8 +58,9 @@ const CONTROL_CHARS = /[\p{Cc}\p{Bidi_Control}]/gu;
  * - Columns win over the stored data (valueGp, skill, level, tier, points); data fills the gaps.
  * - Values use formatGp. Loot: highestValueItem (with "N x" for a stack) + valueGp + source.text;
  *   pk_loot: "opened a loot chest worth …". Death: "was killed by <killerName>" when a killer is
- *   known (not "?"), "(inventory value lost: …)" for dangerous deaths and "(safe death)" for SAFE and
- *   EXCEPTIONAL ones (the plugin never loses items there). level_up: "reached level N Skill", and
+ *   known (not "?"), then by deathOutcome (D-123): "(safe death)" for SAFE and EXCEPTIONAL ones,
+ *   "(items lost: …)" for a death to a player or in the Wilderness, and otherwise what the grave
+ *   costs: "(reclaim fee up to …)", "(free to reclaim)", or "(items in the grave)" without items. level_up: "reached level N Skill", and
  *   "reached combat level N" for "Combat". Tiers are capitalized with "a"/"an" to match.
  * - Plugin-sent text is trimmed, control characters (C0, DEL, C1 and bidi controls) become spaces,
  *   whitespace runs collapse and it is cut to 100 characters; anything missing, redacted or of the
@@ -99,11 +101,14 @@ function lineFor(type: KnownEventType, name: string, event: DescribableEvent): s
     case 'death': {
       const killerName = clean(d.killerName);
       const killer = killerName === '?' ? null : killerName;
-      const danger = typeof d.danger === 'string' ? d.danger.trim().toUpperCase() : null;
-      const value = finite(event.valueGp) ?? finite(d.valueLost);
       let line = killer === null ? `${name} died` : `${name} was killed by ${killer}`;
-      if (danger === 'SAFE' || danger === 'EXCEPTIONAL') line += ' (safe death)';
-      else if (value !== null) line += ` (inventory value lost: ${formatGp(value)})`;
+      const outcome = deathOutcome(d, finite(event.valueGp));
+      if (outcome.kind === 'safe') line += ' (safe death)';
+      else if (outcome.kind === 'lost') {
+        if (outcome.value !== null) line += ` (items lost: ${formatGp(outcome.value)})`;
+      } else if (outcome.fee === null) line += ' (items in the grave)';
+      else if (outcome.fee === 0) line += ' (free to reclaim)';
+      else line += ` (reclaim fee up to ${formatGp(outcome.fee)})`;
       return line;
     }
     case 'level_up': {

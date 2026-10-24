@@ -167,8 +167,8 @@ describe('getWealthHistory', () => {
       to: NOW,
     });
     expect(days).toEqual([
-      { day: '2026-09-01', lastValue: 3, maxValue: 4 },
-      { day: '2026-09-15', lastValue: 5, maxValue: 6 },
+      { day: '2026-09-01', lastValue: 3, maxValue: 4, bankValue: null },
+      { day: '2026-09-15', lastValue: 5, maxValue: 6, bankValue: null },
     ]);
     expect(await getWealthHistory(t.db, member.viewer, account.publicId, RANGE)).toBeNull();
   });

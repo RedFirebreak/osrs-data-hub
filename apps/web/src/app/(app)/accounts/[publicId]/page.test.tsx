@@ -213,6 +213,7 @@ describe('account page', () => {
       'Right now',
       'Skills',
       'This week',
+      'Wealth',
       'Worn',
     ]);
     // Total level is the real one (D-44): 99 + 99 + 2; Strength's tile shows 99 and names its

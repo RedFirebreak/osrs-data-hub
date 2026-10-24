@@ -686,6 +686,7 @@ describe('histories', () => {
         day: '2026-09-21',
         lastValue: expect.any(Number) as unknown,
         maxValue: expect.any(Number) as unknown,
+        bankValue: null,
       },
     ]);
     const trail = present(await apiLocations(t.db, ownerKey.principal, zezima, {}, NOW));

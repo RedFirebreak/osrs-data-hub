@@ -48,7 +48,7 @@ import {
   type ValuePoint,
 } from '@hub/core';
 import type { DbOrTx } from '@hub/db';
-import { readSessions, type PlaySession } from '../accounts/history';
+import { readSessionWealth, readSessions, type PlaySession } from '../accounts/history';
 import { loadVisibleAccount, type AccountWithAccess } from '../accounts/load';
 import { getGains, loadCurrentSkills, seriesResolution } from '../accounts/xp';
 import { loadHiscoresViews, type HiscoresView } from '../hiscores/read';
@@ -109,6 +109,8 @@ export interface SessionCard {
   kills: { activity: string; kills: number }[];
   killsShared: boolean;
   main: SessionMetrics['main'];
+  /** Wealth gained (negative: lost) in the session, D-125; null when unknown or not shared. */
+  wealthChange: number | null;
   /** The measure of the view in this session (active ms for `active`). */
   value: number;
 }
@@ -260,12 +262,22 @@ export async function getAccountMetrics(
       })
     : [];
 
+  // Wealth per session (D-125): `inventory` on top of the sessions' `activity`.
+  const sessionWealth =
+    access.sessions && access.inventory
+      ? await readSessionWealth(
+          db,
+          account.id,
+          playSessions.map((s) => s.id),
+        )
+      : null;
   const built = access.sessions
     ? buildSessions({
         spans: playSessions.map((s) => ({
           id: s.id,
           start: Date.parse(s.startedAt),
           end: Date.parse(s.endedAt ?? s.lastSeenAt),
+          wealthChange: sessionWealth?.get(s.id) ?? null,
         })),
         gains,
         drops: drops.filter((d) => d.at >= sessionStart),
@@ -447,6 +459,7 @@ function toCard(s: SessionMetrics, sel: MeasureSelection, open: boolean): Sessio
       .sort((a, b) => b.kills - a.kills),
     killsShared: s.killsShared,
     main: s.main,
+    wealthChange: s.wealthChange,
     value: sessionValueOf(s, sel),
   };
 }
@@ -559,9 +572,15 @@ async function loadTimeline(
   const neighbours = (await readSessions(db, accountId, after)).filter(
     (s) => s.id !== session.id && Date.parse(s.startedAt) >= session.start,
   );
+  const wealth = access.inventory ? await readSessionWealth(db, accountId, [session.id]) : null;
   const [built] = buildSessions({
     spans: [
-      { id: session.id, start: session.start, end: session.end },
+      {
+        id: session.id,
+        start: session.start,
+        end: session.end,
+        wealthChange: wealth?.get(session.id) ?? null,
+      },
       ...neighbours.map((s) => ({
         id: s.id,
         start: Date.parse(s.startedAt),

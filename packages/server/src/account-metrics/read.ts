@@ -220,32 +220,45 @@ export async function readKillGains(
 }
 
 /**
- * Carried wealth at the end of the range minus at its start (wealth_daily, UTC days: the last value
- * of the range's last day with data minus that of the last day before the range, or of its first day
- * when there is none before). Null without any day.
+ * Wealth at the end of the range minus at its start (wealth_daily, UTC days: the last value of the
+ * range's last day with data minus that of the last day before the range, or of its first day when
+ * there is none before). Null without any day. When the start has no bank value yet and the end has
+ * one (D-124), the end's bank is left out, so the first bank reading isn't counted as a gain.
  */
 export async function readWealthChange(
   db: DbOrTx,
   accountId: number,
   range: Range,
 ): Promise<number | null> {
-  const result = await db.execute<{ start: number | null; end: number | null }>(sql`
-    SELECT
-      COALESCE(
-        (SELECT last_value FROM wealth_daily
-          WHERE account_id = ${accountId} AND day < ${utcDay(range.from)}::date
-          ORDER BY day DESC LIMIT 1),
-        (SELECT last_value FROM wealth_daily
-          WHERE account_id = ${accountId} AND day >= ${utcDay(range.from)}::date
-            AND day <= ${utcDay(range.to)}::date
-          ORDER BY day ASC LIMIT 1)) AS start,
-      (SELECT last_value FROM wealth_daily
-        WHERE account_id = ${accountId} AND day >= ${utcDay(range.from)}::date
-          AND day <= ${utcDay(range.to)}::date
-        ORDER BY day DESC LIMIT 1) AS end`);
+  const from = utcDay(range.from);
+  const to = utcDay(range.to);
+  const result = await db.execute<{
+    start: number | null;
+    start_bank: number | null;
+    end: number | null;
+    end_bank: number | null;
+  }>(sql`
+    WITH s AS (
+      SELECT last_value, bank_value FROM (
+        (SELECT day, last_value, bank_value, 0 AS pick FROM wealth_daily
+          WHERE account_id = ${accountId} AND day < ${from}::date
+          ORDER BY day DESC LIMIT 1)
+        UNION ALL
+        (SELECT day, last_value, bank_value, 1 AS pick FROM wealth_daily
+          WHERE account_id = ${accountId} AND day >= ${from}::date AND day <= ${to}::date
+          ORDER BY day ASC LIMIT 1)
+      ) c ORDER BY pick LIMIT 1
+    ), e AS (
+      SELECT last_value, bank_value FROM wealth_daily
+        WHERE account_id = ${accountId} AND day >= ${from}::date AND day <= ${to}::date
+        ORDER BY day DESC LIMIT 1
+    )
+    SELECT (SELECT last_value FROM s) AS start, (SELECT bank_value FROM s) AS start_bank,
+           (SELECT last_value FROM e) AS end, (SELECT bank_value FROM e) AS end_bank`);
   const row = result.rows[0];
   if (!row || row.start === null || row.end === null) return null;
-  return Number(row.end) - Number(row.start);
+  const firstBank = row.start_bank === null && row.end_bank !== null ? Number(row.end_bank) : 0;
+  return Number(row.end) - Number(row.start) - firstBank;
 }
 
 function utcDay(date: Date): string {

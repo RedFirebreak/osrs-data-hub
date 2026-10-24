@@ -136,6 +136,8 @@ const EMPTY_STATE: PrevState = {
   world: null,
   location: null,
   locationUpdatedAt: null,
+  bankValue: null,
+  bankValueAt: null,
 };
 
 interface Step {
@@ -168,6 +170,8 @@ function applyPlan(prev: PrevState | null, plan: SnapshotPlan, state: string | n
     world: patch.world ?? before.world,
     location: patch.location ?? before.location,
     locationUpdatedAt: patch.locationUpdatedAt ?? before.locationUpdatedAt,
+    bankValue: patch.bankValue ?? before.bankValue,
+    bankValueAt: patch.bankValueAt ?? before.bankValueAt,
   };
 }
 
@@ -271,6 +275,7 @@ const lifecycle = (who: Who | null, shutdown: ShutdownReason): Expected => ({
 
 const EXPECTED: Record<FixtureName, Expected> = {
   'disabled-login-screen': lifecycle(null, 'disabled'),
+  'event-bank-value': withEvents('zezima'),
   'event-collectionlog-unresolved': withEvents('ironMira', 'collection_log'),
   'event-collectionlog': withEvents('ironMira', 'collection_log'),
   'event-combattask': withEvents('zezima', 'combat_task'),
@@ -458,7 +463,11 @@ describe('fixtures: every payload through parse → normalize → plan', () => {
     );
     expect(plan.wealth).toEqual(
       derived && p.inventory && p.equipment
-        ? { day: '2026-09-21', value: gpSum(p.inventory.items) + gpSum(p.equipment.items) }
+        ? {
+            day: '2026-09-21',
+            value: gpSum(p.inventory.items) + gpSum(p.equipment.items),
+            bank: null,
+          }
         : null,
     );
   });
@@ -589,6 +598,7 @@ describe('fixtures: stored events', () => {
     expect(normalized).toEqual({
       events: [],
       shutdown: { reason, occurredAt: new Date(wire(name).events![0]!.timestamp) },
+      bankValue: null,
       skipped: 0,
     });
   });
@@ -615,7 +625,7 @@ describe('fixtures: players', () => {
     const anglerfish = p.inventory!.items.filter((i) => i.id === 13441);
     expect(anglerfish).toHaveLength(4);
     const { plan } = ingest('snapshot-normal');
-    expect(plan.wealth).toEqual({ day: '2026-09-21', value: 84_474_944 });
+    expect(plan.wealth).toEqual({ day: '2026-09-21', value: 84_474_944, bank: null });
     expect(plan.equipmentChange).toHaveLength(9);
     expect(plan.equipmentChange!.every((i) => i.equipmentSlot !== undefined)).toBe(true);
   });

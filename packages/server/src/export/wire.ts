@@ -75,9 +75,14 @@ export function wireLocation(l: ApiLocation) {
   return { x: l.x, y: l.y, plane: l.plane, is_on_boat: l.isOnBoat, stale: l.stale };
 }
 
-/** One day of carried wealth (the API's `days`, the export's `wealth_days`). */
-export function wireWealthDay(d: { day: string; lastValue: number; maxValue: number }) {
-  return { day: d.day, last_value: d.lastValue, max_value: d.maxValue };
+/** One day of wealth, carried plus bank (the API's `days`, the export's `wealth_days`; D-124). */
+export function wireWealthDay(d: {
+  day: string;
+  lastValue: number;
+  maxValue: number;
+  bankValue: number | null;
+}) {
+  return { day: d.day, last_value: d.lastValue, max_value: d.maxValue, bank_value: d.bankValue };
 }
 
 /**

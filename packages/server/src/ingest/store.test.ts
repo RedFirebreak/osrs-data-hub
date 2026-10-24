@@ -6,6 +6,7 @@ import {
   isOnline,
   normalizeEvents,
   parsePayload,
+  sessionWealthChange,
   utcDay,
 } from '@hub/core';
 import {
@@ -201,6 +202,8 @@ describe('first snapshot of a new account', () => {
       inventoryUpdatedAt: recv,
       equipment: p.equipment.items,
       equipmentUpdatedAt: recv,
+      bankValue: null,
+      bankValueAt: null,
       updatedAt: recv,
     });
   });
@@ -248,7 +251,14 @@ describe('first snapshot of a new account', () => {
     const value = carriedValue(p.inventory.items, p.equipment.items);
     expect(value).toBeGreaterThan(0);
     expect(wealth).toEqual([
-      { accountId, day: utcDay(recv), lastValue: value, maxValue: value, updatedAt: recv },
+      {
+        accountId,
+        day: utcDay(recv),
+        lastValue: value,
+        maxValue: value,
+        bankValue: null,
+        updatedAt: recv,
+      },
     ]);
   });
 
@@ -578,6 +588,48 @@ describe('events', () => {
 });
 
 // ---- staleness and ordering ----------------------------------------------------------------------
+
+describe('bank value (plugin bankValue event, D-124)', () => {
+  it('sets the bank on latest_state, counts it in the wealth and stores no event row', async () => {
+    const device = await h.seedDevice();
+    const hash = newHash();
+    const first = wire('snapshot-normal', { hash });
+    expect((await h.send(device, first)).status).toBe(200);
+    const body = wire('event-bank-value', { hash });
+    const recv = new Date(ts(body) + 1_000);
+    expect((await h.send(device, body)).status).toBe(200);
+
+    const { id: accountId } = await account(hash);
+    const sent = body.events?.[0] as { timestamp: number; data: { value: number } };
+    expect(await latest(accountId)).toMatchObject({
+      bankValue: sent.data.value,
+      bankValueAt: new Date(sent.timestamp),
+    });
+    expect(await eventRows(accountId)).toEqual([]);
+    const p = playerOf(body);
+    const carried = carriedValue(p.inventory.items, p.equipment.items);
+    const wealth = await t.db
+      .select()
+      .from(wealthDaily)
+      .where(eq(wealthDaily.accountId, accountId));
+    expect(wealth).toEqual([
+      expect.objectContaining({
+        day: utcDay(recv),
+        lastValue: carried + sent.data.value,
+        bankValue: sent.data.value,
+      }),
+    ]);
+
+    // The same event sent again changes nothing; a later snapshot keeps counting the bank.
+    expect((await h.send(device, body)).status).toBe(200);
+    const later = wire('snapshot-normal', { hash });
+    later.timestamp = ts(body) + 60_000;
+    expect((await h.send(device, later)).status).toBe(200);
+    expect(await latest(accountId)).toMatchObject({ bankValue: sent.data.value });
+    const [day] = await t.db.select().from(wealthDaily).where(eq(wealthDaily.accountId, accountId));
+    expect(day?.lastValue).toBe(carried + sent.data.value);
+  });
+});
 
 describe('staleness (D-17, D-33)', () => {
   it('a resend older than the overtaking snapshot from the same device is stale; its events are stored', async () => {
@@ -1454,5 +1506,48 @@ describe('skills', () => {
     const xp = await xpRows((await account(hash)).id);
     expect(xp).toHaveLength(26);
     expect(xp.find((r) => r.skillId === row?.id)).toMatchObject({ xp: 1_234, level: 10 });
+  });
+});
+
+describe('session wealth (D-125)', () => {
+  it('keeps the carried wealth and bank at the first and latest payload of a session', async () => {
+    const device = await h.seedDevice();
+    const hash = newHash();
+    const first = wire('snapshot-normal', { hash });
+    expect((await h.send(device, first)).status).toBe(200);
+    const { id: accountId } = await account(hash);
+    const p = playerOf(first);
+    const carried = carriedValue(p.inventory.items, p.equipment.items);
+    expect(await sessions(accountId)).toEqual([
+      expect.objectContaining({
+        carriedStart: carried,
+        carriedEnd: carried,
+        bankStart: null,
+        bankEnd: null,
+      }),
+    ]);
+
+    // The bank is read during the session: it counts from the start, so it is no gain.
+    const bank = wire('event-bank-value', { hash });
+    bank.timestamp = ts(first) + 30_000;
+    expect((await h.send(device, bank)).status).toBe(200);
+    const value = (bank.events?.[0] as { data: { value: number } }).data.value;
+
+    // A later payload carries less: the inventory's first item is gone.
+    const later = wire('snapshot-normal', { hash });
+    later.timestamp = ts(first) + 60_000;
+    const lp = playerOf(later);
+    lp.inventory.items = lp.inventory.items.slice(1);
+    expect((await h.send(device, later)).status).toBe(200);
+    const less = carriedValue(lp.inventory.items, lp.equipment.items);
+
+    const [session] = await sessions(accountId);
+    expect(session).toMatchObject({
+      carriedStart: carried,
+      carriedEnd: less,
+      bankStart: value,
+      bankEnd: value,
+    });
+    expect(sessionWealthChange(session!)).toBe(less - carried);
   });
 });

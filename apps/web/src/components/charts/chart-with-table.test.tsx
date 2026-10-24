@@ -76,23 +76,23 @@ describe('WealthChart', () => {
       <WealthChart
         days={[
           { day: '2026-09-28', lastValue: 1_000_000, maxValue: 2_500_000 },
-          { day: '2026-09-29', lastValue: 1_200_000, maxValue: 1_300_000 },
+          { day: '2026-09-29', lastValue: 1_200_000, maxValue: 1_300_000, bankValue: 900_000 },
         ]}
       />,
     );
     expect(html).toBe(
       '<div>' +
-        '<div role="img" aria-label="Carried wealth per day over 2 days, 1.2M gp at the end of 2026-09-29"></div>' +
+        '<div role="img" aria-label="Wealth per day over 2 days, 1.2M gp at the end of 2026-09-29"></div>' +
         DETAILS +
-        headings('Day (UTC)', 'End of day', 'Daily high') +
-        `<tbody>${row('2026-09-29', '1.2M', '1.3M')}${row('2026-09-28', '1M', '2.5M')}</tbody>` +
+        headings('Day (UTC)', 'End of day', 'Daily high', 'Bank') +
+        `<tbody>${row('2026-09-29', '1.2M', '1.3M', '900K')}${row('2026-09-28', '1M', '2.5M', '–')}</tbody>` +
         '</table></details></div>',
     );
   });
 
   it('says only the period when there are no days', () => {
     expect(renderToStaticMarkup(<WealthChart days={[]} />)).toContain(
-      'aria-label="Carried wealth per day over 0 days"',
+      'aria-label="Wealth per day over 0 days"',
     );
   });
 });

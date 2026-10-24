@@ -99,10 +99,21 @@ export interface NormalizedEvent {
 
 export type ShutdownReason = 'logout' | 'shutdown' | 'disabled';
 
+/** The GE value of a bank as the plugin read it when the bank was opened or closed (D-124). */
+export interface BankValue {
+  value: number;
+  occurredAt: Date;
+}
+
 export interface NormalizeResult {
   events: NormalizedEvent[];
   /** The last clientShutdown in the payload, if any (it ends the session instead of being stored). */
   shutdown: { reason: ShutdownReason; occurredAt: Date } | null;
+  /**
+   * The newest bankValue in the payload, if any (D-124): it updates the account's bank value instead
+   * of being stored as an event.
+   */
+  bankValue: BankValue | null;
   /** Events (or levelUp elements) dropped as malformed. */
   skipped: number;
 }

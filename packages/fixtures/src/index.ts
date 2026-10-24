@@ -10,6 +10,7 @@ const HTTP_DIR = path.join(import.meta.dirname, '..', 'http');
 
 export const FIXTURES = [
   'disabled-login-screen',
+  'event-bank-value',
   'event-collectionlog-unresolved',
   'event-collectionlog',
   'event-combattask',

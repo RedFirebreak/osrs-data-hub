@@ -47,6 +47,7 @@ function card(over: Partial<SessionCard> = {}): SessionCard {
     kills: [],
     killsShared: false,
     main: { kind: 'skill', name: 'Ranged' },
+    wealthChange: null,
     value: 60_000,
     ...over,
   };
