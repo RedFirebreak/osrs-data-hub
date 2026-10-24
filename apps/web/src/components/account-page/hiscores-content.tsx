@@ -1,8 +1,8 @@
 /**
  * The official hiscores on the character page (D-105, D-122): tiles in the way of the skills panel,
  * each with the icon RuneLite's hiscore panel draws (osrs-icons `/hiscores/`), the name and the
- * score, the ranks in its tooltip. Bosses come first, most kills first; a boss tile opens the boss's
- * page. The first BOSSES_SHOWN show, the rest fold under "All N bosses". Clue scrolls (in Jagex's
+ * score with what it gained in the last 7 days (`+n`, D-126), the ranks in its tooltip. Bosses come
+ * first, most kills first; a boss tile opens the boss's page. The first BOSSES_SHOWN show, the rest fold under "All N bosses". Clue scrolls (in Jagex's
  * order) and the minigames follow as tiles that don't link anywhere. Server component.
  */
 import { formatNumber, type HiscoreMode } from '@hub/core';
@@ -68,7 +68,14 @@ function statusNote(view: HiscoresView): string | null {
   }
 }
 
-export function HiscoresContent({ view, publicId }: { view: HiscoresView; publicId: string }) {
+export function HiscoresContent({
+  view,
+  publicId,
+}: {
+  /** `weekGains`: score gained per activity in the last 7 days (the account page's). */
+  view: HiscoresView & { weekGains?: Readonly<Record<string, number>> };
+  publicId: string;
+}) {
   const note = statusNote(view);
   const mode = MODE_LABELS[view.mode];
   // Most kills first: the bosses someone plays stand out; ties keep Jagex's (alphabetical) order.
@@ -79,7 +86,12 @@ export function HiscoresContent({ view, publicId }: { view: HiscoresView; public
   })).filter((g) => g.rows.length > 0);
   const tile = (row: HiscoresActivityView, href?: ReturnType<typeof bossHref>) => (
     <li key={row.activity} className="min-w-0">
-      <ActivityTile row={row} mode={mode} href={href} />
+      <ActivityTile
+        row={row}
+        mode={mode}
+        href={href}
+        gained={view.weekGains?.[row.activity] ?? 0}
+      />
     </li>
   );
   return (
@@ -125,13 +137,21 @@ export function HiscoresContent({ view, publicId }: { view: HiscoresView; public
 
 const GRID = 'grid grid-cols-2 gap-1.5 sm:grid-cols-3 sm:gap-2';
 
-/** What a tile says to a screen reader, and in its tooltip: the score and the ranks. */
-export function activityTileLabel(row: HiscoresActivityView, mode: string | null): string {
+/**
+ * What a tile says to a screen reader, and in its tooltip: the score, the ranks and what was gained
+ * in the last 7 days.
+ */
+export function activityTileLabel(
+  row: HiscoresActivityView,
+  mode: string | null,
+  gained = 0,
+): string {
   const parts = [`${row.activity}: ${formatNumber(row.score)}`];
   if (row.rank !== null) parts.push(`rank ${formatNumber(row.rank)}`);
   if (mode !== null && row.modeRank !== null) {
     parts.push(`${mode} rank ${formatNumber(row.modeRank)}`);
   }
+  if (gained > 0) parts.push(`${formatNumber(gained)} gained in 7 days`);
   return parts.join(', ');
 }
 
@@ -145,37 +165,34 @@ function ActivityTile({
   row,
   mode,
   href,
+  gained,
 }: {
   row: HiscoresActivityView;
   mode: string | null;
   href?: ReturnType<typeof bossHref>;
+  /** Gained in the last 7 days. */
+  gained: number;
 }) {
-  const label = activityTileLabel(row, mode);
+  const label = activityTileLabel(row, mode, gained);
   const inner = (
     <>
       <HiscoreIcon
         activity={row.activity}
         holdSpace
-        fallback={
-          <span
-            aria-hidden
-            className="grid size-7 shrink-0 place-items-center rounded-md bg-foreground/10 text-xs font-semibold text-muted-foreground"
-          >
-            {row.activity
-              .replace(/^the\s+/i, '')
-              .charAt(0)
-              .toUpperCase()}
-          </span>
-        }
+        fallback={<ActivityInitial activity={row.activity} />}
       />
-      <span className="min-w-0 flex-1 truncate text-sm">{tileName(row)}</span>
-      <span className="text-base leading-none font-semibold tabular-nums">
-        {formatNumber(row.score)}
+      {/* Two lines, so the name has the tile's width and the gain fits beside the score. */}
+      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span className="truncate text-sm leading-tight">{tileName(row)}</span>
+        <span className="flex items-baseline gap-1.5 leading-none tabular-nums">
+          <span className="text-base font-semibold">{formatNumber(row.score)}</span>
+          {gained > 0 && <GainBadge gained={gained} />}
+        </span>
       </span>
     </>
   );
   const box =
-    'flex items-center gap-2 rounded-lg border bg-muted/50 px-2.5 py-1.5 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none';
+    'flex items-center gap-2 rounded-lg border bg-muted/50 px-2.5 py-2 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none';
   return href ? (
     <Link
       href={href}
@@ -189,5 +206,37 @@ function ActivityTile({
     <div aria-label={label} title={label} role="group" className={box}>
       {inner}
     </div>
+  );
+}
+
+/** `+n`, in the colour of a gain (the wealth card's). */
+export function GainBadge({ gained, className }: { gained: number; className?: string }) {
+  return (
+    <span
+      className={cn(
+        'text-xs font-medium text-emerald-700 tabular-nums dark:text-emerald-400',
+        className,
+      )}
+    >
+      +{formatNumber(gained)}
+    </span>
+  );
+}
+
+/** Stands in for an activity's icon until osrs-icons has one: its initial ("The" left off). */
+export function ActivityInitial({ activity, className }: { activity: string; className?: string }) {
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        'grid size-7 shrink-0 place-items-center rounded-md bg-foreground/10 text-xs font-semibold text-muted-foreground',
+        className,
+      )}
+    >
+      {activity
+        .replace(/^the\s+/i, '')
+        .charAt(0)
+        .toUpperCase()}
+    </span>
   );
 }

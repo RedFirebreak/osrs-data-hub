@@ -38,6 +38,7 @@ import { MOMENT_OPTIONS } from '@/components/charts/options';
 import { WealthChart } from '@/components/charts/wealth-chart';
 import { CardSkeleton } from '@/components/common/card-skeleton';
 import { SectionCard } from '@/components/common/section-card';
+import { BossCards } from '@/components/metrics/boss-cards';
 import { FilterBar } from '@/components/metrics/filter-bar';
 import { MEASURE_LABELS, formatMs, formatShare } from '@/components/metrics/format';
 import { GoalsPanel } from '@/components/metrics/goals-panel';
@@ -50,12 +51,7 @@ import {
   TimeByActivityChart,
 } from '@/components/metrics/metrics-charts';
 import { MetricsQueryProvider } from '@/components/metrics/metrics-nav';
-import {
-  BossesTable,
-  SessionList,
-  SkillsProgress,
-  TotalsTiles,
-} from '@/components/metrics/metrics-panels';
+import { SessionList, SkillsProgress, TotalsTiles } from '@/components/metrics/metrics-panels';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatInZone } from '@/lib/dates';
 import { deepDiveHref, progressHref } from '@/lib/routes';
@@ -208,28 +204,6 @@ async function MetricsContent({ publicId, query }: { publicId: string; query: Me
               <SkillsProgress skills={m.skills} />
             </SectionCard>
           )}
-          {m.bosses && (
-            <SectionCard
-              id="bosses"
-              title="Bosses"
-              description="Kill counts from the official hiscores, and the kills read in the range. Open a boss for its loot, uniques and sessions."
-              contentClassName="px-0 sm:px-(--card-spacing)"
-            >
-              {m.bosses.length === 0 ? (
-                <p className="px-(--card-spacing) text-sm text-muted-foreground sm:px-0">
-                  No boss kill counts on the hiscores yet. Most bosses show from 5 kills.
-                </p>
-              ) : (
-                <BossesTable
-                  bosses={m.bosses}
-                  publicId={publicId}
-                  query={query}
-                  showGp={m.access.events}
-                  modeLabel={m.hiscores ? MODE_LABELS[m.hiscores.mode] : null}
-                />
-              )}
-            </SectionCard>
-          )}
         </div>
         <SectionCard
           id="goals"
@@ -245,6 +219,27 @@ async function MetricsContent({ publicId, query }: { publicId: string; query: Me
           />
         </SectionCard>
       </div>
+      {m.bosses && (
+        <SectionCard
+          id="bosses"
+          title="Bosses"
+          description="Kill counts from the official hiscores, with the kills read in the range. Open a boss for its loot, uniques and sessions."
+        >
+          {m.bosses.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No boss kill counts on the hiscores yet. Most bosses show from 5 kills.
+            </p>
+          ) : (
+            <BossCards
+              bosses={m.bosses}
+              publicId={publicId}
+              query={query}
+              showGp={m.access.events}
+              modeLabel={m.hiscores ? MODE_LABELS[m.hiscores.mode] : null}
+            />
+          )}
+        </SectionCard>
+      )}
       {(m.access.activity || m.access.inventory) && (
         <div className="grid items-start gap-6 lg:grid-cols-2">
           {m.access.activity && (

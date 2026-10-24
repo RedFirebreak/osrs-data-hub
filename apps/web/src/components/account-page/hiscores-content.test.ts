@@ -25,5 +25,8 @@ describe('hiscores tiles', () => {
       'Zulrah: 1,344, rank 4,321, Ironman rank 12',
     );
     expect(activityTileLabel({ ...row('Obor', 'boss'), rank: null }, null)).toBe('Obor: 1,344');
+    expect(activityTileLabel(row('Zulrah', 'boss'), null, 12)).toBe(
+      'Zulrah: 1,344, rank 4,321, 12 gained in 7 days',
+    );
   });
 });
