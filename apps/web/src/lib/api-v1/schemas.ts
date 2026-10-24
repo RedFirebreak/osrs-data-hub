@@ -645,7 +645,7 @@ const WealthData = z.object({
         max_value: int.meta({ description: 'The day’s highest wealth.' }),
         bank_value: int.nullable().meta({
           description:
-            'The bank value counted in `last_value`; null on days before the plugin sent one (plugin bankValue event).',
+            'The bank value counted in `last_value`; null on days before the plugin sent one (plugin `player.bank`).',
         }),
       }),
     )

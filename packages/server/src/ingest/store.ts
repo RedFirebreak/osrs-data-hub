@@ -206,7 +206,6 @@ async function storeInTransaction(
     recv,
     deviceId: device.id,
     payloadTs: payloadTime(payload.timestamp, recv),
-    bankValue: input.normalized.bankValue,
   });
 
   await upsertLatestState(tx, accountId, input, plan);

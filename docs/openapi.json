@@ -3642,7 +3642,7 @@
                           "type": "null"
                         }
                       ],
-                      "description": "The bank value counted in `last_value`; null on days before the plugin sent one (plugin bankValue event)."
+                      "description": "The bank value counted in `last_value`; null on days before the plugin sent one (plugin `player.bank`)."
                     }
                   },
                   "required": [
