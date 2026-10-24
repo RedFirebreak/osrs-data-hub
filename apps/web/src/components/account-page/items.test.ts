@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest';
 import {
   EQUIPMENT_GRID,
   equipmentBySlot,
-  equipmentDiff,
   extraSlots,
   inventorySlots,
   itemName,
@@ -88,13 +87,6 @@ describe('equipment', () => {
     quantity: 1,
     equipmentSlot: 'WEAPON',
   };
-  const scim: ItemData = {
-    id: 4587,
-    name: 'Dragon scimitar',
-    gePrice: 1,
-    quantity: 1,
-    equipmentSlot: 'WEAPON',
-  };
   const helm: ItemData = {
     id: 10828,
     name: 'Helm of neitiznot',
@@ -102,36 +94,12 @@ describe('equipment', () => {
     quantity: 1,
     equipmentSlot: 'HEAD',
   };
-  const arrows = (quantity: number): ItemData => ({
-    id: 11212,
-    name: 'Dragon arrow',
-    gePrice: 1,
-    quantity,
-    equipmentSlot: 'AMMO',
-  });
-
   it('keys worn items by slot and finds slots the grid does not place', () => {
     const quiver: ItemData = { id: 1, gePrice: 0, quantity: 1, equipmentSlot: 'QUIVER' };
     const bySlot = equipmentBySlot([whip, helm, quiver, { id: 9, gePrice: 0, quantity: 1 }]);
     expect([...bySlot.keys()].sort()).toEqual(['HEAD', 'QUIVER', 'WEAPON']);
     expect(extraSlots(bySlot)).toEqual(['QUIVER']);
     expect(EQUIPMENT_GRID.flat().filter(Boolean)).toHaveLength(11);
-  });
-
-  it('diffs two sets by slot: swapped, put on, taken off and ammo counts', () => {
-    expect(equipmentDiff([scim, helm, arrows(100)], [whip, arrows(80)])).toEqual([
-      { slot: 'HEAD', before: helm, after: null },
-      { slot: 'AMMO', before: arrows(100), after: arrows(80) },
-      { slot: 'WEAPON', before: scim, after: whip },
-    ]);
-    expect(equipmentDiff([whip], [whip])).toEqual([]);
-  });
-
-  it('lists the whole set as put on when there is nothing older', () => {
-    expect(equipmentDiff(null, [whip, helm]).map((d) => [d.slot, d.before, d.after?.id])).toEqual([
-      ['HEAD', null, 10828],
-      ['WEAPON', null, 4151],
-    ]);
   });
 
   it('labels slots the way the game does', () => {

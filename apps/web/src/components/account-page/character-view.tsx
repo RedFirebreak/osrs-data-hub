@@ -31,7 +31,7 @@ import {
 import { notFound } from 'next/navigation';
 import { Suspense, cache } from 'react';
 import { AccountHeader } from '@/components/account-page/account-header';
-import { EquipmentGrid, EquipmentLog } from '@/components/account-page/equipment-content';
+import { EquipmentGrid, GearTrips } from '@/components/account-page/equipment-content';
 import { HiscoresContent, hiscoresDescription } from '@/components/account-page/hiscores-content';
 import { InventoryContent } from '@/components/account-page/inventory-content';
 import { LocationContent } from '@/components/account-page/location-content';
@@ -364,11 +364,11 @@ function wornSection(ctx: SectionContext) {
         <EquipmentGrid items={equipment.items} />
         <details className="group text-sm">
           <summary className="cursor-pointer rounded-md text-xs font-medium text-muted-foreground underline-offset-4 hover:underline focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none">
-            Gear changes
+            Gear by trip
           </summary>
           <div className="mt-2">
             <Suspense fallback={<ContentSkeleton rows={3} />}>
-              <EquipmentLogLoader ctx={ctx} />
+              <GearTripsLoader ctx={ctx} />
             </Suspense>
           </div>
         </details>
@@ -377,14 +377,14 @@ function wornSection(ctx: SectionContext) {
   });
 }
 
-async function EquipmentLogLoader({ ctx }: { ctx: SectionContext }) {
+async function GearTripsLoader({ ctx }: { ctx: SectionContext }) {
   const to = ctx.renderedAt;
   const changes = await getEquipmentHistory(getDb().db, ctx.viewer, ctx.publicId, {
     from: new Date(to.getTime() - HISTORY_DAYS * DAY_MS),
     to,
   });
   if (changes === null) return null;
-  return <EquipmentLog changes={changes} timezone={ctx.timezone} />;
+  return <GearTrips changes={changes} timezone={ctx.timezone} now={to} />;
 }
 
 function inventorySection({ page, now, dayOnlyIn }: SectionContext) {

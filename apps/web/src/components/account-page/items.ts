@@ -80,39 +80,6 @@ export function extraSlots(bySlot: ReadonlyMap<string, ItemData>): string[] {
   return [...bySlot.keys()].filter((s) => !placed.has(s)).sort();
 }
 
-export interface SlotChange {
-  slot: string;
-  before: ItemData | null;
-  after: ItemData | null;
-}
-
-/**
- * What changed between two equipment snapshots, per slot: an item put on, taken off or swapped, or
- * a different quantity (ammo). Slots in the grid's order first, then any others alphabetically.
- * `older` null (the first change on record) lists every worn item as put on.
- */
-export function equipmentDiff(
-  older: readonly ItemData[] | null,
-  newer: readonly ItemData[],
-): SlotChange[] {
-  const before = equipmentBySlot(older ?? []);
-  const after = equipmentBySlot(newer);
-  const order = EQUIPMENT_GRID.flat().filter((s): s is string => s !== null);
-  const slots = new Set([...before.keys(), ...after.keys()]);
-  const sorted = [
-    ...order.filter((s) => slots.has(s)),
-    ...[...slots].filter((s) => !order.includes(s)).sort(),
-  ];
-  const out: SlotChange[] = [];
-  for (const slot of sorted) {
-    const b = before.get(slot) ?? null;
-    const a = after.get(slot) ?? null;
-    if (b?.id === a?.id && finiteOr0(b?.quantity) === finiteOr0(a?.quantity)) continue;
-    out.push({ slot, before: b, after: a });
-  }
-  return out;
-}
-
 /**
  * The inventory as a 28-slot grid (null = empty), in the game's order: left to right, then top to
  * bottom. An entry with an `inventorySlot` in range (plugin 1.5.1) goes to that slot; an entry

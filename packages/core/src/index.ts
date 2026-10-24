@@ -2,6 +2,7 @@ export * from './config';
 export * from './crypto';
 export * from './format';
 export * from './friends';
+export * from './gear-trips';
 export * from './guards';
 export * from './guild-feed';
 export * from './hiscores';

@@ -1,24 +1,15 @@
 /**
- * Current gear by slot in the worn-equipment layout, and the change log (the `equipment` category,
- * handoff §12 "equipment timeline"): each change lists the slots that changed against the previous
- * recorded set. Empty slots show the game's slot silhouette (D-95). Server component.
+ * Current gear by slot in the worn-equipment layout, and the change log grouped into trips (the
+ * `equipment` category, handoff §12 "equipment timeline", D-121). Empty slots show the game's slot
+ * silhouette (D-95). Server component.
  */
-import { formatGp, itemsValue, type ItemData } from '@hub/core';
+import { formatGp, gearTrips, itemsValue, type GearTrip, type ItemData } from '@hub/core';
 import type { EquipmentChange } from '@hub/server';
-import { ArrowRightIcon } from 'lucide-react';
+import { ItemIcon } from '@/components/icons/osrs-icon';
 import { DATE_TIME_OPTIONS, formatInZone } from '@/lib/dates';
+import { cn } from '@/lib/utils';
 import { ItemTile } from './item-tile';
-import {
-  EQUIPMENT_GRID,
-  equipmentBySlot,
-  equipmentDiff,
-  extraSlots,
-  itemName,
-  slotLabel,
-} from './items';
-
-/** Changes listed in the log. */
-export const EQUIPMENT_LOG_SIZE = 10;
+import { EQUIPMENT_GRID, equipmentBySlot, extraSlots, itemName, slotLabel } from './items';
 
 export function EquipmentGrid({ items }: { items: readonly ItemData[] }) {
   const bySlot = equipmentBySlot(items);
@@ -63,63 +54,89 @@ export function EquipmentGrid({ items }: { items: readonly ItemData[] }) {
   );
 }
 
+/** Trips listed under the gear. */
+export const GEAR_TRIPS_SHOWN = 8;
+
+/** "13:56 – 14:43" on one day, else both with their dates; one time when the trip is one change. */
+function tripTimes(trip: GearTrip, timezone: string): string {
+  const start = formatInZone(trip.startedAt, timezone, DATE_TIME_OPTIONS) ?? '';
+  if (trip.endedAt === trip.startedAt) return start;
+  const sameDay =
+    formatInZone(trip.startedAt, timezone, DAY_OPTIONS) ===
+    formatInZone(trip.endedAt, timezone, DAY_OPTIONS);
+  const end = formatInZone(trip.endedAt, timezone, sameDay ? TIME_OPTIONS : DATE_TIME_OPTIONS);
+  return `${start} – ${end ?? ''}`;
+}
+
+const DAY_OPTIONS: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short', year: 'numeric' };
+const TIME_OPTIONS: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit' };
+
+function plural(n: number, one: string, many: string): string {
+  return `${n} ${n === 1 ? one : many}`;
+}
+
 /**
- * The change log, newest first. `changes` is the history as returned (newest first); each entry is
- * compared with the next older one, and the oldest one returned with nothing (so it lists the set
- * that was worn; older changes may exist outside the range loaded, so it isn't called the first).
+ * Gear by trip (D-121): the change log grouped by `gearTrips` from @hub/core, newest first. A trip
+ * shows the gear brought for it, a group of icons per slot: a slot with more than one icon is where
+ * the player swapped, the longest worn first. `changes` is the history as returned (newest first).
  */
-export function EquipmentLog({
+export function GearTrips({
   changes,
   timezone,
+  now,
 }: {
   changes: readonly EquipmentChange[];
   timezone: string;
+  now: Date;
 }) {
-  if (changes.length === 0) {
+  const trips = gearTrips(changes, now).slice(0, GEAR_TRIPS_SHOWN);
+  if (trips.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">No gear changes recorded in the last 90 days.</p>
     );
   }
   return (
-    <ol className="flex flex-col divide-y text-sm" aria-label="Gear changes">
-      {changes.slice(0, EQUIPMENT_LOG_SIZE).map((change, i) => {
-        const previous = changes[i + 1];
-        const diff = equipmentDiff(previous ? previous.items : null, change.items);
-        return (
-          <li key={`${change.changedAt}-${i}`} className="flex flex-col gap-1 py-2">
-            <time dateTime={change.changedAt} className="text-xs text-muted-foreground">
-              {formatInZone(change.changedAt, timezone, DATE_TIME_OPTIONS)}
-              {!previous && ' · the set worn then'}
-            </time>
-            {diff.length === 0 ? (
-              <span className="text-muted-foreground">Same gear</span>
-            ) : (
-              <ul className="flex flex-col gap-0.5">
-                {diff.map((d) => (
-                  <li key={d.slot} className="flex flex-wrap items-center gap-x-1.5">
-                    <span className="w-14 shrink-0 text-xs text-muted-foreground">
-                      {slotLabel(d.slot)}
-                    </span>
-                    {d.before && previous ? (
-                      <span className="text-muted-foreground line-through decoration-muted-foreground/60">
-                        {itemName(d.before)}
-                      </span>
-                    ) : null}
-                    {d.before && previous && d.after && (
-                      <ArrowRightIcon role="img" aria-label="replaced by" className="size-3" />
-                    )}
-                    {d.after ? (
-                      <span>{itemName(d.after)}</span>
-                    ) : (
-                      <span className="text-muted-foreground">(removed)</span>
-                    )}
-                  </li>
+    <ol className="flex flex-col divide-y text-sm" aria-label="Gear by trip">
+      {trips.map((trip) => (
+        <li key={trip.startedAt} className="flex flex-col gap-2 py-3">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-3 text-xs text-muted-foreground">
+            <time dateTime={trip.startedAt}>{tripTimes(trip, timezone)}</time>
+            <span>
+              {trip.swaps === 0
+                ? 'no swaps'
+                : `${plural(trip.swaps, 'swap', 'swaps')} · ${plural(trip.setups, 'setup', 'setups')}`}
+            </span>
+          </div>
+          <ul className="flex flex-wrap gap-1.5" aria-label="Gear brought">
+            {trip.kit.map(({ slot, items }) => (
+              <li
+                key={slot}
+                className={cn(
+                  'flex items-center rounded-md border p-0.5',
+                  items.length > 1 ? 'border-primary/40 bg-primary/5' : 'bg-muted/40',
+                )}
+              >
+                <span className="sr-only">
+                  {slotLabel(slot)}: {items.map(itemName).join(', ')}
+                </span>
+                {items.map((item) => (
+                  <span key={item.id} title={`${slotLabel(slot)}: ${itemName(item)}`}>
+                    <ItemIcon
+                      itemId={item.id}
+                      className="h-7 w-8"
+                      fallback={
+                        <span aria-hidden className="px-1 text-[10px] leading-tight">
+                          {itemName(item)}
+                        </span>
+                      }
+                    />
+                  </span>
                 ))}
-              </ul>
-            )}
-          </li>
-        );
-      })}
+              </li>
+            ))}
+          </ul>
+        </li>
+      ))}
     </ol>
   );
 }
