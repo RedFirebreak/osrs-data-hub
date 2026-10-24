@@ -230,7 +230,7 @@ describe('account page', () => {
     expect(html).toContain('received');
     // The streamed sections rendered their content, not only their skeletons.
     expect(html).toContain('See progress');
-    expect(html).toContain('Gear changes');
+    expect(html).toContain('Gear by trip');
     // History lives on the progress pages, not here.
     expect(html).not.toContain('Recent sessions');
     expect(html).not.toContain('Not shared');
