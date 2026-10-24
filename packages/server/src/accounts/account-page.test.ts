@@ -59,6 +59,8 @@ beforeAll(async () => {
     spellbookId: 2,
     spellbook: 'lunar',
     spellbookUpdatedAt: ago(30_000),
+    activePrayers: ['PROTECT_FROM_MELEE', 'PIETY'],
+    activePrayersUpdatedAt: ago(40_000),
     location: { x: 3164, y: 3487, plane: 1, isOnBoat: true },
     locationUpdatedAt: ago(3 * 60_000),
     skills: skillMap({
@@ -215,8 +217,29 @@ describe('getAccountPage sections', () => {
       visible: true,
       shared: true,
       updatedAt: ago(30_000).toISOString(),
-      data: { hp: { current: 95, max: 99 }, prayer: null, spellbook: 'lunar' },
+      data: {
+        hp: { current: 95, max: 99 },
+        prayer: null,
+        spellbook: 'lunar',
+        activePrayers: ['PROTECT_FROM_MELEE', 'PIETY'],
+      },
     });
+  });
+
+  it('shows no active prayers once the player is offline, though the last ones are stored (D-119)', async () => {
+    const away = await seedAccount(t.db, { name: 'Away', owner: owner.id, lastSeen: ago(60_000) });
+    await seedLatestState(t.db, away.id, {
+      lastSeen: ago(60_000),
+      gameState: 'LOGIN_SCREEN',
+      activePrayers: ['PIETY'],
+      activePrayersUpdatedAt: ago(61_000),
+    });
+    const p = await getAccountPage(t.db, owner.viewer, away.publicId, {
+      now: NOW,
+      timezone: 'Europe/Amsterdam',
+    });
+    expect(p?.presence).toMatchObject({ shared: true, data: { online: false } });
+    expect(p?.vitals).toMatchObject({ shared: true, data: { activePrayers: [] } });
   });
 
   it('marks a location older than two minutes stale', async () => {

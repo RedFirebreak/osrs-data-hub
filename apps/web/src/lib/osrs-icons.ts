@@ -7,6 +7,7 @@
  *   itemIconUrl(base, stacks, 995, 250) // → `${base}/items/1002.webp` (the 250-coins pile)
  *   skillIconUrl(base, 'Attack')        // → `${base}/skills/attack.png`
  *   slotIconUrl(base, 'AMULET')         // → `${base}/slots/amulet.png`
+ *   prayerIconUrl(base, 'PIETY')        // → `${base}/prayers/piety.png`
  */
 import { highestValueItem } from '@hub/core';
 
@@ -91,6 +92,18 @@ export function slotIconUrl(base: string | null, slot: string | null | undefined
   if (!base || !slot) return null;
   const slug = slot.trim().toLowerCase();
   return slug === '' ? null : `${base}/slots/${encodeURIComponent(slug)}.png`;
+}
+
+/**
+ * RuneLite Prayer name ("PROTECT_FROM_MELEE", "RP_TRINITAS", …; D-119) → its lit prayer-book icon.
+ * Anything that isn't a Prayer constant name has none.
+ */
+export function prayerIconUrl(
+  base: string | null,
+  prayer: string | null | undefined,
+): string | null {
+  if (!base || !prayer || !/^[A-Z0-9_]+$/.test(prayer)) return null;
+  return `${base}/prayers/${prayer.toLowerCase()}.png`;
 }
 
 /** The event fields that pick its game icon (FeedEvent has them). */

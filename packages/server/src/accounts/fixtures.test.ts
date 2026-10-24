@@ -140,6 +140,7 @@ describe('a normal snapshot (snapshot-normal)', () => {
       hp: { current: 99, max: 99 },
       prayer: { current: 99, max: 99 },
       spellbook: 'lunar',
+      activePrayers: null,
     });
     expect(data(asOwner.location)).toEqual({
       x: 3164,
@@ -331,5 +332,46 @@ describe('every event fixture in the feed', () => {
     expect(JSON.stringify(asMember)).not.toContain('"location"');
     const asOwner = await listFeed(t.db, owner, { accountPublicId: id });
     expect(asOwner.map((e) => e.id)).toEqual(asMember.map((e) => e.id));
+  });
+});
+
+describe('active prayers (snapshot-active-prayers, D-119)', () => {
+  let prayersHash: string;
+  let prayersId: string;
+  let at: number;
+
+  beforeAll(async () => {
+    prayersHash = newHash();
+    const body = wire('snapshot-active-prayers', { hash: prayersHash });
+    at = body.timestamp as number;
+    expect((await h.send(ownerDevice, body, { at: at + 1_000 })).status).toBe(200);
+    prayersId = await publicIdOf(prayersHash);
+  });
+
+  it('shows the prayers that are on to the owner, and to a member under activity', async () => {
+    for (const v of [owner, member]) {
+      const vitals = data((await page(v, prayersId, at + 2_000)).vitals);
+      expect(vitals.activePrayers).toEqual(['PROTECT_FROM_MELEE', 'PIETY']);
+    }
+  });
+
+  it('keeps them through a snapshot without the section, and shows none once offline', async () => {
+    const next = wire('snapshot-normal', { hash: prayersHash });
+    next.timestamp = at + 30_000;
+    expect((await h.send(ownerDevice, next, { at: at + 31_000 })).status).toBe(200);
+    const online = data((await page(owner, prayersId, at + 32_000)).vitals);
+    expect(online.activePrayers).toEqual(['PROTECT_FROM_MELEE', 'PIETY']);
+    const later = await page(owner, prayersId, at + 2 * HOUR);
+    expect(data(later.presence).online).toBe(false);
+    expect(data(later.vitals).activePrayers).toEqual([]);
+  });
+
+  it('is nothing for a member once activity is private', async () => {
+    const [row] = await t.db
+      .select({ id: osrsAccounts.id })
+      .from(osrsAccounts)
+      .where(eq(osrsAccounts.publicId, prayersId));
+    await seedSharing(t.db, row!.id, 'activity', 'private');
+    expect((await page(member, prayersId, at + 32_000)).vitals.visible).toBe(false);
   });
 });

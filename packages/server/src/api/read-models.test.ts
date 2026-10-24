@@ -359,6 +359,7 @@ describe('apiSnapshot', () => {
       hp: { current: 99, max: 99 },
       prayer: { current: 99, max: 99 },
       spellbook: 'lunar',
+      activePrayers: null,
       location: {
         x: 3164,
         y: 3487,
@@ -387,6 +388,7 @@ describe('apiSnapshot', () => {
       hp: expect.any(Object) as unknown,
       prayer: expect.any(Object) as unknown,
       spellbook: expect.any(String) as unknown,
+      activePrayers: null,
       skills: expect.any(Object) as unknown,
     });
     expect(snap.accounts[0]?.location).toBeNull();
@@ -400,6 +402,7 @@ describe('apiSnapshot', () => {
     const z = snap.accounts.find((a) => a.id === zezima);
     expect(Object.keys(z ?? {}).sort()).toEqual(
       [
+        'activePrayers',
         'categories',
         'gameState',
         'hp',

@@ -10,6 +10,7 @@ export * from './ints';
 export * from './json';
 export * from './map-link';
 export * from './names';
+export * from './prayers';
 export * from './presence';
 export * from './ratelimit';
 export * from './sharing';

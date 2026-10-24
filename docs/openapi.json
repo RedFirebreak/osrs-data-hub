@@ -2240,7 +2240,7 @@
             ]
           },
           "vitals": {
-            "description": "`activity`: HP, prayer, spellbook. `{ \"shared\": false, \"updated_at\": null }` when the player’s plugin never sent it; the key omitted when the key can’t read the category on this account.",
+            "description": "`activity`: HP, prayer, spellbook, active prayers. `{ \"shared\": false, \"updated_at\": null }` when the player’s plugin never sent it; the key omitted when the key can’t read the category on this account.",
             "oneOf": [
               {
                 "type": "object",
@@ -2279,6 +2279,20 @@
                       "string",
                       "null"
                     ]
+                  },
+                  "active_prayers": {
+                    "anyOf": [
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        },
+                        "description": "The prayers that are on, as RuneLite `Prayer` constant names (PROTECT_FROM_MELEE, PIETY, RP_TRINITAS, …) in prayer book order. [] when none is on or the account is offline; null until the plugin first sent them (plugin after 1.6.2)."
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   }
                 },
                 "required": [
@@ -2286,7 +2300,8 @@
                   "updated_at",
                   "hp",
                   "prayer",
-                  "spellbook"
+                  "spellbook",
+                  "active_prayers"
                 ]
               },
               {
@@ -2650,6 +2665,21 @@
             "type": [
               "string",
               "null"
+            ]
+          },
+          "active_prayers": {
+            "description": "`activity`. Omitted without it.",
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "The prayers that are on, as RuneLite `Prayer` constant names (PROTECT_FROM_MELEE, PIETY, RP_TRINITAS, …) in prayer book order. [] when none is on or the account is offline; null until the plugin first sent them (plugin after 1.6.2)."
+              },
+              {
+                "type": "null"
+              }
             ]
           },
           "location": {

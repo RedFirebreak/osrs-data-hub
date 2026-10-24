@@ -191,6 +191,8 @@ describe('first snapshot of a new account', () => {
       spellbookId: p.spellbook.id,
       spellbook: p.spellbook.name,
       spellbookUpdatedAt: recv,
+      activePrayers: null,
+      activePrayersUpdatedAt: null,
       location: p.location,
       locationUpdatedAt: recv,
       skills: p.stats?.skills,
