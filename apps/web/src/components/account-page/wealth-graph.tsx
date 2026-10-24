@@ -16,8 +16,6 @@ export interface WealthGraphDay {
   /** Carried plus bank at the day's end; null before the first day with data. */
   value: number | null;
   bank: number | null;
-  /** The bank wasn't known yet: the value counts the first bank value read later. */
-  bankAssumed: boolean;
   change: number | null;
   /** "Tue 20 Oct". */
   label: string;
@@ -86,11 +84,9 @@ export function WealthGraph({ days, firstLabel }: WealthGraphProps) {
                   <span className="text-muted-foreground">wealth</span>
                 </p>
                 <p className="mt-0.5 pl-[18px] text-muted-foreground tabular-nums">
-                  {active.bankAssumed
-                    ? 'Bank not read yet: counted as when first read'
-                    : active.bankText === null
-                      ? 'Bank not known yet'
-                      : `${active.bankText} in the bank`}
+                  {active.bankText === null
+                    ? 'Bank not known yet'
+                    : `${active.bankText} in the bank`}
                 </p>
                 {active.changeText !== null && (
                   <p className={cn('mt-0.5 pl-[18px] tabular-nums', toneOf(active.change ?? 0))}>
