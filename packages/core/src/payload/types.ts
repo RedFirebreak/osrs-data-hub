@@ -71,6 +71,12 @@ export interface PlayerSnapshot {
   health?: Meter;
   prayer?: Meter;
   spellbook?: { id: number; name: string };
+  /**
+   * After plugin 1.6.2 (`player.activePrayers.prayers`, plugin PR #49): the prayers that are on, as RuneLite `Prayer`
+   * constant names (PROTECT_FROM_MELEE, PIETY, RP_TRINITAS, ZEAL, …) in prayer book order. [] when
+   * none is on; absent when the player doesn't share them, and from older plugins (D-119).
+   */
+  activePrayers?: string[];
   /** stats.skills keyed by skill display name ("Attack", …, "Sailing"). Never contains Overall. */
   skills?: Record<string, SkillValue>;
   inventory?: ItemData[];

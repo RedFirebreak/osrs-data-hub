@@ -361,10 +361,16 @@ const presenceShape = {
   }),
 };
 
+const ActivePrayers = z.array(z.string()).meta({
+  description:
+    'The prayers that are on, as RuneLite `Prayer` constant names (PROTECT_FROM_MELEE, PIETY, RP_TRINITAS, …) in prayer book order. [] when none is on or the account is offline; null until the plugin first sent them (plugin after 1.6.2).',
+});
+
 const vitalsShape = {
   hp: Meter.nullable(),
   prayer: Meter.nullable(),
   spellbook: z.string().nullable(),
+  active_prayers: ActivePrayers.nullable(),
 };
 
 const locationShape = {
@@ -476,7 +482,7 @@ export const AccountDetail = z.object({
   first_seen: timestamp.meta({ description: 'When the hub first saw the account.' }),
   categories: categoriesField,
   presence: section(presenceShape, '`activity`.'),
-  vitals: section(vitalsShape, '`activity`: HP, prayer, spellbook.'),
+  vitals: section(vitalsShape, '`activity`: HP, prayer, spellbook, active prayers.'),
   skills: section(
     skillsShape,
     '`stats`. Without `activity`, `updated_at` is cut to the UTC day (the exact time would be the last-seen time).',
@@ -513,6 +519,7 @@ export const SnapshotAccount = z.object({
   hp: Meter.nullable().optional().meta(inActivity()),
   prayer: Meter.nullable().optional().meta(inActivity()),
   spellbook: z.string().nullable().optional().meta(inActivity()),
+  active_prayers: ActivePrayers.nullable().optional().meta(inActivity()),
   location: SnapshotLocation.nullable().optional().meta({
     description:
       '`location_live`: null when never sent, omitted without the category. `stale` after 2 minutes without a location.',

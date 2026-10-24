@@ -20,6 +20,12 @@ const MAX_SKILLS = 64;
 const MAX_SKILL_NAME = 64;
 /** player.locationTrail limit. The plugin keeps at most 300 points per message. */
 const MAX_TRAIL_POINTS = 512;
+/**
+ * player.activePrayers limits (D-119). RuneLite has 56 prayers and at most a handful are on at once;
+ * the names are `Prayer` constants (≤ 21 characters), so anything else is not the plugin's.
+ */
+const MAX_ACTIVE_PRAYERS = 64;
+const PRAYER_NAME = /^[A-Z0-9_]{1,64}$/;
 /** Names the plugin never puts in stats (plugin Skill.values()); accepting them corrupts the totals. */
 const RESERVED_SKILLS: ReadonlyMap<string, string> = new Map([
   [OVERALL, 'Overall is derived by the hub, never sent by the plugin'],
@@ -84,6 +90,11 @@ const PLAYER = {
     )
     .max(MAX_TRAIL_POINTS, `more than ${MAX_TRAIL_POINTS} points`),
   spellbook: z.looseObject({ id: smallint, name: z.string() }),
+  activePrayers: z.looseObject({
+    prayers: z
+      .array(z.string().regex(PRAYER_NAME, 'expected a Prayer constant name'))
+      .max(MAX_ACTIVE_PRAYERS, `more than ${MAX_ACTIVE_PRAYERS} prayers`),
+  }),
   // z.custom keeps the object itself: zod's looseObject silently drops a "__proto__" key.
   stats: z.looseObject({
     skills: z.custom<Record<string, unknown>>(isPlainObject, 'expected an object'),
@@ -120,7 +131,9 @@ const eventEnvelope = z.looseObject({
  *   isOnBoat?: boolean}), locationTrail (plugin 1.6: an array of at most 512 points {x, y: int32,
  *   plane: smallint, isOnBoat?: boolean, timestamp: safe integer}, oldest first; an invalid point or
  *   more points drops the whole section; [] is kept), health / prayerPoints ({current, max}: smallint integers → `health` /
- *   `prayer`), spellbook ({id: smallint integer, name: string}), stats.skills (object of at most 64
+ *   `prayer`), spellbook ({id: smallint integer, name: string}), activePrayers.prayers (after plugin 1.6.2,
+ *   D-119: at most 64 names of 1..64 characters `A-Z 0-9 _`; one that isn't drops the section; []
+ *   is kept), stats.skills (object of at most 64
  *   entries {xp: integer 0..2^31−1, level: integer 0..32767}, more → section `player.stats`; an
  *   invalid ENTRY, or a name that is empty, longer than 64 characters, "Overall" (hub-derived),
  *   "Combat" (levelUp-only) or "__proto__", drops only that skill and records
@@ -198,6 +211,8 @@ function parsePlayer(value: unknown, skipped: Skipped): PlayerSnapshot | null {
   if (prayer !== undefined) player.prayer = prayer;
   const spellbook = section('spellbook', PLAYER.spellbook);
   if (spellbook !== undefined) player.spellbook = spellbook;
+  const activePrayers = section('activePrayers', PLAYER.activePrayers);
+  if (activePrayers !== undefined) player.activePrayers = activePrayers.prayers;
   const skills = parseSkills(section('stats', PLAYER.stats), skipped);
   if (skills !== undefined) player.skills = skills;
   const inventory = section('inventory', itemsSection);

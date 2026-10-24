@@ -5,6 +5,7 @@ import {
   eventItemQuantity,
   itemIconUrl,
   parseStacks,
+  prayerIconUrl,
   skillIconUrl,
   slotIconUrl,
   stackedItemId,
@@ -94,6 +95,12 @@ describe('icon URLs', () => {
     expect(skillIconUrl(base, 'sailing')).toBe(`${base}/skills/sailing.png`);
     expect(skillIconUrl(base, 'Overall')).toBeNull();
     expect(skillIconUrl(base, 'Combat')).toBeNull();
+    expect(prayerIconUrl(base, 'PROTECT_FROM_MELEE')).toBe(
+      `${base}/prayers/protect_from_melee.png`,
+    );
+    expect(prayerIconUrl(base, 'RP_TRINITAS')).toBe(`${base}/prayers/rp_trinitas.png`);
+    expect(prayerIconUrl(base, '../piety')).toBeNull();
+    expect(prayerIconUrl(null, 'PIETY')).toBeNull();
     expect(skillIconUrl(base, '')).toBeNull();
     expect(skillIconUrl(null, 'Attack')).toBeNull();
   });

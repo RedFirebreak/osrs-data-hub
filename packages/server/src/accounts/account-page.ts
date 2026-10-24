@@ -51,6 +51,11 @@ export interface Vitals {
   hp: { current: number; max: number } | null;
   prayer: { current: number; max: number } | null;
   spellbook: string | null;
+  /**
+   * The prayers that are on (RuneLite `Prayer` names, prayer book order, D-119): null until the
+   * plugin first sent them, [] while the player is offline (logging out turns every prayer off).
+   */
+  activePrayers: string[] | null;
 }
 
 export interface LiveLocation {
@@ -161,10 +166,8 @@ export async function getAccountPage(
     presence: sectionOf(can('activity'), state?.lastSeen, () =>
       toPresence(state as LatestRow, opts.now),
     ),
-    vitals: sectionOf(
-      can('activity'),
-      state && latestOf(state.healthUpdatedAt, state.prayerUpdatedAt, state.spellbookUpdatedAt),
-      () => vitalsOf(state as LatestRow),
+    vitals: sectionOf(can('activity'), state && vitalsUpdatedAt(state), () =>
+      vitalsOf(state as LatestRow, toPresence(state as LatestRow, opts.now).online),
     ),
     location: locationSection(can('location_live'), state, opts.now),
     skills: dayOnly(skills),
@@ -225,20 +228,38 @@ export type VitalsColumns = Pick<
   | 'prayerMax'
   | 'spellbookUpdatedAt'
   | 'spellbook'
+  | 'activePrayersUpdatedAt'
+  | 'activePrayers'
 >;
 
+/** When the vitals section was last received: the newest of its parts, or null. */
+export function vitalsUpdatedAt(state: VitalsColumns): Date | null {
+  return latestOf(
+    state.healthUpdatedAt,
+    state.prayerUpdatedAt,
+    state.spellbookUpdatedAt,
+    state.activePrayersUpdatedAt,
+  );
+}
+
 /**
- * HP, prayer and spellbook from latest_state: each null until the plugin first sent it (its
+ * HP, prayer, spellbook and active prayers from latest_state: each null until the plugin first sent it (its
  * *_updated_at is null) or when a meter lacks a value. Shared with the public API and the export
  * (api/state.ts).
  */
-export function vitalsOf(state: VitalsColumns): Vitals {
+export function vitalsOf(state: VitalsColumns, online: boolean): Vitals {
   const meter = (at: Date | null, current: number | null, max: number | null) =>
     at !== null && current !== null && max !== null ? { current, max } : null;
   return {
     hp: meter(state.healthUpdatedAt, state.hpCurrent, state.hpMax),
     prayer: meter(state.prayerUpdatedAt, state.prayerCurrent, state.prayerMax),
     spellbook: state.spellbookUpdatedAt === null ? null : state.spellbook,
+    activePrayers:
+      state.activePrayersUpdatedAt === null || state.activePrayers === null
+        ? null
+        : online
+          ? state.activePrayers
+          : [],
   };
 }
 

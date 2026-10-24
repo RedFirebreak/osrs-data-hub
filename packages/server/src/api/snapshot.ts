@@ -72,6 +72,11 @@ export interface ApiSnapshotAccount extends ApiAccountIdentity {
   prayer?: ApiMeter | null;
   /** `activity`. */
   spellbook?: string | null;
+  /**
+   * `activity`: the prayers that are on, as RuneLite `Prayer` names in prayer book order (D-119);
+   * [] when none is on or the account is offline, null until the plugin first sent them.
+   */
+  activePrayers?: string[] | null;
   /** `location_live`: `stale` after 2 minutes without a location (D-74). */
   location?: ApiSnapshotLocation | null;
   /** `stats`: Overall first, then the in-game grid order. */
@@ -154,7 +159,7 @@ function snapshotAccount(
   const out: ApiSnapshotAccount = { ...identity, categories: CATEGORIES.filter(can) };
   if (can('activity')) {
     const presence = row ? toPresence(row, now) : null;
-    const vitals = row ? vitalsOf(row) : null;
+    const vitals = row && presence ? vitalsOf(row, presence.online) : null;
     out.online = presence?.online ?? false;
     out.world = presence?.world ?? null;
     out.specialWorld = presence?.specialWorld ?? false;
@@ -168,6 +173,7 @@ function snapshotAccount(
     out.hp = vitals?.hp ?? null;
     out.prayer = vitals?.prayer ?? null;
     out.spellbook = vitals?.spellbook ?? null;
+    out.activePrayers = vitals?.activePrayers ?? null;
   }
   if (can('location_live')) {
     const location = row ? locationOf(row, now) : null;

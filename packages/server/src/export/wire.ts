@@ -68,7 +68,7 @@ export function wirePresence(p: ApiPresence) {
 }
 
 export function wireVitals(v: ApiVitals) {
-  return { hp: v.hp, prayer: v.prayer, spellbook: v.spellbook };
+  return { hp: v.hp, prayer: v.prayer, spellbook: v.spellbook, active_prayers: v.activePrayers };
 }
 
 export function wireLocation(l: ApiLocation) {
