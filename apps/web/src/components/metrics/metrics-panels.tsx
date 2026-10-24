@@ -14,6 +14,7 @@ import { TrophyIcon } from 'lucide-react';
 import type { Route } from 'next';
 import Link from 'next/link';
 import { MOMENT_OPTIONS } from '@/components/charts/options';
+import { GpChange } from '@/components/common/gp-change';
 import { SkillIcon } from '@/components/icons/osrs-icon';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -187,6 +188,7 @@ export function SessionList({
       selected={s.id === query.session}
       timezone={timezone}
       showGp={m.access.events}
+      showWealth={m.access.inventory}
     />
   );
   return (
@@ -215,6 +217,7 @@ function SessionRecap({
   selected,
   timezone,
   showGp,
+  showWealth,
 }: {
   s: SessionCard;
   records: readonly string[];
@@ -222,6 +225,7 @@ function SessionRecap({
   selected: boolean;
   timezone: string;
   showGp: boolean;
+  showWealth: boolean;
 }) {
   const share = s.onlineMs > 0 ? s.activeMs / s.onlineMs : 0;
   return (
@@ -303,6 +307,16 @@ function SessionRecap({
                   · {formatRate('gp', (s.gp / s.onlineMs) * 3_600_000)}
                 </span>
               )}
+            </dd>
+          </>
+        )}
+        {showWealth && s.wealthChange !== null && (
+          <>
+            <dt className="text-muted-foreground" title="Carried plus bank, start to end">
+              Wealth
+            </dt>
+            <dd className="text-right">
+              <GpChange value={s.wealthChange} />
             </dd>
           </>
         )}

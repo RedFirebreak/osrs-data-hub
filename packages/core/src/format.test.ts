@@ -5,9 +5,20 @@ import {
   formatDuration,
   formatGain,
   formatGp,
+  formatGpChange,
   formatNumber,
   relativeTime,
 } from './format';
+
+describe('formatGpChange', () => {
+  it('signs a gain, keeps the minus of a loss and leaves zero bare', () => {
+    expect(formatGpChange(1_250_000)).toBe('+1.25M');
+    expect(formatGpChange(-340_000)).toBe('-340K');
+    expect(formatGpChange(0)).toBe('0');
+    expect(formatGpChange(0.4)).toBe('0');
+    expect(formatGpChange(null)).toBe('—');
+  });
+});
 
 describe('formatGp', () => {
   it('matches the documented examples', () => {

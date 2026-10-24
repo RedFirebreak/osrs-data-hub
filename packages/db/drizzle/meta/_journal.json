@@ -120,6 +120,13 @@
       "when": 1792858284365,
       "tag": "0016_bank_value",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1792860475477,
+      "tag": "0017_session_wealth",
+      "breakpoints": true
     }
   ]
 }

@@ -50,6 +50,30 @@ export interface SessionSpan {
   id: string;
   start: number;
   end: number;
+  /** What the session gained or lost in wealth (sessionWealthChange); null or absent when unknown. */
+  wealthChange?: number | null;
+}
+
+/** A session's carried wealth and bank value at its first and latest payload (D-125). */
+export interface SessionWealth {
+  carriedStart: number | null;
+  carriedEnd: number | null;
+  bankStart: number | null;
+  bankEnd: number | null;
+}
+
+/**
+ * What a session gained or lost in wealth (D-125): carried plus bank at its latest payload minus the
+ * same at its first. A bank first read during the session counts at the start too, so finding out
+ * what the bank holds isn't a gain; moving items between the bank and the inventory is no change
+ * either. Null when the session has no carried wealth (it started before the hub kept it, or no
+ * payload had an inventory).
+ */
+export function sessionWealthChange(w: SessionWealth): number | null {
+  if (w.carriedStart === null || w.carriedEnd === null) return null;
+  const bankEnd = w.bankEnd ?? 0;
+  const bankStart = w.bankStart ?? bankEnd;
+  return w.carriedEnd + bankEnd - (w.carriedStart + bankStart);
 }
 
 /**
@@ -103,6 +127,8 @@ export interface SessionMetrics {
   killsShared: boolean;
   /** The boss with the most kills, else the skill with the most XP; null when neither. */
   main: MainActivity | null;
+  /** Wealth gained (negative: lost) in the session, from its span; null when unknown. */
+  wealthChange: number | null;
   buckets: MetricsBucket[];
 }
 
@@ -177,6 +203,7 @@ export function buildSessions(input: BuildSessionsInput): SessionMetrics[] {
       kills: {},
       killsShared: false,
       main: null as MainActivity | null,
+      wealthChange: span.wealthChange ?? null,
       buckets,
     } satisfies SessionMetrics;
   });

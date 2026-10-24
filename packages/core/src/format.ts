@@ -32,6 +32,12 @@ export function formatGp(value: number | null | undefined): string {
   return `${sign}${Number(digits.toPrecision(3))}${GP_UNITS[unit]}`;
 }
 
+/** A gain or a loss as formatGp, signed: 1_250_000 → "+1.25M", -340_000 → "-340K", 0 → "0". */
+export function formatGpChange(value: number | null | undefined): string {
+  const text = formatGp(value);
+  return value !== null && value !== undefined && Math.round(value) >= 1 ? `+${text}` : text;
+}
+
 /** 13034431 → "13,034,431" (rounded to an integer). null, undefined and non-finite values → "—". */
 export function formatNumber(value: number | null | undefined): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return NO_VALUE;

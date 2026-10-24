@@ -661,17 +661,26 @@ async function updateSession(
   if (open === undefined) {
     if (plan.session.open && shutdown === null) {
       const world = plan.session.world;
+      const wealth = sessionWealth(plan);
       await tx.insert(playSessions).values({
         accountId,
         deviceId,
         startedAt: recv,
         lastSeenAt: recv,
         worlds: world === null ? [] : [world],
+        ...(wealth && {
+          carriedStart: wealth.carried,
+          carriedEnd: wealth.carried,
+          bankStart: wealth.bank,
+          bankEnd: wealth.bank,
+        }),
       });
     }
     return;
   }
-  if (plan.session.extend) await extendSession(tx, open.id, deviceId, recv, plan.session.world);
+  if (plan.session.extend) {
+    await extendSession(tx, open.id, deviceId, recv, plan.session.world, sessionWealth(plan));
+  }
   if (shutdown !== null) {
     await tx
       .update(playSessions)
@@ -683,12 +692,24 @@ async function updateSession(
   }
 }
 
+/** The payload's carried wealth and the bank known with it (D-125), null without an inventory. */
+function sessionWealth(plan: SnapshotPlan): { carried: number; bank: number | null } | null {
+  if (plan.wealth === null) return null;
+  const { value, bank } = plan.wealth;
+  return { carried: value - (bank ?? 0), bank };
+}
+
+/**
+ * The session's last payload and world, and its wealth (D-125): the end is the latest, the start the
+ * first one the session had (a session opened without an inventory gets it from a later payload).
+ */
 async function extendSession(
   tx: Tx,
   sessionId: string,
   deviceId: string,
   recv: Date,
   world: number | null,
+  wealth: { carried: number; bank: number | null } | null,
 ): Promise<void> {
   const worlds =
     world === null
@@ -701,6 +722,12 @@ async function extendSession(
       lastSeenAt: sql`GREATEST(${playSessions.lastSeenAt}, ${recv.toISOString()}::timestamptz)`,
       deviceId,
       worlds,
+      ...(wealth && {
+        carriedStart: sql`COALESCE(${playSessions.carriedStart}, ${wealth.carried}::bigint)`,
+        carriedEnd: wealth.carried,
+        bankStart: sql`COALESCE(${playSessions.bankStart}, ${wealth.bank}::bigint)`,
+        bankEnd: wealth.bank,
+      }),
     })
     .where(eq(playSessions.id, sessionId));
 }

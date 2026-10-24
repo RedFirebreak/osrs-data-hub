@@ -21,13 +21,17 @@ export {
   getEquipmentHistory,
   getLocationHistory,
   getPlaytimeTotal,
+  getSessionWealth,
   getSessions,
   getWealthHistory,
+  readSessionWealth,
   type EquipmentChange,
   type HistoryRange,
   type LocationTrail,
   type PlaySession,
   type PlaytimeTotal,
+  type SessionWealthChange,
+  type WealthDay,
 } from './history';
 export { FEED_DEFAULT_LIMIT, FEED_MAX_LIMIT, listFeed } from './list-feed';
 export { loadVisibleAccount, loadVisibleAccounts, type Presence } from './load';

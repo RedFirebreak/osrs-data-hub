@@ -9,6 +9,7 @@
  * viewer lacks the category, so routes answer 404.
  */
 import {
+  sessionWealthChange,
   trailSteps,
   utcDay,
   type Category,
@@ -24,7 +25,7 @@ import {
   type DbOrTx,
   type SessionEndReason,
 } from '@hub/db';
-import { and, asc, desc, eq, gte, isNull, lte, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { loadVisibleAccount } from './load';
 import { assertValidDate } from './xp';
 
@@ -140,6 +141,78 @@ export async function readSessions(
       endReason: r.endReason,
     };
   });
+}
+
+/** A play session with what it gained or lost in wealth (getSessionWealth, D-125). */
+export interface SessionWealthChange {
+  id: string;
+  startedAt: string;
+  /** Its end, or its last payload while it is open. */
+  endedAt: string;
+  open: boolean;
+  durationMs: number;
+  /** Wealth (carried plus bank) gained, negative when lost; null when the hub didn't keep it. */
+  change: number | null;
+}
+
+/**
+ * The play sessions overlapping [from, to] with their wealth change, newest first (at most `limit`).
+ * Gated by both `activity` (the sessions) and `inventory` (the wealth): null without either.
+ */
+export async function getSessionWealth(
+  db: DbOrTx,
+  viewer: Principal,
+  publicId: string,
+  range: HistoryRange,
+  limit = MAX_SESSIONS,
+): Promise<SessionWealthChange[] | null> {
+  assertValidDate(range.from, 'from');
+  assertValidDate(range.to, 'to');
+  const entry = await loadVisibleAccount(db, viewer, publicId);
+  const has = (c: Category) => entry?.access.categories.has(c) ?? false;
+  if (!entry || !has('activity') || !has('inventory')) return null;
+  const sessions = (await readSessions(db, entry.account.id, range)).slice(0, limit);
+  const changes = await readSessionWealth(
+    db,
+    entry.account.id,
+    sessions.map((s) => s.id),
+  );
+  return sessions.map((s) => ({
+    id: s.id,
+    startedAt: s.startedAt,
+    endedAt: s.endedAt ?? s.lastSeenAt,
+    open: s.endedAt === null,
+    durationMs: s.durationMs,
+    change: changes.get(s.id) ?? null,
+  }));
+}
+
+/**
+ * Each listed session's wealth change (sessionWealthChange, D-125), by id; sessions without one are
+ * left out. No permission check: the caller may read the account's `activity` and `inventory`.
+ */
+export async function readSessionWealth(
+  db: DbOrTx,
+  accountId: number,
+  ids: readonly string[],
+): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  if (ids.length === 0) return out;
+  const rows = await db
+    .select({
+      id: playSessions.id,
+      carriedStart: playSessions.carriedStart,
+      carriedEnd: playSessions.carriedEnd,
+      bankStart: playSessions.bankStart,
+      bankEnd: playSessions.bankEnd,
+    })
+    .from(playSessions)
+    .where(and(eq(playSessions.accountId, accountId), inArray(playSessions.id, [...ids])));
+  for (const row of rows) {
+    const change = sessionWealthChange(row);
+    if (change !== null) out.set(row.id, change);
+  }
+  return out;
 }
 
 /** Every play session of an account added up (getPlaytimeTotal). */

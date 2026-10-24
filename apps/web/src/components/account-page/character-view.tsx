@@ -36,6 +36,7 @@ import { HiscoresContent, hiscoresDescription } from '@/components/account-page/
 import { InventoryContent } from '@/components/account-page/inventory-content';
 import { LocationContent } from '@/components/account-page/location-content';
 import { PLAYTIME_DAYS, PlaytimeCard } from '@/components/account-page/playtime-card';
+import { WealthCard } from '@/components/account-page/wealth-card';
 import { SkillsPanel } from '@/components/account-page/skills-panel';
 import { VitalsContent } from '@/components/account-page/vitals-content';
 import { WeekSummary } from '@/components/account-page/week-summary';
@@ -93,6 +94,7 @@ export async function CharacterView({ publicId }: CharacterViewProps) {
   const main = [
     skillsSection(ctx),
     playtimeSection(ctx),
+    wealthSection(ctx),
     eventsSection(ctx),
     hiscoresSection(ctx),
   ].filter(Boolean);
@@ -307,6 +309,23 @@ function playtimeSection({ page, viewer, publicId, renderedAt, timezone }: Secti
         timezone={timezone}
         bars={PLAYTIME_DAYS}
       />
+    </Suspense>
+  );
+}
+
+/** Wealth reads the wealth history (`inventory`); its recent sessions also need `activity` (D-125). */
+function wealthSection({ page, viewer, publicId, renderedAt, timezone }: SectionContext) {
+  if (!page.inventory.visible || !page.inventory.shared) return null;
+  return (
+    <Suspense
+      key="wealth"
+      fallback={
+        <CardSkeleton>
+          <ContentSkeleton rows={4} />
+        </CardSkeleton>
+      }
+    >
+      <WealthCard publicId={publicId} viewer={viewer} now={renderedAt} timezone={timezone} />
     </Suspense>
   );
 }
