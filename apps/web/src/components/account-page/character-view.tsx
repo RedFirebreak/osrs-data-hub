@@ -2,9 +2,10 @@
  * A character as it is now: the body of the character page (/accounts/[publicId]) and of Home, which
  * is the viewer's own most recently played character. Header (name, type, live presence, owner,
  * previous names, and a picker when the viewer has more characters), then the skills panel, the
- * week in one glance, the latest events, where the character is and how it stands, what it wears
- * and carries, the collection log (D-118), and the hiscores. What changed over time (XP, sessions, playtime, wealth) lives on
- * the progress pages, which the skills and the week link to.
+ * week in one glance, the latest events, where the character is and how it stands, its playtime
+ * (today, 30 days and all of it), what it wears and carries, the collection log (D-118), and the
+ * hiscores. What changed over time (XP, sessions, wealth) lives on the progress pages, which the
+ * skills, the week and the playtime link to.
  *
  * Each section follows the read model's three states (handoff §10, D-4): hidden when the viewer may
  * not see its category, a "Not shared" card when the plugin never sent it, or the data (`dataSection`
@@ -34,6 +35,7 @@ import { EquipmentGrid, EquipmentLog } from '@/components/account-page/equipment
 import { HiscoresContent, hiscoresDescription } from '@/components/account-page/hiscores-content';
 import { InventoryContent } from '@/components/account-page/inventory-content';
 import { LocationContent } from '@/components/account-page/location-content';
+import { PLAYTIME_DAYS, PlaytimeCard } from '@/components/account-page/playtime-card';
 import { SkillsPanel } from '@/components/account-page/skills-panel';
 import { VitalsContent } from '@/components/account-page/vitals-content';
 import { WeekSummary } from '@/components/account-page/week-summary';
@@ -83,7 +85,12 @@ export async function CharacterView({ publicId, home = false }: CharacterViewPro
   const own = await loadOwnAccounts();
   const isOwn = own.some((account) => account.publicId === publicId);
 
-  const main = [skillsSection(ctx), eventsSection(ctx), hiscoresSection(ctx)].filter(Boolean);
+  const main = [
+    skillsSection(ctx),
+    playtimeSection(ctx),
+    eventsSection(ctx),
+    hiscoresSection(ctx),
+  ].filter(Boolean);
   const aside = [
     weekSection(ctx),
     rightNowSection(ctx),
@@ -277,6 +284,29 @@ function weekSection({ page, viewer, publicId, renderedAt, timezone }: SectionCo
       }
     >
       <WeekSummary publicId={publicId} viewer={viewer} now={renderedAt} timezone={timezone} />
+    </Suspense>
+  );
+}
+
+/** Playtime reads the sessions (`activity`, which is also what makes presence visible). */
+function playtimeSection({ page, viewer, publicId, renderedAt, timezone }: SectionContext) {
+  if (!page.presence.visible) return null;
+  return (
+    <Suspense
+      key="playtime"
+      fallback={
+        <CardSkeleton>
+          <ContentSkeleton rows={4} />
+        </CardSkeleton>
+      }
+    >
+      <PlaytimeCard
+        publicId={publicId}
+        viewer={viewer}
+        now={renderedAt}
+        timezone={timezone}
+        bars={PLAYTIME_DAYS}
+      />
     </Suspense>
   );
 }
