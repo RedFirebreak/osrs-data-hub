@@ -23,3 +23,4 @@ export * from './export';
 export * from './hiscores';
 export * from './account-metrics';
 export * from './friends';
+export * from './collection-log';

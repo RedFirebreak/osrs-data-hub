@@ -3,7 +3,7 @@
  * is the viewer's own most recently played character. Header (name, type, live presence, owner,
  * previous names, and a picker when the viewer has more characters), then the skills panel, the
  * week in one glance, the latest events, where the character is and how it stands, what it wears
- * and carries, and the hiscores. What changed over time (XP, sessions, playtime, wealth) lives on
+ * and carries, the collection log (D-118), and the hiscores. What changed over time (XP, sessions, playtime, wealth) lives on
  * the progress pages, which the skills and the week link to.
  *
  * Each section follows the read model's three states (handoff §10, D-4): hidden when the viewer may
@@ -38,6 +38,7 @@ import { SkillsPanel } from '@/components/account-page/skills-panel';
 import { VitalsContent } from '@/components/account-page/vitals-content';
 import { WeekSummary } from '@/components/account-page/week-summary';
 import { accountHref } from '@/components/accounts/account-link';
+import { CollectionLogCard } from '@/components/collection-log/collection-log-card';
 import { CharacterPicker } from '@/components/accounts/character-picker';
 import { NotSharedBadge } from '@/components/accounts/not-shared-badge';
 import { CardSkeleton } from '@/components/common/card-skeleton';
@@ -88,6 +89,7 @@ export async function CharacterView({ publicId, home = false }: CharacterViewPro
     rightNowSection(ctx),
     wornSection(ctx),
     inventorySection(ctx),
+    collectionLogSection(ctx),
   ].filter(Boolean);
 
   return (
@@ -244,6 +246,23 @@ function hiscoresSection({ page, now, dayOnlyIn }: SectionContext) {
 }
 
 // --- Side column ---------------------------------------------------------------------------------
+
+/** The collection log reads `events` (the slots) and `hiscores` (the total), D-118. */
+function collectionLogSection({ page, viewer, publicId, timezone }: SectionContext) {
+  if (!page.recentEvents.visible && !page.hiscores.visible) return null;
+  return (
+    <Suspense
+      key="collection-log"
+      fallback={
+        <CardSkeleton>
+          <ContentSkeleton rows={3} />
+        </CardSkeleton>
+      }
+    >
+      <CollectionLogCard viewer={viewer} publicId={publicId} timezone={timezone} />
+    </Suspense>
+  );
+}
 
 /** The week reads stats, events and sessions; without any of them there is nothing to wait for. */
 function weekSection({ page, viewer, publicId, renderedAt, timezone }: SectionContext) {

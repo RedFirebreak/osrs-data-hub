@@ -2,8 +2,8 @@
  * The guild page (handoff §12): gains leaderboards (today / 7 days / 30 days, per skill), the
  * boss leaderboards (kills gained over 7 / 30 days, D-110), the activity feed of every account the
  * viewer may see (latest 50, "load more", live events prepended), and the members with their visible
- * accounts and online dots. "Today" starts at midnight in the
- * viewer's time zone (Settings). Everything comes from @hub/server getGuildOverview, which applies
+ * accounts and online dots. The header links to the guild's collection log (D-118). "Today" starts
+ * at midnight in the viewer's time zone (Settings). Everything comes from @hub/server getGuildOverview, which applies
  * the permission resolver per account (handoff §10).
  */
 import { OVERALL, getConfig, sortSkillsForDisplay, type Viewer } from '@hub/core';
@@ -14,7 +14,9 @@ import {
   getGuildOverview,
   getUserSettings,
 } from '@hub/server';
+import { BookOpenIcon } from 'lucide-react';
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { Suspense } from 'react';
 import { SectionCard } from '@/components/common/section-card';
 import { EventTimeline } from '@/components/events/event-timeline';
@@ -24,6 +26,8 @@ import { Leaderboards } from '@/components/guild/leaderboards';
 import { MemberList } from '@/components/guild/member-list';
 import { AutoRefresh } from '@/components/shell/auto-refresh';
 import { PageHeader } from '@/components/shell/page-header';
+import { Button } from '@/components/ui/button';
+import { guildCollectionLogHref } from '@/lib/routes';
 import { requireUser } from '@/lib/session';
 import { cn } from '@/lib/utils';
 import { GuildSkeleton } from './skeleton';
@@ -39,6 +43,14 @@ export default async function GuildPage() {
       <PageHeader
         title="Guild"
         description="Who is playing, what they found and who gained the most XP."
+        actions={
+          <Button asChild variant="outline">
+            <Link href={guildCollectionLogHref()}>
+              <BookOpenIcon aria-hidden />
+              Collection log
+            </Link>
+          </Button>
+        }
       />
       <Suspense fallback={<GuildSkeleton />}>
         <GuildContent userId={user.id} viewer={viewer} />

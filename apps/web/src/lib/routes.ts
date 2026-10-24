@@ -7,6 +7,8 @@
  *   /progress/<id>/skills/<skill>       one skill ("firemaking")
  *   /progress/<id>/bosses/<activity>    one boss ("Zulrah")
  *   /progress/<id>/deep-dive            the detailed charts and their filters (D-106)
+ *   /accounts/<id>/collection-log       the collection log (D-118)
+ *   /guild/collection-log?q=            the guild board and the lookup
  */
 import type { Route } from 'next';
 
@@ -40,4 +42,14 @@ export function bossHref(publicId: string, activity: string, search?: string): R
 /** The detailed charts. `search` is a Metrics query string (metricsSearch). */
 export function deepDiveHref(publicId: string, search?: string): Route {
   return withSearch(`/progress/${part(publicId)}/deep-dive`, search);
+}
+
+/** A character's collection log (D-118). Not a progress page: it is what the log holds now. */
+export function collectionLogHref(publicId: string): Route {
+  return `/accounts/${part(publicId)}/collection-log` as Route;
+}
+
+/** The guild's collection log, with `?q=` the lookup "who has X". */
+export function guildCollectionLogHref(query?: string): Route {
+  return withSearch('/guild/collection-log', query ? `q=${part(query)}` : '');
 }
