@@ -150,6 +150,24 @@ export const equipmentChanges = pgTable(
   (t) => [index('equipment_changes_account_idx').on(t.accountId, t.changedAt.desc())],
 );
 
+/**
+ * The 5-minute buckets in which the player did something besides gaining XP (D-127): moved, changed
+ * the inventory, changed gear (`kinds`: ACTIVITY_* bits, or-ed when a bucket is written twice). What
+ * makes such a bucket count as active time on the progress pages. Kept as long as the account; at
+ * most 288 rows a day of play.
+ */
+export const activityMarks = pgTable(
+  'activity_marks',
+  {
+    accountId: integer('account_id')
+      .notNull()
+      .references(() => osrsAccounts.id, { onDelete: 'cascade' }),
+    bucket: tstz('bucket').notNull(),
+    kinds: smallint('kinds').notNull(),
+  },
+  (t) => [primaryKey({ name: 'activity_marks_pk', columns: [t.accountId, t.bucket] })],
+);
+
 /** Carried wealth (inventory + equipment, GE value) per UTC day. */
 export const wealthDaily = pgTable(
   'wealth_daily',

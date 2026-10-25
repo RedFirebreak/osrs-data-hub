@@ -12,7 +12,14 @@ import type {
 import { KNOWN_SKILLS } from '../skills';
 import { EVENT_CLAMP_MS, TRAIL_CLOCK_TOLERANCE_MS, payloadTime } from '../time';
 import { planSnapshot } from './plan';
-import type { LatestStatePatch, PrevState, SnapshotContext } from './types';
+import {
+  ACTIVITY_EQUIPMENT,
+  ACTIVITY_INVENTORY,
+  ACTIVITY_MOVED,
+  type LatestStatePatch,
+  type PrevState,
+  type SnapshotContext,
+} from './types';
 
 /** The wire shape of a fixture body (strings where the plugin sends strings). */
 interface WireBody {
@@ -96,6 +103,7 @@ const NO_STATE: PrevState = {
   sourceTs: null,
   skills: null,
   equipment: null,
+  inventory: null,
   gameState: null,
   world: null,
   location: null,
@@ -114,6 +122,7 @@ function applyPatch(prev: PrevState | null, patch: LatestStatePatch | null): Pre
     sourceTs: patch.sourceTs ?? base.sourceTs,
     skills: patch.skills ?? base.skills,
     equipment: patch.equipment ?? base.equipment,
+    inventory: patch.inventory ?? base.inventory,
     world: patch.world ?? base.world,
     location: patch.location ?? base.location,
     locationUpdatedAt: patch.locationUpdatedAt ?? base.locationUpdatedAt,
@@ -226,6 +235,7 @@ describe('planSnapshot: first snapshot', () => {
       sourceTs: new Date(0),
       skills: null,
       equipment: null,
+      inventory: null,
       gameState: 'LOGGED_IN',
       world: 301,
       location: null,
@@ -381,6 +391,7 @@ describe('planSnapshot: staleness (per device, D-17)', () => {
       xpGuardSkill: null,
       equipmentChange: null,
       locationPoints: [],
+      activity: [],
       wealth: null,
       session: { open: false, extend: true, world: 302 },
       latestPatch: null,
@@ -614,6 +625,7 @@ describe('planSnapshot: equipment changes', () => {
     sourceTs: new Date(0),
     skills: null,
     equipment,
+    inventory: null,
     gameState: 'LOGGED_IN',
     world: 302,
     location: null,
@@ -666,6 +678,143 @@ describe('planSnapshot: equipment changes', () => {
     const prev = prevAfterNormal();
     const hop = fromFixture('snapshot-world-hop');
     expect(planSnapshot(prev, hop, ctxFor(hop)).equipmentChange).toBeNull();
+  });
+});
+
+describe('planSnapshot: activity besides XP (D-127)', () => {
+  const BUCKET = 5 * 60_000;
+  /** 12:07:30 on the day hand-built payloads are received: inside the 12:05 bucket. */
+  const RECV = Date.parse('2026-09-22T12:07:30.000Z');
+  const bucketOf = (ms: number) => new Date(Math.floor(ms / BUCKET) * BUCKET);
+  const shark: ItemData = { name: 'Shark', id: 385, gePrice: 963, quantity: 1, inventorySlot: 0 };
+  const coins: ItemData = { name: 'Coins', id: 995, gePrice: 1, quantity: 500, inventorySlot: 1 };
+  const bow: ItemData = {
+    name: 'Rune crossbow',
+    id: 9185,
+    gePrice: 9232,
+    quantity: 1,
+    equipmentSlot: 'WEAPON',
+  };
+  const prev = (over: Partial<PrevState> = {}): PrevState => ({
+    ...NO_STATE,
+    sourceDeviceId: DEVICE,
+    sourceTs: new Date(RECV - 60_000),
+    gameState: 'LOGGED_IN',
+    world: 302,
+    location: { x: 3200, y: 3200, plane: 0 },
+    locationUpdatedAt: new Date(RECV - 60_000),
+    inventory: [shark, coins],
+    equipment: [bow],
+    ...over,
+  });
+  const plan = (
+    before: PrevState | null,
+    player: PlayerSnapshot,
+    timestamp: number | null = null,
+  ) => {
+    const p: ParsedPayload = { ...payload({ world: 302, ...player }), timestamp };
+    return planSnapshot(before, p, {
+      recv: new Date(RECV),
+      deviceId: DEVICE,
+      payloadTs: payloadTime(p.timestamp, new Date(RECV)),
+    });
+  };
+
+  it('standing still with the same items and gear is no activity', () => {
+    const p = plan(prev(), {
+      location: { x: 3200, y: 3200, plane: 0 },
+      inventory: [shark, coins],
+      equipment: [bow],
+    });
+    expect(p.activity).toEqual([]);
+  });
+
+  it('a new tile without a trail (older plugin) is movement at recv', () => {
+    const p = plan(prev(), { location: { x: 3201, y: 3200, plane: 0 } });
+    expect(p.activity).toEqual([{ bucket: bucketOf(RECV), kinds: ACTIVITY_MOVED }]);
+  });
+
+  it('another plane is movement too (a ladder)', () => {
+    const p = plan(prev(), { location: { x: 3200, y: 3200, plane: 1 } });
+    expect(p.activity).toEqual([{ bucket: bucketOf(RECV), kinds: ACTIVITY_MOVED }]);
+  });
+
+  it('a trail marks the bucket of each point that moved, at the time the plugin saw it', () => {
+    const t = (x: number, ms: number) => ({ x, y: 3200, plane: 0, timestamp: ms });
+    // 12:04:50 still on the last tile, 12:04:55 one step (12:00 bucket), 12:06 another (12:05).
+    const root = RECV - 1000;
+    const trail = [t(3200, RECV - 160_000), t(3201, RECV - 155_000), t(3202, RECV - 90_000)];
+    const p = plan(
+      prev(),
+      { locationTrail: trail, location: { x: 3202, y: 3200, plane: 0 } },
+      root,
+    );
+    expect(p.activity).toEqual([
+      { bucket: bucketOf(RECV - 155_000), kinds: ACTIVITY_MOVED },
+      { bucket: bucketOf(RECV), kinds: ACTIVITY_MOVED },
+    ]);
+  });
+
+  it('picking up, dropping, using up and moving an item are inventory changes', () => {
+    const inv = (items: ItemData[]) => plan(prev(), { inventory: items }).activity;
+    const mark = [{ bucket: bucketOf(RECV), kinds: ACTIVITY_INVENTORY }];
+    expect(inv([shark, coins, { ...shark, inventorySlot: 2 }])).toEqual(mark);
+    expect(inv([coins])).toEqual(mark);
+    expect(inv([shark, { ...coins, quantity: 499 }])).toEqual(mark);
+    expect(inv([{ ...shark, inventorySlot: 5 }, coins])).toEqual(mark);
+    // The same slots in another list order is the same inventory.
+    expect(inv([coins, shark])).toEqual([]);
+  });
+
+  it('equipping or taking off an item is a gear change; ammo being used up is not', () => {
+    expect(plan(prev(), { equipment: [] }).activity).toEqual([
+      { bucket: bucketOf(RECV), kinds: ACTIVITY_EQUIPMENT },
+    ]);
+    const bolts: ItemData = { id: 9144, gePrice: 76, quantity: 500, equipmentSlot: 'AMMO' };
+    const before = prev({ equipment: [bow, bolts] });
+    expect(plan(before, { equipment: [bow, { ...bolts, quantity: 499 }] }).activity).toEqual([]);
+  });
+
+  it('everything in one bucket is one mark with every kind', () => {
+    const p = plan(prev(), {
+      location: { x: 3199, y: 3200, plane: 0 },
+      inventory: [coins],
+      equipment: [],
+    });
+    expect(p.activity).toEqual([
+      { bucket: bucketOf(RECV), kinds: ACTIVITY_MOVED | ACTIVITY_INVENTORY | ACTIVITY_EQUIPMENT },
+    ]);
+  });
+
+  it('nothing to compare with (a first snapshot) is no activity', () => {
+    const first = plan(null, {
+      location: { x: 3200, y: 3200, plane: 0 },
+      inventory: [shark],
+      equipment: [bow],
+    });
+    expect(first.activity).toEqual([]);
+  });
+
+  it('a special world or an XP drop marks nothing', () => {
+    const moved = { location: { x: 3300, y: 3300, plane: 0 }, inventory: [] };
+    expect(plan(prev(), { ...moved, worldTypes: ['SEASONAL'] }).activity).toEqual([]);
+    const skills = { Attack: { xp: 10, level: 1 } };
+    const guarded = plan(prev({ skills: { Attack: { xp: 500, level: 5 } } }), { ...moved, skills });
+    expect(guarded.xpGuardTripped).toBe(true);
+    expect(guarded.activity).toEqual([]);
+  });
+
+  it('a stale snapshot still counts the movement within its trail', () => {
+    const t = (x: number, ms: number) => ({ x, y: 3200, plane: 0, timestamp: ms });
+    const newer = prev({ sourceTs: new Date(RECV) });
+    const root = RECV - 30_000;
+    const p = plan(
+      newer,
+      { locationTrail: [t(3000, root - 20_000), t(3001, root - 10_000)], inventory: [] },
+      root,
+    );
+    expect(p.stale).toBe(true);
+    expect(p.activity).toEqual([{ bucket: bucketOf(root - 10_000), kinds: ACTIVITY_MOVED }]);
   });
 });
 

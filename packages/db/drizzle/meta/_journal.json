@@ -127,6 +127,13 @@
       "when": 1792860475477,
       "tag": "0017_session_wealth",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1792944467146,
+      "tag": "0018_activity_marks",
+      "breakpoints": true
     }
   ]
 }

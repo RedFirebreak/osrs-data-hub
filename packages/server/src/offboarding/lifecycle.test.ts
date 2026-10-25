@@ -5,6 +5,7 @@
 import {
   accountLinks,
   accountNames,
+  activityMarks,
   deviceAccounts,
   equipmentChanges,
   events,
@@ -66,6 +67,7 @@ async function footprint(accountId: number): Promise<Record<string, number>> {
     ['location_samples', locationSamples, sql`account_id`],
     ['equipment_changes', equipmentChanges, sql`account_id`],
     ['wealth_daily', wealthDaily, sql`account_id`],
+    ['activity_marks', activityMarks, sql`account_id`],
     ['events', events, sql`account_id`],
     ['play_sessions', playSessions, sql`account_id`],
   ];

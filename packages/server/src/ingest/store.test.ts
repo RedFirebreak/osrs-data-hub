@@ -1,5 +1,9 @@
 import {
+  ACTIVITY_EQUIPMENT,
+  ACTIVITY_INVENTORY,
+  ACTIVITY_MOVED,
   LOCATION_BUCKET_MS,
+  METRICS_BUCKET_MS,
   XP_BUCKET_MS,
   carriedValue,
   floorTo,
@@ -12,6 +16,7 @@ import {
 import {
   accountLinks,
   accountNames,
+  activityMarks,
   auditLog,
   deviceAccounts,
   devices,
@@ -422,6 +427,43 @@ describe('derived writes across payloads (D-23, handoff §7.1.11)', () => {
     expect(samples.map((s) => s.x)).toEqual([x0, x0 + 6]);
     // latest_state follows every payload.
     expect((await latest(id)).location).toMatchObject({ x: x0 + 6 });
+  });
+
+  it('marks the 5-minute buckets with a step, an inventory or a gear change, one row each (D-127)', async () => {
+    const device = await h.seedDevice();
+    const hash = newHash();
+    const marks = async () =>
+      t.db
+        .select({ bucket: activityMarks.bucket, kinds: activityMarks.kinds })
+        .from(activityMarks)
+        .where(eq(activityMarks.accountId, (await account(hash)).id))
+        .orderBy(asc(activityMarks.bucket));
+    // The first snapshot has nothing to compare with; the same one again changes nothing.
+    await h.send(device, snapshotAt(hash, 0));
+    await h.send(device, snapshotAt(hash, 10_000));
+    expect(await marks()).toEqual([]);
+
+    // A step, then an item dropped, in one bucket: one row with both kinds.
+    const step = snapshotAt(hash, 20_000);
+    playerOf(step).location.x += 1;
+    await h.send(device, step);
+    const drop = snapshotAt(hash, 30_000);
+    playerOf(drop).location.x += 1;
+    playerOf(drop).inventory.items = playerOf(drop).inventory.items.slice(1);
+    await h.send(device, drop);
+    // Gear taken off in the next bucket.
+    const strip = snapshotAt(hash, 5 * 60_000);
+    playerOf(strip).location.x += 1;
+    playerOf(strip).inventory.items = playerOf(strip).inventory.items.slice(1);
+    playerOf(strip).equipment.items = [];
+    await h.send(device, strip);
+
+    const bucketOf = (body: Wire) => floorTo(new Date(ts(body) + 1_000), METRICS_BUCKET_MS);
+    expect(bucketOf(drop)).toEqual(bucketOf(step));
+    expect(await marks()).toEqual([
+      { bucket: bucketOf(step), kinds: ACTIVITY_MOVED | ACTIVITY_INVENTORY },
+      { bucket: bucketOf(strip), kinds: ACTIVITY_EQUIPMENT },
+    ]);
   });
 
   it('tickDelay 0 (unknown) keeps the last known tick delay', async () => {
