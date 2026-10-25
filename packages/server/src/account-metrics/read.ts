@@ -3,9 +3,10 @@
  * resolve the account and its categories first and only call the readers a viewer may see.
  *
  * Nothing here is stored for Metrics: every number is derived on read from what the hub keeps anyway
- * (xp_samples and its rollups, play_sessions, events, activity_scores, wealth_daily).
+ * (xp_samples and its rollups, play_sessions, events, activity_scores, wealth_daily, activity_marks).
  */
 import {
+  METRICS_BUCKET_MS,
   OVERALL,
   describeEvent,
   floorTo,
@@ -85,6 +86,26 @@ export const MAX_DROPS = 50_000;
  * Loot drops (`loot` and `pk_loot` with a value, not from a special world: as the loot leaderboard
  * counts them, D-94) that happened in [from, to], oldest first, with the source the plugin named.
  */
+/**
+ * The starts of the 5-minute buckets in [from, to] in which the player moved, changed the inventory or
+ * changed gear (activity_marks, D-127). They say only that something happened, not where or what, so
+ * they need no category beyond the sessions' own.
+ */
+export async function readActivityMarks(
+  db: DbOrTx,
+  accountId: number,
+  range: Range,
+): Promise<number[]> {
+  if (range.to.getTime() < range.from.getTime()) return [];
+  const result = await db.execute<{ bucket: Date }>(sql`
+    SELECT bucket FROM activity_marks
+    WHERE account_id = ${accountId}
+      AND bucket >= ${floorTo(range.from, METRICS_BUCKET_MS).toISOString()}::timestamptz
+      AND bucket <= ${range.to.toISOString()}::timestamptz
+    ORDER BY bucket`);
+  return result.rows.map((r) => new Date(r.bucket).getTime());
+}
+
 export async function readDrops(db: DbOrTx, accountId: number, range: Range): Promise<Drop[]> {
   const result = await db.execute<{ occurred_at: Date; value_gp: number; source: unknown }>(sql`
     SELECT occurred_at, value_gp, data #>> '{data,source,text}' AS source

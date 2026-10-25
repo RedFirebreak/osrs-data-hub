@@ -1,6 +1,7 @@
 import { DEFAULT_METRICS_QUERY, type MetricsQuery } from '@hub/core';
 import {
   accountHiscores,
+  activityMarks,
   activityScores,
   hiscoreXpFills,
   playSessions,
@@ -378,6 +379,36 @@ describe('getAccountMetrics', () => {
     const ranged = m.skills!.find((s) => s.skill === 'Ranged')!;
     expect(ranged).toMatchObject({ xp: 1_030_000, level: 73, gained: 30_000, xpPerHour: 120_000 });
     expect(ranged.etaMs).toBeCloseTo(((1_096_278 - 1_030_000) / 120_000) * HOUR, 0);
+  });
+
+  it('counts a bucket with a step or an item change as active, in the session and its timeline (D-127)', async () => {
+    // Session B: Fishing at 20:00 and 20:10. A step at 20:22 and an item at 20:06 (already-idle buckets).
+    await t.db.insert(activityMarks).values([
+      { accountId: account.id, bucket: at('2026-10-05T20:05:00Z'), kinds: 2 },
+      { accountId: account.id, bucket: at('2026-10-05T20:20:00Z'), kinds: 1 },
+    ]);
+    try {
+      const m = (await getAccountMetrics(
+        t.db,
+        owner.viewer,
+        account.publicId,
+        query({ range: '7d', session: sessionB }),
+        OPTS,
+      ))!;
+      expect(m.sessions!.find((s) => s.id === sessionB)).toMatchObject({ activeMs: 20 * MIN });
+      expect(m.totals.sessions).toMatchObject({ activeMs: 45 * MIN });
+      expect(m.timeline!.buckets.map((b) => b.active)).toEqual([
+        true,
+        true,
+        true,
+        false,
+        true,
+        false,
+        false,
+      ]);
+    } finally {
+      await t.db.delete(activityMarks);
+    }
   });
 });
 

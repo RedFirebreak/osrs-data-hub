@@ -56,6 +56,7 @@ import { readGoals, toGoalViews, type GoalView } from './goals';
 import { resolveMetricsRange } from './range';
 import { getSession } from './session';
 import {
+  readActivityMarks,
   readDrops,
   readKillGains,
   readMarkers,
@@ -283,6 +284,7 @@ export async function getAccountMetrics(
         drops: drops.filter((d) => d.at >= sessionStart),
         kills: bossKills,
         lootActive: access.events,
+        marks: await readActivityMarks(db, account.id, readRange),
       })
     : [];
   const openIds = new Set(playSessions.filter((s) => s.endedAt === null).map((s) => s.id));
@@ -595,6 +597,7 @@ async function loadTimeline(
         )
       : [],
     lootActive: access.events,
+    marks: await readActivityMarks(db, accountId, range),
   });
   if (!built || built.id !== session.id) return null;
   return {

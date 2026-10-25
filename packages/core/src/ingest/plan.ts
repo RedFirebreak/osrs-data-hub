@@ -11,13 +11,18 @@ import {
   utcDay,
 } from '../time';
 import { isSpecialWorld } from '../worlds';
-import type {
-  LatestStatePatch,
-  LocationWrite,
-  PrevState,
-  SnapshotContext,
-  SnapshotPlan,
-  XpWrite,
+import { METRICS_BUCKET_MS } from '../metrics/sessions';
+import {
+  ACTIVITY_EQUIPMENT,
+  ACTIVITY_INVENTORY,
+  ACTIVITY_MOVED,
+  type ActivityMark,
+  type LatestStatePatch,
+  type LocationWrite,
+  type PrevState,
+  type SnapshotContext,
+  type SnapshotPlan,
+  type XpWrite,
 } from './types';
 
 /**
@@ -48,6 +53,13 @@ import type {
  * - locationPoints: with a locationTrail (plugin 1.6) → planTrail's rows; without one, when location
  *   is present → the one sample {ts: floorTo(recv, 1 min), x, y, plane, onBoat: isOnBoat ?? false,
  *   world: player.world ?? prev.world ?? null}.
+ * - activity (D-127): the 5-minute buckets (METRICS_BUCKET_MS) in which the player did something
+ *   besides gaining XP. Moved: a trail point (or, without a trail, the location at recv) on another
+ *   tile than the point before it, the first one compared with prev.location (a stale snapshot only
+ *   compares its own points); the bucket of that point's time. Inventory: player.inventory differs
+ *   from prev.inventory in an item, its quantity or its slot; equipment: equipmentChange with a
+ *   previous list (a first list is no change). Both at recv. Nothing for a special world or an
+ *   XP-guarded snapshot, and nothing when there is no previous list to compare with.
  * - bank (D-124): player.bank (readAt raised to the epoch and capped at recv) is applied
  *   (latestPatch.bankValue/bankValueAt) when it was read after prev.bankValueAt (or none is known), on
  *   a normal world and not XP-guarded. A stale snapshot still applies it: a reading is the plugin's
@@ -76,6 +88,7 @@ export function planSnapshot(
     xpGuardSkill: null,
     equipmentChange: null,
     locationPoints: [],
+    activity: [],
     wealth: null,
     session: { open: false, extend: inGame, world },
     latestPatch: null,
@@ -83,7 +96,10 @@ export function planSnapshot(
   if (stale) {
     // Once a snapshot is answered 200 the plugin never sends its trail points again, so one that
     // lost the race still has points to keep.
-    if (!special) plan.locationPoints = planTrail(prev, payload, ctx.recv, false);
+    if (!special) {
+      plan.locationPoints = planTrail(prev, payload, ctx.recv, false);
+      plan.activity = activityMarks(movedAt(null, plan.locationPoints));
+    }
     const bank = special ? null : newerBank(prev, ctx, player);
     if (bank !== null) plan.latestPatch = bank;
     return plan;
@@ -171,6 +187,21 @@ export function planSnapshot(
       plan.equipmentChange = player.equipment;
     }
   }
+  const changes: { at: Date; kind: number }[] = movedAt(
+    prev?.location ?? null,
+    plan.locationPoints,
+  );
+  if (
+    player.inventory !== undefined &&
+    prev?.inventory != null &&
+    !sameInventory(prev.inventory, player.inventory)
+  ) {
+    changes.push({ at, kind: ACTIVITY_INVENTORY });
+  }
+  if (plan.equipmentChange !== null && prev?.equipment != null) {
+    changes.push({ at, kind: ACTIVITY_EQUIPMENT });
+  }
+  plan.activity = activityMarks(changes);
   const bankPatch = newerBank(prev, ctx, player);
   if (bankPatch !== null) Object.assign(patch, bankPatch);
   if (player.inventory !== undefined && player.equipment !== undefined) {
@@ -288,6 +319,48 @@ function planXp(
     writes.push({ skill: OVERALL, xp: total, level: totalLevel(merged) });
   }
   return { writes, guardSkill: null };
+}
+
+/** The times the player stood on another tile than the point before (the first: than `from`). */
+function movedAt(
+  from: Location | null,
+  points: readonly LocationWrite[],
+): { at: Date; kind: number }[] {
+  const out: { at: Date; kind: number }[] = [];
+  let before: { x: number; y: number; plane: number } | null = from;
+  for (const point of points) {
+    const moved =
+      before !== null &&
+      (before.x !== point.x || before.y !== point.y || before.plane !== point.plane);
+    if (moved) out.push({ at: point.ts, kind: ACTIVITY_MOVED });
+    before = point;
+  }
+  return out;
+}
+
+/** One mark per 5-minute bucket, its kinds or-ed together, oldest first. */
+function activityMarks(changes: readonly { at: Date; kind: number }[]): ActivityMark[] {
+  const byBucket = new Map<number, number>();
+  for (const c of changes) {
+    const bucket = Math.floor(c.at.getTime() / METRICS_BUCKET_MS) * METRICS_BUCKET_MS;
+    byBucket.set(bucket, (byBucket.get(bucket) ?? 0) | c.kind);
+  }
+  return [...byBucket.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([bucket, kinds]) => ({ bucket: new Date(bucket), kinds }));
+}
+
+/**
+ * The same items in the same quantities in the same slots (inventorySlot, else the list position):
+ * picking up, dropping, using up and moving an item are all changes.
+ */
+function sameInventory(a: readonly ItemData[], b: readonly ItemData[]): boolean {
+  const key = (items: readonly ItemData[]) =>
+    items
+      .map((item, index) => `${item.inventorySlot ?? index}:${item.id}:${item.quantity}`)
+      .sort()
+      .join(',');
+  return key(a) === key(b);
 }
 
 /** equipmentSlot → item id; an item without a slot is keyed by its index ("#3"). */

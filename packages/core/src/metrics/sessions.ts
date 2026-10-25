@@ -3,12 +3,12 @@
  * buckets XP is stored in, and the summaries every Metrics chart is drawn from. Pure: the server reads
  * the rows (packages/server/src/metrics) and hands them in as plain numbers.
  *
- * Effective time (D-107). A 5-minute bucket of a session is **active** when the account gained XP in
- * it (from the plugin; XP the hiscores filled in was made outside any session, D-105) or, when the
- * viewer may read the account's events, had a loot drop in it; otherwise it is **idle** (banking,
- * walking, AFK). Active time is the online time of the active buckets; effective share = active ÷
- * online. 5 minutes is the resolution of xp_samples, so a short bank trip inside a busy bucket counts
- * as active.
+ * Effective time (D-107, D-127). A 5-minute bucket of a session is **active** when the account
+ * gained XP in it (from the plugin; XP the hiscores filled in was made outside any session, D-105),
+ * the player moved, changed the inventory or changed gear in it (activity_marks), or, when the viewer
+ * may read the account's events, had a loot drop in it; otherwise it is **idle** (AFK). Active time is
+ * the online time of the active buckets; effective share = active ÷ online. 5 minutes is the
+ * resolution of xp_samples, so one step or one item moved makes the whole bucket active.
  *
  * Kill counts come from the hiscores, read about 10 minutes after a session ends (D-105), so they are
  * per session, never per bucket: a reading's gain goes to the session that ended shortly before it
@@ -100,7 +100,7 @@ export interface MetricsBucket {
   drops: number;
   /**
    * What the bucket was spent on: the source of its most valuable drop, else the skill with the most
-   * XP; null for an idle bucket.
+   * XP; null for an idle bucket, and for one that is active only by moving or items (D-127).
    */
   activity: string | null;
 }
@@ -139,6 +139,11 @@ export interface BuildSessionsInput {
   kills: readonly KillGain[];
   /** Drops make a bucket active (the viewer may read events). */
   lootActive: boolean;
+  /**
+   * The starts of the buckets in which the player moved, changed the inventory or changed gear
+   * (activity_marks, D-127): active even without XP.
+   */
+  marks?: readonly number[];
 }
 
 /** The sessions of a range with their buckets, oldest first. */
@@ -159,6 +164,7 @@ export function buildSessions(input: BuildSessionsInput): SessionMetrics[] {
     dropsByBucket.set(at, list);
   }
 
+  const marked = new Set((input.marks ?? []).map(floorBucket));
   const spans = [...input.spans].sort((a, b) => a.start - b.start);
   /** A bucket two touching sessions share is counted once, by the first. */
   const used = new Set<number>();
@@ -173,7 +179,8 @@ export function buildSessions(input: BuildSessionsInput): SessionMetrics[] {
         const drops = shared ? [] : (dropsByBucket.get(at) ?? []);
         const xpTotal = sum(Object.values(xp));
         const gp = sum(drops.map((d) => d.value));
-        const active = xpTotal > 0 || (input.lootActive && drops.length > 0);
+        const active =
+          xpTotal > 0 || (input.lootActive && drops.length > 0) || (!shared && marked.has(at));
         buckets.push({
           at,
           onlineMs: Math.max(0, onlineMs),

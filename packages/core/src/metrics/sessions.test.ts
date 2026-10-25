@@ -80,6 +80,24 @@ describe('buildSessions', () => {
     expect(s!.gp).toBe(10);
   });
 
+  it('counts a bucket with a step or an item change as active, without naming an activity (D-127)', () => {
+    const [s] = buildSessions(
+      input({
+        spans: [{ id: 'a', start: BASE, end: BASE + 15 * MIN }],
+        gains: [xp(0, 'Attack', 100)],
+        // A mark anywhere in the bucket counts for the bucket; one outside the session counts nowhere.
+        marks: [BASE + 7 * MIN, BASE + 40 * MIN],
+      }),
+    );
+    expect(s!.buckets.map((b) => [b.at - BASE, b.active, b.activity])).toEqual([
+      [0, true, 'Attack'],
+      [5 * MIN, true, null],
+      [10 * MIN, false, null],
+      [15 * MIN, false, null],
+    ]);
+    expect(s!.activeMs).toBe(10 * MIN);
+  });
+
   it('counts a bucket two touching sessions share once', () => {
     const sessions = buildSessions(
       input({

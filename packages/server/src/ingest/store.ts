@@ -26,6 +26,7 @@ import {
 import {
   accountLinks,
   accountNames,
+  activityMarks,
   deviceAccounts,
   devices,
   equipmentChanges,
@@ -456,6 +457,7 @@ async function loadPrevState(tx: Tx, accountId: number): Promise<PrevState | nul
       sourceTs: latestState.sourceTs,
       skills: latestState.skills,
       equipment: latestState.equipment,
+      inventory: latestState.inventory,
       gameState: latestState.gameState,
       world: latestState.world,
       location: latestState.location,
@@ -471,6 +473,7 @@ async function loadPrevState(tx: Tx, accountId: number): Promise<PrevState | nul
     // Written by this module from validated sections; the shape checks only guard against edits.
     skills: isRecord(row.skills) ? (row.skills as PrevState['skills']) : null,
     equipment: Array.isArray(row.equipment) ? (row.equipment as ItemData[]) : null,
+    inventory: Array.isArray(row.inventory) ? (row.inventory as ItemData[]) : null,
     location: isLocation(row.location) ? row.location : null,
   };
 }
@@ -592,7 +595,7 @@ async function writeXpSamples(
 }
 
 /**
- * Equipment change log, the location points and the day's wealth (carried plus bank, D-124). A point whose
+ * Equipment change log, the location points, the activity marks (D-127) and the day's wealth (carried plus bank, D-124). A point whose
  * (account, ts) exists is left alone: the first sample of a minute wins, and a trail that arrives
  * twice (a resend, a second paired device) is stored once (D-102). That takes both copies getting
  * the same times, which a PC clock more than 10 s ahead undoes (PLUGIN-14).
@@ -613,6 +616,16 @@ async function writeDerived(
       .insert(locationSamples)
       .values(plan.locationPoints.map((point) => ({ accountId, ...point })))
       .onConflictDoNothing();
+  }
+  if (plan.activity.length > 0) {
+    // A bucket written twice (the next payload, a resend) keeps every kind it was marked with.
+    await tx
+      .insert(activityMarks)
+      .values(plan.activity.map((mark) => ({ accountId, bucket: mark.bucket, kinds: mark.kinds })))
+      .onConflictDoUpdate({
+        target: [activityMarks.accountId, activityMarks.bucket],
+        set: { kinds: sql`${activityMarks.kinds} | excluded.kinds` },
+      });
   }
   if (plan.wealth !== null) {
     const { day, value, bank } = plan.wealth;

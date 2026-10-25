@@ -340,7 +340,7 @@ export function SessionTimelineChart({
         columns={['Time', 'State', ...skills.map((s) => `${s} XP`), 'Loot (gp)']}
         rows={rows}
         className="h-72"
-        note="Shaded: idle (no XP and no drop). Shapes on the baseline: drops (larger is worth more), level-ups, deaths and collection log entries."
+        note="Shaded: idle (no XP, no drop, no step, no item or gear change). Shapes on the baseline: drops (larger is worth more), level-ups, deaths and collection log entries."
       />
       {timeline.markers.length > 0 && (
         <details className="text-sm">
