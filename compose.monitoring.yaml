@@ -7,7 +7,7 @@ name: osrs-data-hub-monitoring
 
 services:
   prometheus:
-    image: prom/prometheus:v3.15.0
+    image: prom/prometheus:v3.15.1
     # Same files as the app reads; a later file wins. Only METRICS_TOKEN is used.
     env_file:
       - path: .env
