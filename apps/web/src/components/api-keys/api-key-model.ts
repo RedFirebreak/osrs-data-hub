@@ -7,7 +7,14 @@
  * Only `import type` from @hub/server: the page's client components import this module (NEXT-12).
  * The server's limits (name length, active keys) reach the client as props from the page.
  */
-import { CATEGORIES, DAY_MS, HOUR_MS, relativeTime, type Category } from '@hub/core';
+import {
+  AI_ASSISTANT_CATEGORIES,
+  CATEGORIES,
+  DAY_MS,
+  HOUR_MS,
+  relativeTime,
+  type Category,
+} from '@hub/core';
 import type { ApiKeyInfo, ApiKeyStatus } from '@hub/server';
 import type { FailureOptions } from '@/lib/api-client';
 
@@ -82,16 +89,8 @@ export function emptyCreateForm(): CreateKeyForm {
  * "For an AI assistant" (D-129): what an assistant connected through the hub's MCP server needs to
  * answer questions about the guild, on top of the form as it is. The categories are added, never
  * removed (equipment and inventory stay the user's choice: gear and wealth questions), and the name
- * is filled in only when it's empty.
+ * is filled in only when it's empty. The list itself lives in @hub/core (AI_ASSISTANT_CATEGORIES).
  */
-export const AI_ASSISTANT_CATEGORIES: readonly Category[] = [
-  'stats',
-  'events',
-  'activity',
-  'location_history',
-  'hiscores',
-];
-
 export function aiAssistantPreset(form: CreateKeyForm): Pick<CreateKeyForm, 'name' | 'categories'> {
   return {
     name: form.name.trim() === '' ? 'AI assistant' : form.name,

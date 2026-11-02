@@ -56,7 +56,25 @@ export {
   type ApiSessions,
   type ApiWealth,
 } from './history';
-export { authenticateApiKey, type ApiAuthFailure, type ApiPrincipal } from './key-auth';
+export {
+  authenticateApiKey,
+  type ApiAuthFailure,
+  type ApiAuthOptions,
+  type ApiPrincipal,
+} from './key-auth';
+export {
+  OAUTH_ACCESS_TOKEN_PREFIX,
+  OAUTH_REFRESH_TOKEN_PREFIX,
+  forgetOAuthGrant,
+  oauthTokenHash,
+} from './oauth-grants';
+export {
+  OAUTH_KEY_FALLBACK_NAME,
+  createOAuthKey,
+  oauthClientInfo,
+  oauthKeyName,
+  type OAuthClientInfo,
+} from './oauth-keys';
 export {
   API_KEY_MAX_EXPIRY_DAYS,
   API_KEY_NAME_MAX,

@@ -11,8 +11,8 @@
 import { getConfig } from '@hub/core';
 import { getDb } from '@hub/db';
 import { getInviteFriends } from '@hub/server';
-import { CalendarClockIcon, TriangleAlertIcon } from 'lucide-react';
-import type { Metadata } from 'next';
+import { CalendarClockIcon, PlugIcon, TriangleAlertIcon } from 'lucide-react';
+import type { Metadata, Route } from 'next';
 import { redirect } from 'next/navigation';
 import { HubMark } from '@/components/shell/hub-mark';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -20,6 +20,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { getViewer } from '@/lib/session';
 import { deletedNotice } from './deleted-notice';
 import { loginErrorMessage, normalizeErrorCode } from './login-messages';
+import { isOAuthSignIn, oauthContinueUrl } from './oauth-sign-in';
 import { SignInButton } from './sign-in-button';
 
 export function generateMetadata(): Metadata {
@@ -34,10 +35,15 @@ export function generateMetadata(): Metadata {
 }
 
 export default async function LoginPage(props: PageProps<'/login'>) {
+  const params = await props.searchParams;
+  const connecting = isOAuthSignIn(params);
   const current = await getViewer();
-  if (current && current.viewer.status === 'active') redirect('/');
+  if (current && current.viewer.status === 'active') {
+    // Signed in already on an assistant's sign-in (it asked for a fresh login): carry on with it.
+    redirect(connecting ? (oauthContinueUrl(params) as Route) : '/');
+  }
 
-  const { error, deleted } = await props.searchParams;
+  const { error, deleted } = params;
   const config = getConfig();
   const guildName = config.discord.guildName;
   const problem = loginErrorMessage(error, guildName, { invites: await invitesOpen(error) });
@@ -76,6 +82,15 @@ export default async function LoginPage(props: PageProps<'/login'>) {
                   Your data is scheduled for deletion. Sign in again before it happens to cancel.
                 </p>
               )}
+            </AlertDescription>
+          </Alert>
+        )}
+        {connecting && !problem && (
+          <Alert role="status">
+            <PlugIcon aria-hidden />
+            <AlertTitle>An assistant wants to connect</AlertTitle>
+            <AlertDescription>
+              <p>Sign in first. You&apos;ll see what it asks for before anything is connected.</p>
             </AlertDescription>
           </Alert>
         )}

@@ -11,7 +11,8 @@
  * 2. The failed-authentication limit per client IP (D-72): an IP already over it gets 429 +
  *    Retry-After before anything touches the database, so keys can't be guessed.
  * 3. authenticateApiKey: every failure is the same 401 (`WWW-Authenticate: Bearer`), whatever was
- *    wrong, and every one but a missing header counts towards the IP's limit.
+ *    wrong, and every one but a missing header counts towards the IP's limit. A route that takes the
+ *    hub's OAuth tokens too (the MCP endpoint, D-137) names its resource metadata in that header.
  * 4. The per-key limits (the key's own requests per minute: 120 for a user key, 600 or the admin's
  *    figure for a service key (D-88), plus 1/s on /snapshot): 429 + Retry-After; the X-RateLimit-*
  *    headers go on every authenticated response, errors included.
@@ -70,7 +71,15 @@ interface ApiKeyContext {
 export async function withApiKey(
   request: Request,
   handler: (ctx: ApiKeyContext) => Promise<Response>,
-  opts: { snapshot?: boolean } = {},
+  opts: {
+    snapshot?: boolean;
+    /**
+     * Also accept the hub's OAuth access tokens issued for this resource (the MCP endpoint, D-137),
+     * and name its metadata document in the 401's WWW-Authenticate (RFC 9728 §5.1), which is how an
+     * MCP client finds out it can sign in.
+     */
+    oauth?: { resource: string; resourceMetadata: string };
+  } = {},
 ): Promise<Response> {
   const done = measureApiRequest(apiRouteGroup(request.url));
   const rate: { headers?: ApiRateHeaders } = {};
@@ -82,11 +91,21 @@ export async function withApiKey(
     if (!gate.ok) return rateLimited('auth_ip', gate.retryAfterSeconds);
 
     const { db } = getDb();
-    const auth = await authenticateApiKey(db, request.headers.get('authorization'));
+    const auth = await authenticateApiKey(
+      db,
+      request.headers.get('authorization'),
+      new Date(),
+      opts.oauth ? { oauthResource: opts.oauth.resource } : {},
+    );
     if (!auth.ok) {
       getMetrics().apiAuthFailures.inc({ reason: auth.reason });
       if (auth.reason !== 'missing') recordAuthFailure(limits, ip);
-      return errorJson(401, 'unauthorized', UNAUTHORIZED_MESSAGE, { 'WWW-Authenticate': 'Bearer' });
+      const challenge = opts.oauth
+        ? `Bearer resource_metadata="${opts.oauth.resourceMetadata}"`
+        : 'Bearer';
+      return errorJson(401, 'unauthorized', UNAUTHORIZED_MESSAGE, {
+        'WWW-Authenticate': challenge,
+      });
     }
 
     const limit = checkApiRate(limits, auth.principal.keyId, {

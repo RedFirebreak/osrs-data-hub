@@ -167,7 +167,7 @@ export function expectShape<S extends z.ZodType>(schema: S, body: unknown): z.ou
 export function expectCors(res: Response): void {
   expect(res.headers.get('access-control-allow-origin')).toBe('*');
   expect(res.headers.get('access-control-expose-headers')).toBe(
-    'ETag, Retry-After, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset',
+    'ETag, Retry-After, WWW-Authenticate, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset',
   );
   expect(res.headers.get('access-control-allow-credentials')).toBeNull();
 }

@@ -12,6 +12,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 import { users } from './auth';
+import { oauthClient } from './oauth';
 
 const tstz = (name: string) => timestamp(name, { withTimezone: true });
 
@@ -59,9 +60,17 @@ export const apiKeys = pgTable(
     createdAt: tstz('created_at').defaultNow().notNull(),
     lastUsedAt: tstz('last_used_at'),
     revokedAt: tstz('revoked_at'),
+    /**
+     * The OAuth client this key was made for when its user connected it by signing in (D-137): the
+     * client's access tokens act as this key. Null for a key made on the API keys page.
+     */
+    oauthClientId: text('oauth_client_id').references(() => oauthClient.clientId, {
+      onDelete: 'cascade',
+    }),
   },
   (t) => [
     uniqueIndex('api_keys_prefix_uidx').on(t.prefix),
+    index('api_keys_oauth_client_idx').on(t.oauthClientId, t.userId),
     index('api_keys_user_idx').on(t.userId),
     // A user key always has its user; a service key never has one.
     check('api_keys_kind_user_check', sql`(${t.kind} = 'user') = (${t.userId} IS NOT NULL)`),

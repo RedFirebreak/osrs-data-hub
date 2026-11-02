@@ -21,6 +21,8 @@ import {
   type UserAccess,
 } from '@hub/db';
 import {
+  OAUTH_ACCESS_TOKEN_PREFIX,
+  OAUTH_REFRESH_TOKEN_PREFIX,
   avatarUrl,
   displayName,
   evaluateMembership,
@@ -29,15 +31,18 @@ import {
   findFriendInvite,
   getLogger,
   isAdmin,
+  oauthTokenHash,
   recordSignIn,
   type GuildPolicy,
   type Logger,
 } from '@hub/server';
+import { oauthProvider } from '@better-auth/oauth-provider';
 import { betterAuth, type BetterAuthOptions } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { APIError } from 'better-auth/api';
 import { nextCookies } from 'better-auth/next-js';
 import type { DiscordProfile } from 'better-auth/social-providers';
+import { OAUTH_SCOPES, mcpResource } from './mcp/oauth';
 
 /** Header our route handler sets from X-Forwarded-For (TRUST_PROXY_HOPS) for Better Auth's limiter. */
 export const CLIENT_IP_HEADER = 'x-hub-client-ip';
@@ -310,7 +315,33 @@ function createAuth(config: HubConfig) {
     advanced: {
       ipAddress: { ipAddressHeaders: [CLIENT_IP_HEADER] },
     },
-    plugins: [nextCookies()], // must stay last
+    plugins: [
+      // The hub as the OAuth 2.1 authorization server of its MCP endpoint (D-137), so assistants
+      // that only connect by signing in (Claude.ai) can. Its access tokens act as a key the consent
+      // page makes (createOAuthKey); authenticateApiKey accepts them on /api/v1/mcp only.
+      oauthProvider({
+        loginPage: '/login',
+        consentPage: '/oauth/consent',
+        // Opaque tokens only, no ID tokens: the hub is no identity provider, and a JWT access token
+        // couldn't be revoked with its key.
+        disableJwtPlugin: true,
+        scopes: [...OAUTH_SCOPES],
+        // Hashed like the API looks them up (oauthTokenHash), prefixed so they're recognisable.
+        storeTokens: { hash: (token) => oauthTokenHash(token) },
+        prefix: {
+          opaqueAccessToken: OAUTH_ACCESS_TOKEN_PREFIX,
+          refreshToken: OAUTH_REFRESH_TOKEN_PREFIX,
+        },
+        // MCP clients register themselves (RFC 7591), without an account: what they get is decided
+        // by the member on the consent page.
+        allowDynamicClientRegistration: true,
+        allowUnauthenticatedClientRegistration: true,
+        clientRegistrationDefaultApplicationType: 'infer',
+        resources: [{ identifier: mcpResource(config), name: `${config.hubName} MCP` }],
+        clientRegistrationDefaultResources: [mcpResource(config)],
+      }),
+      nextCookies(), // must stay last
+    ],
   });
 }
 

@@ -120,7 +120,7 @@ process's memory (D-5, D-72).
 Every response, errors included, carries:
 
 - `Access-Control-Allow-Origin: *`;
-- `Access-Control-Expose-Headers: ETag, Retry-After, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset`.
+- `Access-Control-Expose-Headers: ETag, Retry-After, WWW-Authenticate, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset`.
 
 `OPTIONS` answers the preflight with `204` and:
 
@@ -658,7 +658,10 @@ The two error bodies:
 
 The hub as an MCP server for AI assistants (D-128): JSON-RPC over Streamable HTTP, stateless, with
 the same key, limits and CORS as every endpoint here. Its tools read only what the endpoints above
-serve. Clients, tools and examples: [MCP.md](MCP.md).
+serve. Clients, tools and examples: [MCP.md](MCP.md). It also takes the hub's own OAuth access tokens
+(`ohat_…`) of assistants that connected by signing in (D-137), each acting as the key the member's
+consent made; no other endpoint takes them. Its 401 names where that sign-in starts
+(`WWW-Authenticate: Bearer resource_metadata="…"`).
 
 ### GET /openapi.json
 
@@ -735,7 +738,8 @@ Other rules:
   - Suggested key: `events`, `stats`, `activity` (+ `hiscores` for kill counts and the log's count).
 - **AI assistants** (Claude, Claude Code, Cursor) through `POST /mcp` ([MCP.md](MCP.md)): a member's
   own key with the "For an AI assistant" preset (`stats`, `events`, `activity`, `location_history`,
-  `hiscores`), or a service key for a guild bot.
+  `hiscores`), or a service key for a guild bot. Claude.ai connects by signing in instead and gets a
+  key of the same kind, marked "Connected assistant" on the API keys page (D-137).
 - **Live map** ([ha-osrs-map](https://github.com/RedFirebreak/ha-osrs-map), polling the hub
   server-side with a **service key**, D-88):
   - poll `/snapshot?since=` (1/s at most; every 2–10 s is plenty) with a key holding `location_live` and

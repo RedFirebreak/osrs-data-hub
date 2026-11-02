@@ -220,6 +220,7 @@ describe('the key shown once', () => {
       lastUsedAt: null,
       revokedAt: null,
       status: 'active',
+      connected: false,
     });
   });
 

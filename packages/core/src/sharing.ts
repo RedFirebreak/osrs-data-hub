@@ -12,6 +12,20 @@ export const CATEGORIES = [
 ] as const;
 export type Category = (typeof CATEGORIES)[number];
 
+/**
+ * What a key for an AI assistant reads (D-129): enough to answer questions about the guild through
+ * the hub's MCP server. The API keys page's "For an AI assistant" adds these, and a key made by
+ * connecting an assistant through sign-in starts with them (D-137). Equipment, inventory and the live
+ * location stay the user's choice.
+ */
+export const AI_ASSISTANT_CATEGORIES: readonly Category[] = [
+  'stats',
+  'events',
+  'activity',
+  'location_history',
+  'hiscores',
+];
+
 export const AUDIENCES = ['private', 'guild', 'selected'] as const;
 export type Audience = (typeof AUDIENCES)[number];
 

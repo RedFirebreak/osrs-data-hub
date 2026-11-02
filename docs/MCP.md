@@ -10,7 +10,8 @@ same read-only data API v1 serves ([API.md](API.md)). Design: D-128 … D-135 in
   `GET` and `DELETE` answer 405: there are no sessions and nothing is pushed.
 - **Credential:** an ordinary API key (`ohub_…`), sent as `Authorization: Bearer <key>`. A member's
   key sees what that member sees, narrowed to the key's categories and accounts; a service key sees
-  the guild audience. There is no MCP-only permission.
+  the guild audience. There is no MCP-only permission. An assistant that connects by signing in
+  (Claude.ai) sends the hub's own OAuth token instead, which acts as a key made for it (below).
 - **Limits:** every POST is one request against the key's per-minute limit (120 for a user key, 600
   for a service key) and counts in the `hub_api_*` metrics under the route group `mcp`. A message is
   at most 64 KiB.
@@ -73,9 +74,15 @@ claude mcp add --transport http scapekeeper https://hub.example.com/api/v1/mcp \
 **The Claude API** (the MCP connector of the Messages API, or the Agents SDK): a server of type
 `url` with `url` set to the endpoint and `authorization_token` set to the key.
 
-**Claude.ai** connects to remote servers by signing in with OAuth rather than a pasted key. The hub
-gets that sign-in in M9 (§14): it will create an ordinary user key for the connection, visible and
-revocable on the API keys page. Until then, use one of the clients above.
+**Claude.ai** (and any client that connects by signing in): add a custom connector with the URL
+`https://hub.example.com/api/v1/mcp` and nothing else. Claude.ai finds the hub's sign-in by itself,
+sends you to the hub, where you sign in with Discord as usual, and shows what it asks for.
+**Allow** adds a key named after the assistant to your API keys page, marked "Connected assistant",
+with the AI assistant categories on every account you can see. Edit it there to let the assistant
+read more (equipment, inventory) or less; revoke it to disconnect the assistant. Connecting the same
+assistant again replaces its key. There is nothing to copy: the assistant holds sign-in tokens (an
+hour each, renewed for up to 30 days of not using it) that act as that key, on the MCP endpoint only.
+The hub has to be on public HTTPS for this.
 
 **By hand** (what a client sends; `Accept` must list both types):
 
@@ -131,7 +138,9 @@ Regions are the game's numeric map regions (64 × 64 tiles) until the hub has na
 - A tool that can't answer returns a result with `isError` and a sentence saying why: an unknown or
   ambiguous name, a category the key lacks, a bad date or argument. The assistant reads it.
 - Anything unexpected is logged on the hub and answered with "could not answer this right now".
-- Before the server sees a message, the key wrapper answers like every v1 route: 401 for a bad key,
+- Before the server sees a message, the key wrapper answers like every v1 route: 401 for a bad key
+  (with `WWW-Authenticate: Bearer resource_metadata="…/.well-known/oauth-protected-resource/api/v1/mcp"`,
+  where a client finds the sign-in),
   429 with `Retry-After` over the limit, 413 for a body over 64 KiB, 406 when the client doesn't
   accept JSON.
 
@@ -141,11 +150,36 @@ Nothing beyond [OPERATIONS.md §3](OPERATIONS.md#3-reverse-proxy): the endpoint 
 (no stream), so buffering doesn't matter. Pass `Authorization` and the `Mcp-*` headers through, and
 don't add CORS headers: the hub answers the browser preflight itself.
 
+## Sign-in (OAuth)
+
+The hub is an OAuth 2.1 authorization server for its MCP endpoint (D-137), built on Better Auth's
+`oauth-provider` plugin:
+
+| What | Where |
+| --- | --- |
+| Protected resource metadata (RFC 9728) | `/.well-known/oauth-protected-resource/api/v1/mcp` |
+| Authorization server metadata (RFC 8414) | `/.well-known/oauth-authorization-server/api/auth` |
+| Issuer | `https://<hub>/api/auth` |
+| Registration (RFC 7591, no account needed) | `POST /api/auth/oauth2/register` |
+| Authorize (code + PKCE S256) / token | `/api/auth/oauth2/authorize`, `/api/auth/oauth2/token` |
+| Scopes | `mcp`, `offline_access` (a refresh token) |
+| Resource (RFC 8707) | `https://<hub>/api/v1/mcp` |
+
+Signed out, the authorization lands on the login page, which carries it through Discord; then the
+consent page (`/oauth/consent`). Access tokens start with `ohat_`, refresh tokens with `ohrt_`; both
+are stored hashed. A token is accepted on `/api/v1/mcp` only, and only while the key it acts as is
+active: revoking the key forgets the consent and every token of that assistant for you.
+
 ## Code
 
 - `apps/web/src/app/api/v1/mcp/route.ts`: the route (`withApiKey`, body cap, the transport).
 - `apps/web/src/lib/mcp/server.ts`: one server per request, the resources and prompts.
 - `apps/web/src/lib/mcp/tools.ts`: the tools; `resolve.ts` the account names; `trim.ts` the result
   shape.
-- Tests: `lib/mcp/tools.test.ts` (each tool's trimmed answer) and `app/api/v1/mcp.test.ts` (MCP over
-  HTTP with a real key).
+- Sign-in: `lib/auth.ts` (the provider's options), `lib/mcp/oauth.ts` (addresses), `lib/mcp/consent.ts`
+  and `app/(auth)/oauth/consent/` (the consent page), `app/api/app/oauth/consent/route.ts` (its answer),
+  `app/.well-known/` (discovery); `packages/server/src/api/oauth-keys.ts` and `oauth-grants.ts` (the key
+  and forgetting a grant), `key-auth.ts` (a token as a key).
+- Tests: `lib/mcp/tools.test.ts` (each tool's trimmed answer), `app/api/v1/mcp.test.ts` (MCP over
+  HTTP with a real key), `app/api/v1/mcp-oauth.test.ts` (the whole sign-in) and
+  `packages/server/src/api/oauth-keys.test.ts`.

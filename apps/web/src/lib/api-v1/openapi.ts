@@ -315,7 +315,7 @@ function mcpOperation(): Json {
     tags: ['MCP'],
     summary: 'MCP server',
     description:
-      'The hub as a remote MCP server (Streamable HTTP, stateless, JSON responses) for AI assistants: Claude, Claude Code, Cursor or the Agents SDK. Send one JSON-RPC message per request with `Accept: application/json, text/event-stream`. Its tools read exactly what this API serves (each names its REST twin), through the same key, categories and audiences; a request is one request against the key’s rate limit. No sessions and no stream: `GET` and `DELETE` answer 405. See the hub’s docs/MCP.md.',
+      'The hub as a remote MCP server (Streamable HTTP, stateless, JSON responses) for AI assistants: Claude, Claude Code, Cursor or the Agents SDK. Send one JSON-RPC message per request with `Accept: application/json, text/event-stream`. Its tools read exactly what this API serves (each names its REST twin), through the same key, categories and audiences; a request is one request against the key’s rate limit. No sessions and no stream: `GET` and `DELETE` answer 405. Assistants that connect by signing in (Claude.ai) send the hub’s OAuth access token (`ohat_…`) instead of a key; the 401 names the sign-in’s metadata in `WWW-Authenticate` (`resource_metadata`, RFC 9728). See the hub’s docs/MCP.md.',
     security: [{ bearerAuth: [] }],
     requestBody: {
       required: true,
