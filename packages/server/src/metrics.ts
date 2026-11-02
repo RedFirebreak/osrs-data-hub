@@ -116,6 +116,7 @@ export const API_ROUTE_GROUPS = [
   'members',
   'mcp',
   'openapi',
+  'regions',
   'unknown',
 ] as const;
 export type ApiRouteGroup = (typeof API_ROUTE_GROUPS)[number];

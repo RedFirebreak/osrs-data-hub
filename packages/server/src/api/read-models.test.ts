@@ -716,6 +716,7 @@ describe('histories', () => {
       plane: 0,
       world: 302,
       isOnBoat: false,
+      region: 'Grand Exchange',
       via: null,
     });
     // Zezima keeps all three private from here on (they are guild by default, D-96): the member's

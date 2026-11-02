@@ -199,14 +199,13 @@ export function createMcpServer(db: DbOrTx, principal: ApiPrincipal, now: Date =
       },
     },
     ({ account, date }) => {
-      const on = date ?? 'today';
       return {
         messages: [
           {
             role: 'user',
             content: {
               type: 'text',
-              text: `What did ${account} do ${date ? `on ${date}` : 'today'}? Use sessions, get_gains and recent_events (accounts=["${account}"]) and locations for ${on} (from and to both ${date ?? "today's date"}). Write a few light sentences: how long they played, what they trained, notable drops or deaths, and where they spent their time. If a tool says the key can't read something, leave that part out and say so once.`,
+              text: `What did ${account} do ${date ? `on ${date}` : 'today'}? Call day_summary once (account "${account}"${date ? `, date "${date}"` : ''}). Write a few light sentences: how long they played, what they trained, notable drops or deaths, and where they spent their time. If the answer lists not_shared, leave those parts out and say so once.`,
             },
           },
         ],

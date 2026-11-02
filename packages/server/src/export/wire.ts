@@ -72,7 +72,14 @@ export function wireVitals(v: ApiVitals) {
 }
 
 export function wireLocation(l: ApiLocation) {
-  return { x: l.x, y: l.y, plane: l.plane, is_on_boat: l.isOnBoat, stale: l.stale };
+  return {
+    x: l.x,
+    y: l.y,
+    plane: l.plane,
+    is_on_boat: l.isOnBoat,
+    region: l.region,
+    stale: l.stale,
+  };
 }
 
 /** One day of wealth, carried plus bank (the API's `days`, the export's `wealth_days`; D-124). */

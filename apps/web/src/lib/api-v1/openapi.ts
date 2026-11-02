@@ -12,6 +12,7 @@ import {
   API_EVENTS_SETTLE_MS,
   COLLECTION_LOG_DEFAULT_LIMIT,
   COLLECTION_LOG_MAX_LIMIT,
+  DAY_MAX_DAYS,
   API_RATE_LIMIT,
   API_RATE_WINDOW_MS,
   EVENTS_DEFAULT_LIMIT,
@@ -173,6 +174,17 @@ export const OPERATIONS: readonly OperationSpec[] = [
     notFound: true,
   },
   {
+    path: '/accounts/{id}/day',
+    operationId: 'getAccountDay',
+    tag: 'Histories',
+    summary: 'One day of an account',
+    description: `What the account did on a date, or on up to ${DAY_MAX_DAYS} dates (\`from\`/\`to\`), in one call: \`sessions\` (\`activity\`), \`gains\` (\`stats\`), \`events\` counted by type with the most valuable and the collection log slots (\`events\`), and \`places\`: the trail as stays at named places, with the time spent at each (\`location_history\`). Each section is what its own endpoint serves for the same instants and is left out when the key can’t read its category; the account 404s when the key reads none of them. A date is a calendar date in the key creator’s time zone (their settings; UTC for a service key), as \`timezone\` says. Default: today, up to now. A date that hasn’t started yet is a 400. The MCP tool \`day_summary\` answers with this.`,
+    response: S.DayResponse,
+    query: S.DayQuery,
+    pathParams: S.AccountPath,
+    notFound: true,
+  },
+  {
     path: '/accounts/{id}/equipment-history',
     operationId: 'getAccountEquipmentHistory',
     tag: 'Histories',
@@ -297,6 +309,7 @@ export const OPERATIONS: readonly OperationSpec[] = [
 /** The public operation serving this document (no key, no rate limit). */
 const OPENAPI_PATH = '/openapi.json';
 const MCP_PATH = '/mcp';
+const REGIONS_PATH = '/regions.json';
 
 /**
  * POST /mcp (D-128): the MCP server, documented as the one POST of the API. Its messages are
@@ -573,6 +586,33 @@ export function buildOpenApiDocument(): Json {
     },
   };
 
+  paths[REGIONS_PATH] = {
+    get: {
+      operationId: 'getRegions',
+      tags: ['Meta'],
+      summary: 'Place names',
+      description:
+        'The names the hub gives the game’s 64 × 64 map regions (`regions`: region id → name; a region id is `(x >> 6) << 8 | y >> 6`), from RuneLite (BSD-2-Clause, `source`). A location’s `region` is one of these, or a name the hub derives from the coordinates: “Near …” beside a named region, “Wilderness (level N)”, “Ferox Enclave”, “An instance”. Public: no key, no rate limit; cache it for a day.',
+      security: [],
+      responses: {
+        '200': {
+          description: 'The names.',
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['source', 'regions'],
+                properties: {
+                  source: { type: 'string' },
+                  regions: { type: 'object', additionalProperties: { type: 'string' } },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  };
   paths[MCP_PATH] = { post: mcpOperation() };
 
   const integer = { type: 'integer', minimum: 0 };
@@ -612,7 +652,7 @@ export function buildOpenApiDocument(): Json {
         description: 'Whether one Discord account is a member of the hub (service keys only).',
       },
       { name: 'MCP', description: 'The hub as an MCP server for AI assistants.' },
-      { name: 'Meta', description: 'This document.' },
+      { name: 'Meta', description: 'This document and the place names.' },
     ],
     paths,
     components: {

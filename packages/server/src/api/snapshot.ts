@@ -9,6 +9,7 @@ import {
   IN_GAME_STATES,
   LOCATION_STALE_MS,
   presenceTimeoutSeconds,
+  regionName,
   type Category,
 } from '@hub/core';
 import type { DbOrTx } from '@hub/db';
@@ -179,7 +180,11 @@ function snapshotAccount(
     const location = row ? locationOf(row, now) : null;
     out.location =
       location && row?.locationUpdatedAt
-        ? { ...location, updatedAt: row.locationUpdatedAt.toISOString() }
+        ? {
+            ...location,
+            region: regionName(location.x, location.y),
+            updatedAt: row.locationUpdatedAt.toISOString(),
+          }
         : null;
   }
   if (can('stats')) out.skills = row ? skillsOf(row) : null;

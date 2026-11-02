@@ -27,6 +27,10 @@ import {
   COLLECTION_LOG_LOOKUP_ITEMS,
   COLLECTION_LOG_MAX_LIMIT,
   COLLECTION_LOG_SOURCE_MAX_LENGTH,
+  DAY_MAX_DAYS,
+  DAY_MAX_EVENTS,
+  DAY_MAX_PLACES,
+  DAY_TOP_EVENTS,
   DISCORD_ID_PATTERN,
   EVENTS_DEFAULT_LIMIT,
   EVENTS_MAX_LIMIT,
@@ -267,6 +271,21 @@ export const LocationsMultiQuery = z.object({
   ...locationsRange,
 });
 
+const localDate = z.iso.date();
+
+/** GET /accounts/{id}/day. */
+export const DayQuery = z.object({
+  date: localDate.optional().meta({
+    description:
+      'One date (`YYYY-MM-DD`) in the key creator’s time zone (UTC for a service key). Default: today. Not with `from`/`to`.',
+    example: '2026-11-02',
+  }),
+  from: localDate.optional().meta({
+    description: `The first date of a range, with \`to\`: at most ${DAY_MAX_DAYS} dates.`,
+  }),
+  to: localDate.optional().meta({ description: 'The last date of the range, included.' }),
+});
+
 /** GET /hiscores. */
 export const HiscoresMultiQuery = z.object({
   accounts: csv(accountIdItem, MAX_BULK_ACCOUNTS_SERVICE)
@@ -446,11 +465,17 @@ const vitalsShape = {
   active_prayers: ActivePrayers.nullable(),
 };
 
+const Region = z.string().nullable().meta({
+  description:
+    'The place, as the live map names it: a RuneLite region name ("Lumbridge", "Grand Exchange"), "Near …" for an unnamed region beside a named one, "Wilderness (level N)", "Ferox Enclave" or "An instance"; null where none applies. The names are in `/regions.json`.',
+});
+
 const locationShape = {
   x: int,
   y: int,
   plane: int,
   is_on_boat: z.boolean(),
+  region: Region,
   stale: z.boolean().meta({
     description: 'No location received for more than 2 minutes: the player may be elsewhere now.',
   }),
@@ -732,6 +757,7 @@ const LocationPoint = z.object({
   plane: int,
   world: int.nullable(),
   is_on_boat: z.boolean(),
+  region: Region,
   via: z.enum(TRAIL_STEPS).nullable().meta({
     description:
       'How the player got here from the point before. `move`: walked, ran or sailed, within reach of the point before (stairs are a move to another plane). `entrance`: into or out of the underground, which lies 6400 tiles north of the surface. `house`: from one room of a player-owned house to another, walked although the coordinates jump. `instance`: the same between two rooms of the Gauntlet, the Corrupted Gauntlet or the Chambers of Xeric. `teleport`: anything else that wasn’t walked. `gap`: more than 5 minutes since the point before (offline, not sharing, or never delivered). Null on the first point of a trail when the point before it lies outside the range. Only `move` is a line to draw.',
@@ -990,6 +1016,88 @@ type MetaExtra<M extends z.ZodType> = Omit<z.infer<M>, 'generated_at'>;
  * What a route adds to `meta` beside `generated_at` (v1Ok): nothing, or the fields one of the meta
  * schemas documents, so a misspelt or undocumented meta key doesn't compile.
  */
+const Place = z.object({
+  name: z.string().meta({
+    description: 'The place (as `region` on a location), or `Region <id>` where it has no name.',
+  }),
+  region: int.meta({ description: 'The game’s map region (64 by 64 tiles) of its first stay.' }),
+  ms: int.min(0).meta({ description: 'Time spent there.' }),
+  visits: int.min(1).meta({ description: 'Separate stays.' }),
+});
+
+const DayData = z.object({
+  account: AccountRef,
+  timezone: z.string().meta({
+    description: 'The time zone the dates are in: the key creator’s, `UTC` for a service key.',
+  }),
+  dates: z
+    .object({ from: localDate, to: localDate })
+    .meta({ description: 'The first and the last date covered.' }),
+  from: timestamp.meta({ description: 'The start of the first date.' }),
+  to: timestamp.meta({ description: 'The end of the last date, or now if that is sooner.' }),
+  sessions: z
+    .object({
+      count: int.min(0),
+      total_ms: int.min(0),
+      list: z
+        .array(
+          z.object({
+            started_at: timestamp,
+            ended_at: timestamp.nullable(),
+            duration_ms: int.min(0),
+            worlds: z.array(int),
+          }),
+        )
+        .meta({ description: 'Newest first.' }),
+    })
+    .optional()
+    .meta({
+      description: '`activity`: the play sessions overlapping the dates (as `/sessions`).',
+    }),
+  gains: z
+    .object({
+      total: int.meta({ description: 'Overall XP gained.' }),
+      skills: z
+        .array(z.object({ skill: z.string(), xp: int }))
+        .meta({ description: 'The skills that gained, most first.' }),
+    })
+    .optional()
+    .meta({ description: '`stats`: XP gained over the dates (as `/gains`).' }),
+  events: z
+    .object({
+      count: int.min(0),
+      by_type: z.record(z.string(), int).meta({ description: 'Events per type.' }),
+      top: z
+        .array(Event)
+        .meta({ description: `The ${DAY_TOP_EVENTS} most valuable (\`value_gp\`), most first.` }),
+      collection_log: z
+        .array(Event)
+        .meta({ description: 'The `collection_log` events, oldest first.' }),
+      truncated: z.boolean().meta({
+        description: `More than ${DAY_MAX_EVENTS} events: the counts cover the newest ${DAY_MAX_EVENTS}.`,
+      }),
+    })
+    .optional()
+    .meta({ description: '`events`: the events of the dates (as `/events` with `from`/`to`).' }),
+  places: z
+    .object({
+      stays: int.min(0).meta({
+        description: 'Separate stays: one ends when the player moves to another place or leaves.',
+      }),
+      teleports: int.min(0).meta({ description: 'Stays the player teleported into.' }),
+      list: z.array(Place).meta({
+        description: `Where the time went, most first, at most ${DAY_MAX_PLACES}.`,
+      }),
+      truncated: z.boolean().meta({
+        description: 'The trail held more points than one read carries, or there were more places.',
+      }),
+    })
+    .optional()
+    .meta({
+      description: '`location_history`: the trail of the dates (as `/locations`) as named places.',
+    }),
+});
+
 export type WireMetaExtra =
   | Record<string, never>
   | MetaExtra<typeof ListMeta>
@@ -1016,6 +1124,7 @@ export const EquipmentHistoryResponse = envelope(EquipmentHistoryData, Meta);
 export const WealthResponse = envelope(WealthData, Meta);
 export const LocationsResponse = envelope(LocationsData, Meta);
 export const LocationsMultiResponse = envelope(LocationsMultiData, Meta);
+export const DayResponse = envelope(DayData, Meta);
 export const LeaderboardsResponse = envelope(LeaderboardsData, Meta);
 export const LootLeaderboardResponse = envelope(LootLeaderboardData, Meta);
 export const HiscoresResponse = envelope(Hiscores, Meta);
@@ -1054,6 +1163,7 @@ export type WireEquipmentHistory = z.infer<typeof EquipmentHistoryData>;
 export type WireWealth = z.infer<typeof WealthData>;
 export type WireLocations = z.infer<typeof LocationsData>;
 export type WireLocationsMulti = z.infer<typeof LocationsMultiData>;
+export type WireDay = z.infer<typeof DayData>;
 export type WireOwner = z.infer<typeof Owner>;
 export type WireLeaderboards = z.infer<typeof LeaderboardsData>;
 export type WireLootLeaderboard = z.infer<typeof LootLeaderboardData>;

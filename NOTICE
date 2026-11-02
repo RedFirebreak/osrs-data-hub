@@ -7,3 +7,7 @@ This product includes software developed by RedFirebreak
 If you use this project or build on it, please credit RedFirebreak and link to
 https://github.com/RedFirebreak/osrs-data-hub. Under section 4(d) of the Apache License, Version 2.0,
 redistributions and derivative works must keep this NOTICE file.
+
+packages/core/src/regions/regions.json names places after RuneLite's DiscordGameEventType.java
+(https://github.com/runelite/runelite), under the BSD-2-Clause licence; its copyright notice and
+licence are in packages/core/src/regions/NOTICE.

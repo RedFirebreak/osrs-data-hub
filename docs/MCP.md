@@ -114,10 +114,13 @@ them (D-134). Dates are ISO: `2026-11-01` is that whole UTC day, `2026-11-01T18:
 | `collection_log` | `account`, `source?`, `since?`, `limit?` | the total from the hiscores, the slots the hub saw as `item (kc N) from source on day`, counts per source | `events` or `hiscores` | `GET /accounts/{id}/collection-log` |
 | `who_has` | `item`, `accounts?` | per matching item its holders with when and the kill count, and `searchable`: how many accounts were searched | `events` | `GET /collection-log?item=` |
 | `sessions` | `account`, `from?`, `to?` | sessions newest first: start, end or `ongoing`, minutes, worlds; the total | `activity` | `GET /accounts/{id}/sessions` |
-| `locations` | `account`, `from?`, `to?`, `summarise?` (default true) | stays per map region (minutes, how the player arrived), the regions with most time, teleports; or the last 200 points | `location_history` | `GET /accounts/{id}/locations` |
+| `locations` | `account`, `from?`, `to?`, `summarise?` (default true) | stays per place (minutes, how the player arrived), the places with most time, teleports; or the last 200 points with their place | `location_history` | `GET /accounts/{id}/locations` |
+| `day_summary` | `account`, `date?` (default today) or `from`/`to` (≤ 7 dates) | one call for "what did X do all day": minutes played and the sessions, XP per skill, events per type with the most valuable and the new log slots, and the places with most time; `not_shared` names the parts the key can't read | any of `activity`, `stats`, `events`, `location_history` | `GET /accounts/{id}/day` |
 
-Regions are the game's numeric map regions (64 × 64 tiles) until the hub has named regions (M8).
-`day_summary` ("what did X do all day") comes with M8 too.
+Places are named as the live map names them ("Lumbridge", "Grand Exchange", "Wilderness (level
+20)"; the list is `GET /regions.json`, D-138); an unnamed one is `Region <id>`, the game's map region
+of 64 × 64 tiles. `day_summary` takes calendar dates in the time zone of the key's owner (UTC for a
+service key), unlike the other tools' UTC dates, so "today" is the owner's today.
 
 ## Resources
 
@@ -130,7 +133,7 @@ Regions are the game's numeric map regions (64 × 64 tiles) until the hub has na
 ## Prompts
 
 - `guild_today`: who is online, the day's top gains, the big drops and new log slots.
-- `player_day` (`account`, `date?`): a light write-up of one account's day.
+- `player_day` (`account`, `date?`): a light write-up of one account's day, from one `day_summary` call.
 - `who_has` (`item`): the lookup, phrased as an answer.
 
 ## Errors

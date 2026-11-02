@@ -25,6 +25,20 @@ export {
   type ApiAccountCollectionLog,
   type ApiGuildCollectionLog,
 } from './collection-log';
+export {
+  DAY_MAX_DAYS,
+  DAY_MAX_EVENTS,
+  DAY_MAX_PLACES,
+  DAY_TOP_EVENTS,
+  apiDay,
+  dayRange,
+  placeStays,
+  placesOf,
+  type ApiDay,
+  type ApiDayParams,
+  type ApiPlace,
+  type PlaceStay,
+} from './day';
 export { ApiError } from './errors';
 export { apiHiscores, apiHiscoresMulti, type ApiHiscores } from './hiscores';
 export {

@@ -106,11 +106,11 @@ describe('POST /api/v1/mcp', () => {
     expect(result.instructions).toMatch(/Old School RuneScape data of one guild/);
   });
 
-  it('lists the eleven tools, read-only, with their input schemas', async () => {
+  it('lists the twelve tools, read-only, with their input schemas', async () => {
     const { tools } = (await rpc('tools/list')) as {
       tools: { name: string; inputSchema: { properties?: object }; annotations: object }[];
     };
-    expect(tools).toHaveLength(11);
+    expect(tools).toHaveLength(12);
     const whoHas = tools.find((t) => t.name === 'who_has')!;
     expect(Object.keys(whoHas.inputSchema.properties ?? {})).toEqual(['item', 'accounts']);
     for (const t of tools) expect(t.annotations).toMatchObject({ readOnlyHint: true });

@@ -26,6 +26,7 @@ import {
   type ApiAccountCollectionLog,
   type ApiAccountDetail,
   type ApiAccountSummary,
+  type ApiDay,
   type ApiEquipmentHistory,
   type ApiEvent,
   type ApiGains,
@@ -64,6 +65,7 @@ import type {
   WireMember,
   WireOwner,
   WireSessions,
+  WireDay,
   WireSkills,
   WireSnapshotAccount,
   WireSnapshotLocation,
@@ -249,6 +251,56 @@ export function wireSessions(h: ApiSessions): WireSessions {
   };
 }
 
+export function wireDay(d: ApiDay): WireDay {
+  return {
+    account: { id: d.account.id, name: d.account.name },
+    timezone: d.timezone,
+    dates: { from: d.dates.from, to: d.dates.to },
+    from: d.from,
+    to: d.to,
+    ...(d.sessions && {
+      sessions: {
+        count: d.sessions.count,
+        total_ms: d.sessions.totalMs,
+        list: d.sessions.list.map((s) => ({
+          started_at: s.startedAt,
+          ended_at: s.endedAt,
+          duration_ms: s.durationMs,
+          worlds: s.worlds,
+        })),
+      },
+    }),
+    ...(d.gains && {
+      gains: {
+        total: d.gains.total,
+        skills: d.gains.skills.map((g) => ({ skill: g.skill, xp: g.xp })),
+      },
+    }),
+    ...(d.events && {
+      events: {
+        count: d.events.count,
+        by_type: { ...d.events.byType },
+        top: d.events.top.map(wireEvent),
+        collection_log: d.events.collectionLog.map(wireEvent),
+        truncated: d.events.truncated,
+      },
+    }),
+    ...(d.places && {
+      places: {
+        stays: d.places.stays,
+        teleports: d.places.teleports,
+        list: d.places.list.map((p) => ({
+          name: p.name,
+          region: p.region,
+          ms: p.ms,
+          visits: p.visits,
+        })),
+        truncated: d.places.truncated,
+      },
+    }),
+  };
+}
+
 export function wireEquipmentHistory(h: ApiEquipmentHistory): WireEquipmentHistory {
   return {
     account: { id: h.account.id, name: h.account.name },
@@ -275,6 +327,7 @@ function wireLocationPoints(points: ApiLocations['points']): WireLocations['poin
     plane: p.plane,
     world: p.world,
     is_on_boat: p.isOnBoat,
+    region: p.region,
     via: p.via,
   }));
 }
