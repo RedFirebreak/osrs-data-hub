@@ -10,7 +10,8 @@
  * null.
  */
 import { regionId } from '../trail';
-import data from './regions.json';
+// The import attribute lets plain Node ESM (Playwright's e2e global setup) load it, as bundlers do.
+import data from './regions.json' with { type: 'json' };
 
 /** Region id → place name, as regions.json lists them. */
 export const REGION_NAMES: ReadonlyMap<number, string> = new Map(
