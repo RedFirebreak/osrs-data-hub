@@ -74,6 +74,14 @@ describe('API keys page', () => {
     expect(html).toContain('Home Assistant');
   });
 
+  it('shows how to connect an AI assistant: the MCP URL and the setup guide', async () => {
+    await signIn();
+    const html = await render();
+    expect(html).toContain('Connect an AI assistant');
+    expect(html).toMatch(/data-testid="mcp-url"[^>]*>https?:\/\/[^<]+\/api\/v1\/mcp</);
+    expect(html).toContain('href="https://scapekeeper.com/docs/integrations/ai-assistant"');
+  });
+
   it('lists only the user’s keys, masked, never with their secret', async () => {
     const userId = await signIn();
     const otherId = await ctx.seedUser();

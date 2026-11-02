@@ -11,6 +11,9 @@ import type { HubConfig } from '@hub/core';
  */
 export const OAUTH_SCOPES = ['mcp', 'offline_access'] as const;
 
+/** The website's page on connecting an AI assistant (Claude.ai, Claude Code, Cursor, …). */
+export const AI_ASSISTANT_DOCS_URL = 'https://scapekeeper.com/docs/integrations/ai-assistant';
+
 /** The protected resource: the MCP endpoint's URL, the audience of every token (RFC 8707). */
 export function mcpResource(config: Pick<HubConfig, 'appOrigin'>): string {
   return `${config.appOrigin}/api/v1/mcp`;
@@ -36,6 +39,6 @@ export function mcpResourceMetadata(
     scopes_supported: [...OAUTH_SCOPES],
     bearer_methods_supported: ['header'],
     resource_name: `${config.hubName} MCP`,
-    resource_documentation: 'https://scapekeeper.com/docs/integrations/ai-assistant',
+    resource_documentation: AI_ASSISTANT_DOCS_URL,
   };
 }

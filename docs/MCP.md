@@ -31,6 +31,10 @@ answer instead of guessing. `hub://me` lists the key's categories.
 
 ## Connecting
 
+The **API keys** page has a "Connect an AI assistant" card with the hub's own MCP URL to copy, the
+Claude.ai steps and a link to the website's setup guide, so a member finds all of this without being
+told.
+
 Replace `hub.example.com` with your hub's address and `ohub_…` with the key.
 
 **Claude Code**
