@@ -92,6 +92,11 @@ export function configSections(config: HubConfig): ConfigSection[] {
         { name: 'APP_URL', description: 'Public origin of the hub', value: text(config.appOrigin) },
         { name: 'HUB_NAME', description: 'Name the plugin shows', value: text(config.hubName) },
         {
+          name: 'HUB_VERSION',
+          description: 'Release the image was built from (set by the build)',
+          value: text(config.hubVersion),
+        },
+        {
           name: 'MIN_PLUGIN_VERSION',
           description: 'Oldest HA Exporter version accepted',
           value: text(config.minPluginVersion),

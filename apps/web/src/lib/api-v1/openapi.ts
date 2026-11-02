@@ -296,6 +296,52 @@ export const OPERATIONS: readonly OperationSpec[] = [
 
 /** The public operation serving this document (no key, no rate limit). */
 const OPENAPI_PATH = '/openapi.json';
+const MCP_PATH = '/mcp';
+
+/**
+ * POST /mcp (D-128): the MCP server, documented as the one POST of the API. Its messages are
+ * JSON-RPC 2.0 as the Model Context Protocol defines them, so the body is described, not modelled:
+ * docs/MCP.md and the MCP specification are the reference.
+ */
+function mcpOperation(): Json {
+  const jsonRpc = {
+    type: 'object',
+    required: ['jsonrpc'],
+    properties: { jsonrpc: { const: '2.0' } },
+    additionalProperties: true,
+  };
+  return {
+    operationId: 'postMcp',
+    tags: ['MCP'],
+    summary: 'MCP server',
+    description:
+      'The hub as a remote MCP server (Streamable HTTP, stateless, JSON responses) for AI assistants: Claude, Claude Code, Cursor or the Agents SDK. Send one JSON-RPC message per request with `Accept: application/json, text/event-stream`. Its tools read exactly what this API serves (each names its REST twin), through the same key, categories and audiences; a request is one request against the key’s rate limit. No sessions and no stream: `GET` and `DELETE` answer 405. See the hub’s docs/MCP.md.',
+    security: [{ bearerAuth: [] }],
+    requestBody: {
+      required: true,
+      content: { 'application/json': { schema: jsonRpc } },
+    },
+    responses: {
+      '200': {
+        description: 'The JSON-RPC response.',
+        headers: RATE_HEADERS,
+        content: { 'application/json': { schema: jsonRpc } },
+      },
+      '202': {
+        description: 'Accepted: the message was a notification or a response, which has no answer.',
+        headers: RATE_HEADERS,
+      },
+      '400': { $ref: '#/components/responses/BadRequest' },
+      '401': { $ref: '#/components/responses/Unauthorized' },
+      '406': {
+        description: 'The client does not accept both `application/json` and `text/event-stream`.',
+      },
+      '413': { description: 'The body is larger than 64 KiB.' },
+      '429': { $ref: '#/components/responses/TooManyRequests' },
+      '503': { $ref: '#/components/responses/Unavailable' },
+    },
+  };
+}
 
 /** Shapes several responses nest: each becomes a `$ref` under components.schemas. */
 const SHARED_COMPONENTS: readonly [string, z.ZodType][] = [
@@ -527,6 +573,8 @@ export function buildOpenApiDocument(): Json {
     },
   };
 
+  paths[MCP_PATH] = { post: mcpOperation() };
+
   const integer = { type: 'integer', minimum: 0 };
   return {
     openapi: '3.1.0',
@@ -563,6 +611,7 @@ export function buildOpenApiDocument(): Json {
         name: 'Members',
         description: 'Whether one Discord account is a member of the hub (service keys only).',
       },
+      { name: 'MCP', description: 'The hub as an MCP server for AI assistants.' },
       { name: 'Meta', description: 'This document.' },
     ],
     paths,

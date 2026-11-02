@@ -6,14 +6,15 @@
  * read-only with a Copy button and a clear warning, and can only be left with "Done", which reloads
  * the list. The hub keeps only a hash: the key can't be shown again. The reload can take the trigger
  * away (the empty state's button, or the header's when the limit is reached), so after a creation
- * the focus goes to the list's heading (`listHeadingId`) or the page's h1.
+ * the focus goes to the list's heading (`listHeadingId`) or the page's h1. "For an AI assistant" ticks
+ * the categories an MCP client needs (aiAssistantPreset, D-129); still nothing is preselected.
  *
  * This file is the user key's own fields and texts; the state (submit, field errors from the
  * server's 400 `details`, focus) is useCreateKeyDialog's and the pieces shared with the service key
  * dialog are in key-dialog-parts.tsx. The user's accounts come from the page (the same rule the
  * server checks: what they can see right now, no admin override).
  */
-import { PlusIcon } from 'lucide-react';
+import { PlusIcon, SparklesIcon } from 'lucide-react';
 import { useId } from 'react';
 import { Button } from '@/components/ui/button';
 import { DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -21,6 +22,7 @@ import { AccountScopeField, type PickableAccount } from './account-scope-field';
 import {
   CREATE_KEY_FAILURE,
   CREATE_KEY_FIELDS,
+  aiAssistantPreset,
   createKeyBody,
   emptyCreateForm,
   validateCreateForm,
@@ -103,6 +105,23 @@ export function CreateApiKeyDialog({
               A key reads only what you choose here, and never more than you can see yourself.
             </DialogDescription>
           </DialogHeader>
+
+          <div className="flex flex-col gap-1.5">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="self-start"
+              onClick={() => update(aiAssistantPreset(form))}
+            >
+              <SparklesIcon aria-hidden data-icon="inline-start" />
+              For an AI assistant
+            </Button>
+            <p className="text-xs text-muted-foreground">
+              Picks what Claude or another assistant needs to answer questions about the guild. Add
+              Equipment and Inventory for questions about gear and wealth.
+            </p>
+          </div>
 
           <KeyTextField
             id={`${id}-name`}

@@ -654,6 +654,12 @@ The two error bodies:
     {"error":{"code":"invalid_request","message":"discord_id must be a Discord user id (15 to 22 digits)"}}
     {"error":{"code":"not_found","message":"There is no such endpoint in API v1."}}
 
+### POST /mcp
+
+The hub as an MCP server for AI assistants (D-128): JSON-RPC over Streamable HTTP, stateless, with
+the same key, limits and CORS as every endpoint here. Its tools read only what the endpoints above
+serve. Clients, tools and examples: [MCP.md](MCP.md).
+
 ### GET /openapi.json
 
 The OpenAPI 3.1 description of all of the above, generated from the same schemas the routes validate
@@ -727,6 +733,9 @@ Other rules:
   - `/collection-log?item=` for "who has a Tumeken's shadow" (with `events`);
   - `/events?item=&from=` or `/events?npc=` for "when did X last get a drop from Zulrah".
   - Suggested key: `events`, `stats`, `activity` (+ `hiscores` for kill counts and the log's count).
+- **AI assistants** (Claude, Claude Code, Cursor) through `POST /mcp` ([MCP.md](MCP.md)): a member's
+  own key with the "For an AI assistant" preset (`stats`, `events`, `activity`, `location_history`,
+  `hiscores`), or a service key for a guild bot.
 - **Live map** ([ha-osrs-map](https://github.com/RedFirebreak/ha-osrs-map), polling the hub
   server-side with a **service key**, D-88):
   - poll `/snapshot?since=` (1/s at most; every 2–10 s is plenty) with a key holding `location_live` and

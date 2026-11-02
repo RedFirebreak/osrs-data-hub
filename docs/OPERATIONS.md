@@ -69,7 +69,8 @@ Terminate TLS in the proxy you already run and forward to `127.0.0.1:3000`. Six 
    `Access-Control-Allow-Origin: *`, `ETag` and `Cache-Control` itself. `TRUST_PROXY_HOPS` also keys
    the API's failed-authentication limit (30 per minute per client IP, D-72): when it is wrong, every
    client appears as the proxy's address, and one client with a bad key locks every API client out
-   for about a minute.
+   for about a minute. The MCP endpoint (`POST /api/v1/mcp`, [MCP.md](MCP.md)) needs nothing more: it
+   answers plain JSON, and the hub answers its preflight; pass `Authorization` and `Mcp-*` headers on.
 5. **Never redirect `/api/osrs-data/*`.** The plugin turns a 301/302 into a body-less GET and doesn't
    follow 307/308, so data is lost silently (PLUGIN-2). Redirect http → https for the UI only, or tell
    players to use the `https://` URL exactly as the wizard shows it.

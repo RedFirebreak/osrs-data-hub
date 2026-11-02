@@ -30,7 +30,10 @@ RUN pnpm --filter @hub/worker build
 
 # ---- web runtime: Next standalone output (server.js sits at apps/web/server.js in a monorepo)
 FROM node:24-alpine AS web
-ENV NODE_ENV=production \
+# The release this image is (the release workflow passes the tag's version); MCP's hub://me shows it.
+ARG HUB_VERSION=dev
+ENV HUB_VERSION=$HUB_VERSION \
+    NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
     PORT=3000 \
     # Without this, server.js binds to the container hostname and localhost healthchecks fail (NEXT-9).

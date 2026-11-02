@@ -59,6 +59,10 @@
       "description": "Whether one Discord account is a member of the hub (service keys only)."
     },
     {
+      "name": "MCP",
+      "description": "The hub as an MCP server for AI assistants."
+    },
+    {
       "name": "Meta",
       "description": "This document."
     }
@@ -1785,6 +1789,104 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/mcp": {
+      "post": {
+        "operationId": "postMcp",
+        "tags": [
+          "MCP"
+        ],
+        "summary": "MCP server",
+        "description": "The hub as a remote MCP server (Streamable HTTP, stateless, JSON responses) for AI assistants: Claude, Claude Code, Cursor or the Agents SDK. Send one JSON-RPC message per request with `Accept: application/json, text/event-stream`. Its tools read exactly what this API serves (each names its REST twin), through the same key, categories and audiences; a request is one request against the key’s rate limit. No sessions and no stream: `GET` and `DELETE` answer 405. See the hub’s docs/MCP.md.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "jsonrpc"
+                ],
+                "properties": {
+                  "jsonrpc": {
+                    "const": "2.0"
+                  }
+                },
+                "additionalProperties": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The JSON-RPC response.",
+            "headers": {
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/X-RateLimit-Remaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/X-RateLimit-Reset"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "jsonrpc"
+                  ],
+                  "properties": {
+                    "jsonrpc": {
+                      "const": "2.0"
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Accepted: the message was a notification or a response, which has no answer.",
+            "headers": {
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/X-RateLimit-Remaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/X-RateLimit-Reset"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "406": {
+            "description": "The client does not accept both `application/json` and `text/event-stream`."
+          },
+          "413": {
+            "description": "The body is larger than 64 KiB."
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
           }
         }
       }

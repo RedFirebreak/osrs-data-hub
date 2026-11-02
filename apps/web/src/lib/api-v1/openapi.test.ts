@@ -72,8 +72,17 @@ describe('the OpenAPI document', () => {
   });
 
   it('gives every operation a 200 schema and security (except the public document)', () => {
-    const paths = doc().paths as Record<string, { get: Json }>;
+    const paths = doc().paths as Record<string, { get: Json; post?: Json }>;
     for (const [p, item] of Object.entries(paths)) {
+      if (p === '/mcp') {
+        // The one POST: JSON-RPC in and out (D-128).
+        const post = item.post!;
+        expect(post.security, p).toEqual([{ bearerAuth: [] }]);
+        for (const status of ['200', '401', '429', '503']) {
+          expect((post.responses as Json)[status], `${p} ${status}`).toBeTruthy();
+        }
+        continue;
+      }
       const op = item.get;
       const ok = (op.responses as Json)['200'] as Json;
       const schema = ((ok.content as Json)['application/json'] as Json).schema as Json;

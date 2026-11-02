@@ -40,3 +40,20 @@ export function withCors(res: Response, extra: Readonly<Record<string, string>> 
 export function preflight(): Response {
   return new Response(null, { status: 204, headers: { ...CORS_HEADERS, ...PREFLIGHT_HEADERS } });
 }
+
+/**
+ * OPTIONS on /api/v1/mcp (D-128): the same, for a POST with the headers an MCP client sends
+ * (Streamable HTTP: the protocol version, and a session id the stateless server never hands out).
+ */
+export function mcpPreflight(): Response {
+  return new Response(null, {
+    status: 204,
+    headers: {
+      ...CORS_HEADERS,
+      ...PREFLIGHT_HEADERS,
+      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      'Access-Control-Allow-Headers':
+        'Authorization, Content-Type, Accept, Mcp-Protocol-Version, Mcp-Session-Id, Last-Event-ID',
+    },
+  });
+}

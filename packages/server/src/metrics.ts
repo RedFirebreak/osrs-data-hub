@@ -114,6 +114,7 @@ export const API_ROUTE_GROUPS = [
   'hiscores',
   'collection-log',
   'members',
+  'mcp',
   'openapi',
   'unknown',
 ] as const;
