@@ -30,6 +30,8 @@ export {
   API_EVENTS_SETTLE_MS,
   EVENTS_DEFAULT_LIMIT,
   EVENTS_MAX_LIMIT,
+  EVENT_SEARCH_MAX_LENGTH,
+  EVENT_SEARCH_MIN_LENGTH,
   apiEvents,
   apiEventsInRange,
   decodeEventsCursor,

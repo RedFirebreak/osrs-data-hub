@@ -75,6 +75,52 @@ export const events = pgTable(
     index('events_loot_rank_idx')
       .on(t.accountId, t.occurredAt.desc(), t.valueGp, t.seq)
       .where(lootRankedEvent(t)),
+    // `npc=` on /events (D-136): a trigram index over the NPC name, so a substring is found without
+    // reading every row's jsonb. A query must use eventNpcName and npcNamedEvent as they are.
+    index('events_npc_name_trgm_idx')
+      .using('gin', sql`${eventNpcName(t)} gin_trgm_ops`)
+      .where(npcNamedEvent(t)),
+  ],
+);
+
+/**
+ * The NPC an event names, lower-cased (D-136): a loot or PK loot drop's source, a death's killer, a
+ * superior's name. It is events_npc_name_trgm_idx's expression: match it with ILIKE/LIKE as is.
+ */
+export function eventNpcName(c: { data: AnyPgColumn }): SQL {
+  return sql`lower(coalesce(${c.data} #>> '{data,source,text}', ${c.data} #>> '{data,killerName}', ${c.data} #>> '{data,name}'))`;
+}
+
+/** The events eventNpcName reads, as literals: events_npc_name_trgm_idx's predicate. */
+export function npcNamedEvent(c: { type: AnyPgColumn }): SQL {
+  return sql`${c.type} in ('loot', 'pk_loot', 'death', 'superior_spawn')`;
+}
+
+/**
+ * The items of each loot and PK loot event, one row per entry of the plugin's `items` (D-136), so
+ * `item=` on /events finds a drop by any of its items rather than only the most valuable one
+ * (`events.item_id`). Written with the event at ingest; events stored before migration 0019 were
+ * filled by it. `name` is lower-cased for the trigram index.
+ */
+export const lootItems = pgTable(
+  'loot_items',
+  {
+    eventSeq: bigint('event_seq', { mode: 'number' })
+      .notNull()
+      .references(() => events.seq, { onDelete: 'cascade' }),
+    /** Position in the plugin's `items`. */
+    idx: smallint('idx').notNull(),
+    accountId: integer('account_id')
+      .notNull()
+      .references(() => osrsAccounts.id, { onDelete: 'cascade' }),
+    itemId: integer('item_id'),
+    name: text('name').notNull(),
+    quantity: integer('quantity'),
+  },
+  (t) => [
+    primaryKey({ name: 'loot_items_pk', columns: [t.eventSeq, t.idx] }),
+    index('loot_items_name_trgm_idx').using('gin', sql`${t.name} gin_trgm_ops`),
+    index('loot_items_account_item_idx').on(t.accountId, t.itemId),
   ],
 );
 

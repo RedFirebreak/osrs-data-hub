@@ -1,5 +1,5 @@
 /**
- * GET /api/v1/events?cursor=&types=&accounts=&min_value=&limit= (handoff §13, D-73): the cursor feed
+ * GET /api/v1/events?cursor=&types=&accounts=&min_value=&item=&npc=&limit= (handoff §13, D-73): the cursor feed
  * for the Discord bot and Home Assistant. `data` is the page of events (oldest first), `meta.next_cursor`
  * the cursor to pass next time. Only events at least 10 s old are served (the settled prefix), so a
  * cursor never skips a row that commits late (DB-4).
@@ -7,6 +7,8 @@
  * With `from` and/or `to` (D-98, for the live map's trails): the events that occurred in the range
  * instead, newest first, same filters and shape; `meta.next_cursor` is the next (older) page's
  * cursor, null on the last page. No settle margin: that order doesn't depend on commit order.
+ *
+ * `item` and `npc` search by name in both modes (D-136).
  */
 import { apiEvents, apiEventsInRange } from '@hub/server';
 import { preflight } from '@/lib/api-v1/cors';
@@ -24,6 +26,8 @@ export async function GET(request: Request): Promise<Response> {
       types: q.types,
       accountIds: q.accounts,
       minValue: q.min_value,
+      item: q.item,
+      npc: q.npc,
       limit: q.limit,
     };
     const page =

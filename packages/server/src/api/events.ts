@@ -13,8 +13,9 @@
  * on when a row became visible, so the settled prefix doesn't apply to it.
  */
 import type { DbOrTx } from '@hub/db';
-import { events } from '@hub/db';
+import { eventNpcName, events, npcNamedEvent } from '@hub/db';
 import { and, asc, desc, gt, gte, inArray, lte, sql, type SQL } from 'drizzle-orm';
+import { alias, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import type { AccountWithAccess } from '../accounts/load';
 import { EVENT_ROW_COLUMNS, toFeedEvent, type EventRowLike, type FeedEvent } from '../feed';
 import { LIVE_POLL_SETTLE_MS } from '../live/replay';
@@ -37,6 +38,9 @@ export const EVENTS_MAX_LIMIT = 500;
 /** Longest accepted `types` list, and longest type name. */
 const MAX_TYPES = 64;
 const MAX_TYPE_LENGTH = 64;
+/** An `item` or `npc` search is this many characters at least, and at most (D-136). */
+export const EVENT_SEARCH_MIN_LENGTH = 2;
+export const EVENT_SEARCH_MAX_LENGTH = 64;
 /**
  * Rows received longer ago than this are settled by far (ingest's lock and statement timeouts are
  * seconds), so the newest of them bounds the settled-ceiling scan to the last few minutes (seqFloor).
@@ -97,6 +101,13 @@ export interface ApiEventsParams {
   accountIds?: string[];
   /** Only events with value_gp ≥ this (events without a value are left out). */
   minValue?: number;
+  /**
+   * Only loot and PK loot with an item whose name contains this, case-insensitive (D-136): any of
+   * the drop's items, not only the most valuable one.
+   */
+  item?: string;
+  /** Only loot, PK loot, deaths and superiors whose NPC (source, killer, superior) contains this. */
+  npc?: string;
   /** Default 100, at most 500. */
   limit?: number;
 }
@@ -128,10 +139,14 @@ export function decodeEventsCursor(cursor: string): number | null {
 }
 
 /** The parameters both modes share, checked: ApiError 'invalid' for a bad limit, minValue or list. */
-function eventFilters(params: Pick<ApiEventsParams, 'types' | 'minValue' | 'limit'>): {
+function eventFilters(
+  params: Pick<ApiEventsParams, 'types' | 'minValue' | 'limit' | 'item' | 'npc'>,
+): {
   limit: number;
   minValue: number | null;
   types: string[];
+  item: string | null;
+  npc: string | null;
 } {
   const limit = intParam(params.limit, 'limit', {
     min: 1,
@@ -150,7 +165,55 @@ function eventFilters(params: Pick<ApiEventsParams, 'types' | 'minValue' | 'limi
   if (types.some((t) => t.length === 0 || t.length > MAX_TYPE_LENGTH || t.includes('\u0000'))) {
     throw new ApiError('invalid', 'types must be event type names');
   }
-  return { limit, minValue, types };
+  return {
+    limit,
+    minValue,
+    types,
+    item: searchParam(params.item, 'item'),
+    npc: searchParam(params.npc, 'npc'),
+  };
+}
+
+/**
+ * An `item` or `npc` search as a LIKE pattern on the lower-cased names (D-136): trimmed, runs of
+ * white space as one, lower-cased, `%`, `_` and `\` taken literally. Null when absent; ApiError
+ * 'invalid' outside EVENT_SEARCH_MIN_LENGTH … EVENT_SEARCH_MAX_LENGTH characters.
+ */
+function searchParam(value: string | undefined, name: string): string | null {
+  if (value === undefined) return null;
+  const text = typeof value === 'string' ? value.trim().replace(/\s+/g, ' ') : '';
+  if (
+    text.length < EVENT_SEARCH_MIN_LENGTH ||
+    text.length > EVENT_SEARCH_MAX_LENGTH ||
+    text.includes('\u0000')
+  ) {
+    throw new ApiError(
+      'invalid',
+      `${name} must be ${EVENT_SEARCH_MIN_LENGTH} to ${EVENT_SEARCH_MAX_LENGTH} characters`,
+    );
+  }
+  return `%${text.toLowerCase().replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+}
+
+/**
+ * The `item` and `npc` conditions on `e` (the events table or an alias of it). `item` reads
+ * loot_items through loot_items_name_trgm_idx; `npc` is events_npc_name_trgm_idx's expression and
+ * predicate, spelt as there so the planner can use it.
+ */
+function searchConditions(
+  e: { seq: AnyPgColumn; type: AnyPgColumn; data: AnyPgColumn },
+  filters: { item: string | null; npc: string | null },
+): SQL[] {
+  const out: SQL[] = [];
+  if (filters.item !== null) {
+    out.push(
+      sql`exists (select 1 from loot_items li where li.event_seq = ${e.seq} and li.name like ${filters.item})`,
+    );
+  }
+  if (filters.npc !== null) {
+    out.push(sql`${npcNamedEvent(e)} and ${eventNpcName(e)} like ${filters.npc}`);
+  }
+  return out;
 }
 
 /**
@@ -167,7 +230,7 @@ export async function apiEvents(
   params: ApiEventsParams = {},
   now: Date = new Date(),
 ): Promise<ApiEventsPage> {
-  const { limit, minValue, types } = eventFilters(params);
+  const { limit, minValue, types, item, npc } = eventFilters(params);
   const after = parseCursor(params.cursor);
   if (params.cursor === 'now') {
     return { events: [], nextCursor: encodeEventsCursor(await settledSeqAfter(db, 0, now)) };
@@ -183,6 +246,7 @@ export async function apiEvents(
     after === null ? undefined : gt(events.seq, after),
     types.length > 0 ? inArray(events.type, types) : undefined,
     minValue === null ? undefined : gte(events.valueGp, minValue),
+    ...searchConditions(events, { item, npc }),
   );
   // See DB-15: one account reads its order off events_account_seq_idx (seq DESC NULLS LAST), forward
   // or backward, which only matches with the index's null order spelled out. Several accounts walk
@@ -221,6 +285,8 @@ export interface ApiEventsRangeParams {
   types?: string[];
   accountIds?: string[];
   minValue?: number;
+  item?: string;
+  npc?: string;
   limit?: number;
 }
 
@@ -266,7 +332,7 @@ export async function apiEventsInRange(
   params: ApiEventsRangeParams,
   now: Date = new Date(),
 ): Promise<ApiEventsRangePage> {
-  const { limit, minValue, types } = eventFilters(params);
+  const { limit, minValue, types, item, npc } = eventFilters(params);
   const range = resolveRange(params, now, HISTORY_DEFAULT_DAYS);
   const before = params.cursor === undefined ? null : decodeEventsRangeCursor(params.cursor);
   if (params.cursor !== undefined && before === null) {
@@ -282,6 +348,7 @@ export async function apiEventsInRange(
   // (ingest computes it from JS dates, D-17), so the cursor's time is exact.
   // See DB-15: the inner ORDER BY must say NULLS LAST, as the index does, to be read off it.
   const to = before && before.occurredAt < range.to ? before.occurredAt : range.to;
+  const search = searchConditions(alias(events, 'e'), { item, npc });
   const page = sql`(
     SELECT k.seq FROM unnest(${sql.param([...accounts.keys()])}::int[]) AS a(id)
     CROSS JOIN LATERAL (
@@ -292,6 +359,7 @@ export async function apiEventsInRange(
         ${before ? sql`AND (e.occurred_at, e.seq) < (${before.occurredAt.toISOString()}::timestamptz, ${before.seq}::bigint)` : sql``}
         ${types.length > 0 ? sql`AND e.type = ANY(${sql.param(types)}::text[])` : sql``}
         ${minValue === null ? sql`` : sql`AND e.value_gp >= ${minValue}::bigint`}
+        ${search.length > 0 ? sql`AND ${sql.join(search, sql` AND `)}` : sql``}
       ORDER BY e.occurred_at DESC NULLS LAST, e.seq DESC
       LIMIT ${limit + 1}
     ) k

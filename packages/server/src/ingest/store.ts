@@ -9,6 +9,7 @@ import {
   floorTo,
   generatePublicId,
   isRecord,
+  lootItemRows,
   normalizeName,
   payloadTime,
   planSnapshot,
@@ -33,6 +34,7 @@ import {
   events,
   latestState,
   locationSamples,
+  lootItems,
   osrsAccounts,
   playSessions,
   users,
@@ -62,6 +64,8 @@ const STATEMENT_TIMEOUT = '8s';
 const UNKNOWN_NAME = 'Unknown';
 /** Event rows per INSERT: 16 bind parameters each, far below Postgres' 65535 per statement. */
 const EVENT_INSERT_CHUNK = 1000;
+/** Rows per loot_items INSERT (6 parameters each). */
+const LOOT_ITEM_INSERT_CHUNK = 2000;
 
 export interface StoreInput {
   recv: Date;
@@ -759,13 +763,35 @@ async function insertEvents(
     eventRow(e, accountId, input.device.id, input.recv, special),
   );
   const inserted: { seq: number; type: string }[] = [];
+  const items: (typeof lootItems.$inferInsert)[] = [];
   for (let i = 0; i < rows.length; i += EVENT_INSERT_CHUNK) {
     const chunk = await tx
       .insert(events)
       .values(rows.slice(i, i + EVENT_INSERT_CHUNK))
       .onConflictDoNothing({ target: [events.accountId, events.pluginEventId, events.subIndex] })
-      .returning({ seq: events.seq, type: events.type });
-    inserted.push(...chunk);
+      .returning({
+        seq: events.seq,
+        type: events.type,
+        pluginEventId: events.pluginEventId,
+        subIndex: events.subIndex,
+      });
+    for (const row of chunk) {
+      inserted.push({ seq: row.seq, type: row.type });
+      // Only the events this payload inserted: a resend's items are already there.
+      const event = rows.find(
+        (r) => r.pluginEventId === row.pluginEventId && r.subIndex === row.subIndex,
+      );
+      for (const item of lootItemRows(row.type, event?.data)) {
+        items.push({ eventSeq: row.seq, accountId, ...item });
+      }
+    }
+  }
+  // The items of loot and PK loot, for `item=` on /api/v1/events (D-136).
+  for (let i = 0; i < items.length; i += LOOT_ITEM_INSERT_CHUNK) {
+    await tx
+      .insert(lootItems)
+      .values(items.slice(i, i + LOOT_ITEM_INSERT_CHUNK))
+      .onConflictDoNothing();
   }
   return { inserted, duplicates: rows.length - inserted.length };
 }

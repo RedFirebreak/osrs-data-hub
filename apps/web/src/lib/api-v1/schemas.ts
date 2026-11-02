@@ -30,6 +30,8 @@ import {
   DISCORD_ID_PATTERN,
   EVENTS_DEFAULT_LIMIT,
   EVENTS_MAX_LIMIT,
+  EVENT_SEARCH_MAX_LENGTH,
+  EVENT_SEARCH_MIN_LENGTH,
   GAINS_PERIODS,
   GUILD_COLLECTION_LOG_DEFAULT_LIMIT,
   GUILD_COLLECTION_LOG_MAX_LIMIT,
@@ -190,6 +192,12 @@ export const GainsQuery = z.object({
   to: to.meta({ description: 'With `from`; default now.' }),
 });
 
+/** An `item` or `npc` search on /events (D-136): trimmed, white space folded, a length range. */
+const searchText = z
+  .string()
+  .transform((s) => s.trim().replace(/\s+/g, ' '))
+  .pipe(z.string().min(EVENT_SEARCH_MIN_LENGTH).max(EVENT_SEARCH_MAX_LENGTH));
+
 /** What an event's `type` can be, for the descriptions: the known types, as stored, and the rest. */
 const EVENT_TYPE_NAMES = `${KNOWN_EVENT_TYPES.join(', ')}, or an unknown plugin type as sent`;
 
@@ -222,6 +230,16 @@ export const EventsQuery = z.object({
     }),
   min_value: wholeNumber(0, Number.MAX_SAFE_INTEGER).optional().meta({
     description: 'Only events with `value_gp` ≥ this (events without a value are left out).',
+  }),
+  item: searchText.optional().meta({
+    description:
+      'Only `loot` and `pk_loot` events with an item whose name contains this, case-insensitive: any item of the drop, not only `item_id`. A hub from before this parameter ignores it.',
+    example: 'Tumeken',
+  }),
+  npc: searchText.optional().meta({
+    description:
+      'Only `loot` and `pk_loot` (the drop’s source), `death` (the killer) and `superior_spawn` events whose NPC name contains this, case-insensitive.',
+    example: 'Zulrah',
   }),
   limit: wholeNumber(1, EVENTS_MAX_LIMIT)
     .optional()
