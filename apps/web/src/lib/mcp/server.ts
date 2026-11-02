@@ -1,6 +1,6 @@
 /**
  * The hub's MCP server (D-128): one per request, for the key that made it, over the tools in
- * tools.ts, two resources and three prompts. Stateless: no session, no subscriptions, nothing changes
+ * tools.ts, two resources and four prompts. Stateless: no session, no subscriptions, nothing changes
  * at runtime, so a client that reconnects loses nothing.
  *
  * Tool errors the model can act on (ToolError, the read models' ApiError) come back as a tool result
@@ -34,6 +34,11 @@ export const MCP_FEATURES = [
   'who_has',
   'sessions',
   'locations',
+  'day_summary',
+  'wealth_history',
+  'progress',
+  'kills_leaderboard',
+  'gear_history',
 ] as const;
 
 const INSTRUCTIONS =
@@ -211,6 +216,26 @@ export function createMcpServer(db: DbOrTx, principal: ApiPrincipal, now: Date =
         ],
       };
     },
+  );
+  server.registerPrompt(
+    'player_week',
+    {
+      title: "How was a player's week",
+      description:
+        "One account's last seven days: playtime and active time, XP, boss kills, loot and wealth.",
+      argsSchema: { account: z.string().min(1).max(64).describe("The account's name.") },
+    },
+    ({ account }) => ({
+      messages: [
+        {
+          role: 'user',
+          content: {
+            type: 'text',
+            text: `How was ${account}'s week? Call progress once (account "${account}", range "7d"). Write a short recap: how much they played and how much of it was active, what the time went to, the skills that gained most, boss kills, loot and how their wealth changed. Mention a goal that is close. If the answer lists not_shared, leave those parts out and say so once.`,
+          },
+        },
+      ],
+    }),
   );
   server.registerPrompt(
     'who_has',

@@ -393,7 +393,8 @@ days.
 ### GET /accounts/{id}/wealth?from=&to=
 
 Wealth per UTC day, oldest first (`inventory`): inventory and equipment at GE prices plus the bank as
-the plugin last read it (`bank_value`, null on days before it sent one; D-124). Default: 30 days.
+the plugin last read it (`bank_value`, null on days before it sent one; D-124). Default: 30 days. The
+MCP tool `wealth` answers with it (D-139).
 
     {"data":{"account":{…},"from":"…","to":"…","days":[{"day":"2026-09-29","last_value":2931668594,"max_value":2931668594,"bank_value":2847193650}]},"meta":{…}}
 
@@ -506,6 +507,41 @@ What an account did on a date, in one call (D-138; the MCP tool `day_summary` an
   the player moves to another place or at a `gap`; per place the time and the stays, most time first,
   at most 50). A key that reads none of the four gets the account's 404.
 
+### GET /accounts/{id}/progress?range= (or from=&to=)
+
+The account's Progress page for a range, in one call (D-139; the MCP tool `progress` answers with it).
+It reads the page's own model, so it says what the page says, narrowed to the key:
+
+    {"data":{"account":{…},"timezone":"Europe/Amsterdam","range":"7d","from":"2026-10-26T19:41:00.000Z","to":"2026-11-02T19:41:00.000Z",
+      "playtime":{"sessions":9,"online_ms":61200000,"active_ms":48300000,"longest_ms":14400000,
+        "activities":[{"name":"Slayer","ms":21000000},{"name":"Zulrah","ms":9000000},…,{"name":"Other","ms":1200000}],
+        "days":[{"date":"2026-10-27","active_ms":7200000,"activities":[{"name":"Slayer","ms":5400000},…]},…]},
+      "xp":{"gained":1840000,"skills":[{"skill":"Slayer","level":91,"xp":6012000,"gained":610000,"xp_per_hour":52000},…]},
+      "loot":{"gp":48200000,"drops":312},
+      "bosses":{"kills":143,"read_at":"2026-11-02T18:10:00.000Z","list":[{"boss":"Zulrah","kill_count":1205,"gained":61,"rank":40120,"gp":18300000},…]},
+      "wealth":{"change":-12500000},
+      "goals":[{"kind":"level","target":"Slayer","value":95,"current":91,"progress":0.62,"remaining":2600000,"per_day":87000,"eta_days":30}]},"meta":{…}}
+
+- **Range.** `range` is `today` (since local midnight), `7d` (default), `30d`, `90d` or `1y`, each
+  ending now; or `from` and `to`, dates (`YYYY-MM-DD`, both included) or instants. A custom range
+  over 366 days keeps its end. Days (`today`, `playtime.days`) are in the key creator's time zone
+  (UTC for a service key), which `timezone` says.
+- **Sections**, each only with its category (a key that reads none of them gets the account's 404):
+  - `playtime` (`activity` and `stats`): play sessions in the range, time logged in (`online_ms`) and
+    active time (`active_ms`: 5-minute blocks with XP, a drop, a step, an inventory change or a gear
+    change; D-107, D-127), the longest session, and where the active time went: per activity (a skill,
+    a boss, …; the top 8 and `Other`) and per day.
+  - `xp` (`stats`): XP gained (Overall; hiscores fills of mobile play included), and every skill with
+    its level, XP, gain and `xp_per_hour` over its active time (null without such time).
+  - `loot` (`events`): the value of the drops and their number.
+  - `bosses` (`hiscores`): the boss kills the hiscores gained between readings in the range (an
+    account's first reading counts none), and every boss on the hiscores with its kill count, rank,
+    kills gained and the loot from it (`gp`, null without `events`). `read_at` is cut to the UTC day
+    without `activity` (D-50).
+  - `wealth` (`inventory`): wealth at the end minus the start (as `/wealth`), null without readings.
+  - `goals`: the owner's goals, level and XP goals with `stats`, kill-count goals with `hiscores`;
+    `per_day` and `eta_days` are over the range.
+
 ### GET /leaderboards/gains?skill=&period=day|week|month
 
 The guild's gains leaderboards over accounts whose `stats` the key reads: the top 10 per skill, only
@@ -547,6 +583,21 @@ The period's most valuable drops over accounts whose `events` the key reads (D-9
         "title":"Loot","line":"Alpha Main received Armadyl chestplate (35.2M) from Kree'arra"}},
       {"rank":2,"event":{"id":"…","type":"pk_loot","account":{"id":"jHSfP5UICcQt","name":"Bravo Alt"},"value_gp":1250000,…}}]},
      "meta":{"generated_at":"…"}}
+
+### GET /leaderboards/kills?boss=&period=week|month
+
+The guild page's boss leaderboards (D-110, D-139): boss kills gained over the last 7 days (`week`,
+default) or 30 (`month`), the top 10 per boss, over accounts whose `hiscores` the key reads and that
+aren't hidden from the guild. Kills are the rises between hiscore readings, so an account's first
+reading counts none, and there is no `day`: the hub reads the hiscores after a session.
+
+- Without `boss`: every boss anyone gained kills of, the most kills in total first.
+- With `boss` (case-insensitive, as the hiscores name it): that board, empty when nobody gained any.
+
+    GET /api/v1/leaderboards/kills?boss=zulrah
+
+    {"data":{"period":"week","from":"2026-10-26T19:41:00.000Z","to":"2026-11-02T19:41:00.000Z",
+     "leaderboards":[{"boss":"Zulrah","entries":[{"rank":1,"account":{"id":"oC8RsqiTuyak","name":"Alpha Main"},"kills":61}]}]},"meta":{…}}
 
 ### GET /accounts/{id}/hiscores
 
@@ -768,7 +819,7 @@ Other rules:
   - This replaces pairing every RuneLite client with Home Assistant.
 - **Discord bot:**
   - `/events?cursor=` for the drop feed (e.g. `types=loot,collection_log,pk_loot&min_value=1000000`);
-  - `/leaderboards/gains?period=day|week|month`;
+  - `/leaderboards/gains?period=day|week|month`, `/leaderboards/kills?period=week` (with `hiscores`);
   - `/accounts?online=true` for "who's online";
   - `/collection-log?item=` for "who has a Tumeken's shadow" (with `events`);
   - `/events?item=&from=` or `/events?npc=` for "when did X last get a drop from Zulrah".

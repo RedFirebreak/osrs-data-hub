@@ -7,23 +7,28 @@
  * A tool that can't answer throws ToolError (or the read model's ApiError): the server turns either
  * into a tool result with `isError`, whose text the model reads and can act on.
  */
-import { type Category } from '@hub/core';
+import { formatGpChange, gearTrips, type Category } from '@hub/core';
 import type { DbOrTx } from '@hub/db';
 import {
+  KILLS_LEADERBOARD_PERIODS,
   LEADERBOARD_PERIODS,
   GAINS_PERIODS,
+  PROGRESS_RANGES,
   apiAccountCategories,
   apiAccountCollectionLog,
   apiDay,
+  apiEquipmentHistory,
   apiEventsInRange,
   apiGains,
   apiGetAccount,
   apiGuildCollectionLog,
   apiHiscoresMulti,
+  apiKillsLeaderboard,
   apiLeaderboardGains,
   apiListAccounts,
   apiLocations,
   apiLootLeaderboard,
+  apiProgress,
   apiSessions,
   apiWealth,
   placeStays,
@@ -221,7 +226,7 @@ const getAccount = tool({
   name: 'get_account',
   title: 'Get an account',
   description:
-    'One account now: levels ("stats"), online and world ("presence", needs "activity"), worn gear ("equipment"), inventory ("inventory") and wealth (bank + inventory + gear, needs "inventory"). Only the sections asked for; default stats and presence. Levels only, unless detail is true. REST: GET /api/v1/accounts/{id} and /accounts/{id}/wealth.',
+    'One account now: levels ("stats"), online and world ("presence", needs "activity"), worn gear ("equipment"), inventory ("inventory") and wealth now (bank + inventory + gear, needs "inventory"; for how it changed over time use the wealth tool). Only the sections asked for; default stats and presence. Levels only, unless detail is true. REST: GET /api/v1/accounts/{id} and /accounts/{id}/wealth.',
   input: {
     account,
     sections: z.array(z.enum(ACCOUNT_SECTIONS)).min(1).max(5).optional(),
@@ -454,11 +459,20 @@ const leaderboard = tool({
   name: 'leaderboard',
   title: 'Leaderboard',
   description:
-    'The guild\'s leaderboards: kind=gains is XP gained per skill (Overall and every skill anyone trained, or one skill), kind=loot the most valuable drops. day = since midnight in your time zone, week/month = the last 7/30 days. Over the accounts whose "stats" (gains) or "events" (loot) the key reads. REST: GET /api/v1/leaderboards/gains and /leaderboards/loot.',
+    'The guild\'s leaderboards: kind=gains is XP gained per skill (Overall and every skill anyone trained, or one skill), kind=loot the most valuable drops, kind=kills boss kills gained per boss (from the hiscores; week or month only). day = since midnight in your time zone, week/month = the last 7/30 days. Over the accounts whose "stats" (gains), "events" (loot) or "hiscores" (kills) the key reads. REST: GET /api/v1/leaderboards/gains, /leaderboards/loot and /leaderboards/kills.',
   input: {
-    kind: z.enum(['gains', 'loot']),
+    kind: z.enum(['gains', 'loot', 'kills']),
     skill: z.string().min(1).max(40).optional().describe('gains only: one skill, e.g. "Slayer".'),
-    period: z.enum(LEADERBOARD_PERIODS).optional().describe('Default day.'),
+    boss: z
+      .string()
+      .min(1)
+      .max(64)
+      .optional()
+      .describe('kills only: one boss as the hiscores name it, e.g. "Zulrah".'),
+    period: z
+      .enum(LEADERBOARD_PERIODS)
+      .optional()
+      .describe('Default day (week for kills, which has no day).'),
     limit: z
       .number()
       .int()
@@ -468,6 +482,7 @@ const leaderboard = tool({
       .describe('Rows per board: default 10 (gains with every skill: 3).'),
   },
   async run(ctx, args) {
+    if (args.kind === 'kills') return killsBoard(ctx, args);
     const period = args.period ?? 'day';
     if (args.kind === 'loot') {
       const l = await apiLootLeaderboard(
@@ -888,6 +903,302 @@ const daySummary = tool({
   },
 });
 
+async function killsBoard(
+  ctx: ToolContext,
+  args: { boss?: string; period?: string; limit?: number },
+): Promise<ToolResult> {
+  const period = args.period ?? 'week';
+  if (!(KILLS_LEADERBOARD_PERIODS as readonly string[]).includes(period)) {
+    throw new ToolError(
+      'Boss kills come from the hiscores, read after each session, so kills has week or month, not day.',
+    );
+  }
+  const l = await apiKillsLeaderboard(
+    ctx.db,
+    ctx.principal,
+    {
+      period: period as (typeof KILLS_LEADERBOARD_PERIODS)[number],
+      ...(args.boss !== undefined ? { boss: args.boss } : {}),
+    },
+    ctx.now,
+  );
+  const rows = args.limit ?? (args.boss !== undefined ? 10 : 3);
+  const boards = l.leaderboards.slice(0, MCP_LIST_CAP).map((b) => ({
+    boss: b.boss,
+    entries: b.entries.slice(0, rows).map((e) => ({
+      rank: e.rank,
+      account: e.account.name,
+      kills: e.kills,
+    })),
+  }));
+  const first = boards[0];
+  const leader = first?.entries[0];
+  return result(
+    leader
+      ? `${first.boss} (${period}): ${leader.account} leads with ${plural(leader.kills, 'kill')}`
+      : `Nobody gained boss kills${args.boss !== undefined ? ` at ${args.boss}` : ''} (${period}) on the hiscores`,
+    {
+      kind: 'kills',
+      period,
+      from: l.from,
+      to: l.to,
+      boards,
+      truncated: l.leaderboards.length > MCP_LIST_CAP,
+    },
+    ctx.now,
+  );
+}
+
+/** At most MCP_LIST_CAP of `list`, spread evenly, always keeping the first and the last. */
+export function thinned<T>(list: readonly T[], cap = MCP_LIST_CAP): T[] {
+  if (list.length <= cap) return [...list];
+  const out: T[] = [];
+  for (let i = 0; i < cap; i++) out.push(list[Math.round((i * (list.length - 1)) / (cap - 1))]!);
+  return out;
+}
+
+const wealth = tool({
+  name: 'wealth',
+  title: 'Wealth over time',
+  description:
+    'How an account\'s wealth (bank + inventory + worn gear at Grand Exchange prices) went over time: the value now, at the start, the change, the highest and lowest day, and the value per UTC day. The bank counts from the first time the plugin read it (bank_gp null before). Default the last 30 days. Needs "inventory". REST: GET /api/v1/accounts/{id}/wealth.',
+  input: {
+    account,
+    from: when.optional().describe('Default 30 days before `to`.'),
+    to: when.optional(),
+  },
+  async run(ctx, args) {
+    const who = await resolveAccount(ctx.db, ctx.principal, args.account);
+    const w = await apiWealth(ctx.db, ctx.principal, who.id, range(args, ctx.now), ctx.now);
+    if (!w) throw notShared(who, 'wealth', 'inventory');
+    const first = w.days[0];
+    const last = w.days.at(-1);
+    if (!first || !last) {
+      return result(
+        `${who.name}: no wealth reading between ${day(w.from)} and ${day(w.to)} (the plugin sends one while logged in)`,
+        { account: who.name, from: w.from, to: w.to, days: [] },
+        ctx.now,
+      );
+    }
+    const change = last.lastValue - first.lastValue;
+    const high = w.days.reduce((a, b) => (b.maxValue > a.maxValue ? b : a));
+    const low = w.days.reduce((a, b) => (b.lastValue < a.lastValue ? b : a));
+    const days = thinned(w.days);
+    return result(
+      `${who.name} is worth ${gp(last.lastValue)} (${last.day}${last.bankValue !== null ? `, bank ${gp(last.bankValue)}` : ', bank not read yet'}): ${formatGpChange(change)} since ${first.day}`,
+      {
+        account: who.name,
+        from: w.from,
+        to: w.to,
+        now: {
+          day: last.day,
+          total_gp: last.lastValue,
+          total: gp(last.lastValue),
+          bank_gp: last.bankValue,
+          bank: gp(last.bankValue),
+          carried_gp: last.lastValue - (last.bankValue ?? 0),
+          carried: gp(last.lastValue - (last.bankValue ?? 0)),
+        },
+        start: { day: first.day, total_gp: first.lastValue, total: gp(first.lastValue) },
+        change_gp: change,
+        change: formatGpChange(change),
+        highest: { day: high.day, total_gp: high.maxValue, total: gp(high.maxValue) },
+        lowest: { day: low.day, total_gp: low.lastValue, total: gp(low.lastValue) },
+        days: days.map((d) => ({
+          day: d.day,
+          total_gp: d.lastValue,
+          total: gp(d.lastValue),
+          bank_gp: d.bankValue,
+        })),
+        ...(days.length < w.days.length ? { thinned_from: w.days.length } : {}),
+      },
+      ctx.now,
+    );
+  },
+});
+
+const progress = tool({
+  name: 'progress',
+  title: 'Progress over a range',
+  description:
+    'An account\'s Progress page for a range, in one call: playtime (sessions, time online, active time, active time per day and "where the time goes" per activity; needs "activity" and "stats"), XP gained per skill with XP/h ("stats"), loot value ("events"), boss kill counts and kills gained ("hiscores"), the change in wealth ("inventory"), and the owner\'s goals. Sections the key can\'t read are named in not_shared. range: today, 7d (default), 30d, 90d or 1y; or from/to dates in the key owner\'s time zone. REST: GET /api/v1/accounts/{id}/progress.',
+  input: {
+    account,
+    range: z.enum(PROGRESS_RANGES).optional().describe('Default 7d. Not with from/to.'),
+    from: when.optional().describe('A custom range instead of `range`, with `to`.'),
+    to: when.optional(),
+  },
+  async run(ctx, args) {
+    const who = await resolveAccount(ctx.db, ctx.principal, args.account);
+    const p = await apiProgress(
+      ctx.db,
+      ctx.principal,
+      who.id,
+      {
+        ...(args.range !== undefined ? { range: args.range } : {}),
+        ...(args.from !== undefined ? { from: args.from.trim() } : {}),
+        ...(args.to !== undefined ? { to: args.to.trim() } : {}),
+      },
+      ctx.now,
+    );
+    if (!p) {
+      throw new ToolError(
+        `This key can't read ${who.name}'s progress: it needs one of "activity", "stats", "events", "hiscores" or "inventory", and the owner has to share it with you. hub://me lists what the key may read.`,
+      );
+    }
+    const hidden = [
+      ...(p.playtime ? [] : ['playtime (needs "activity" and "stats")']),
+      ...(p.xp ? [] : ['xp (needs "stats")']),
+      ...(p.loot ? [] : ['loot (needs "events")']),
+      ...(p.bosses ? [] : ['bosses (needs "hiscores")']),
+      ...(p.wealth ? [] : ['wealth (needs "inventory")']),
+    ];
+    const parts: string[] = [];
+    if (p.playtime) {
+      parts.push(
+        `${minutes(p.playtime.onlineMs)} online (${minutes(p.playtime.activeMs)} active) over ${plural(p.playtime.sessions, 'session')}`,
+      );
+    }
+    if (p.xp) parts.push(`${compact(p.xp.gained)} XP`);
+    if (p.loot) parts.push(`${gp(p.loot.gp)} in drops`);
+    if (p.bosses) parts.push(plural(p.bosses.kills, 'boss kill'));
+    if (p.wealth && p.wealth.change !== null)
+      parts.push(`wealth ${formatGpChange(p.wealth.change)}`);
+    const activity = (a: { name: string; ms: number }) => ({
+      name: a.name,
+      minutes: Math.round(a.ms / 60_000),
+    });
+    return result(
+      `${who.name}, ${day(p.from)} to ${day(p.to)}: ${parts.length > 0 ? parts.join(', ') : 'nothing recorded'}`,
+      {
+        account: who.name,
+        range: p.range,
+        from: p.from,
+        to: p.to,
+        timezone: p.timezone,
+        ...(p.playtime && {
+          playtime: {
+            sessions: p.playtime.sessions,
+            online_minutes: Math.round(p.playtime.onlineMs / 60_000),
+            active_minutes: Math.round(p.playtime.activeMs / 60_000),
+            online: minutes(p.playtime.onlineMs),
+            active: minutes(p.playtime.activeMs),
+            longest_session_minutes:
+              p.playtime.longestMs === null ? null : Math.round(p.playtime.longestMs / 60_000),
+            where_the_time_goes: p.playtime.activities.map(activity),
+            days: capped(
+              [...p.playtime.days].reverse().map((d) => ({
+                date: d.date,
+                active_minutes: Math.round(d.activeMs / 60_000),
+                top: d.activities.slice(0, 3).map(activity),
+              })),
+            ).items,
+          },
+        }),
+        ...(p.xp && {
+          xp: {
+            gained: p.xp.gained,
+            total: compact(p.xp.gained),
+            skills: p.xp.skills
+              .filter((s) => s.gained > 0)
+              .map((s) => ({
+                skill: s.skill,
+                level: s.level,
+                gained: s.gained,
+                ...(s.xpPerHour !== null ? { xp_per_hour: s.xpPerHour } : {}),
+              })),
+          },
+        }),
+        ...(p.loot && { loot: { value_gp: p.loot.gp, value: gp(p.loot.gp), drops: p.loot.drops } }),
+        ...(p.bosses && {
+          bosses: {
+            kills_gained: p.bosses.kills,
+            read_at: p.bosses.readAt,
+            list: capped(p.bosses.list).items.map((b) => ({
+              boss: b.boss,
+              kill_count: b.killCount,
+              gained: b.gained,
+              ...(b.gp !== null && b.gp > 0 ? { loot: gp(b.gp) } : {}),
+            })),
+          },
+        }),
+        ...(p.wealth && {
+          wealth: {
+            change_gp: p.wealth.change,
+            change: p.wealth.change === null ? null : formatGpChange(p.wealth.change),
+          },
+        }),
+        ...(p.goals.length > 0 && {
+          goals: p.goals.map((g) => ({
+            goal: `${g.kind === 'kc' ? `${g.value} ${g.target} kills` : g.kind === 'level' ? `${g.target} level ${g.value}` : `${compact(g.value)} ${g.target} XP`}`,
+            progress: g.progress === null ? null : `${Math.round(g.progress * 100)}%`,
+            ...(g.etaDays !== null ? { days_to_go: Math.round(g.etaDays) } : {}),
+          })),
+        }),
+        ...(hidden.length > 0 ? { not_shared: hidden } : {}),
+      },
+      ctx.now,
+    );
+  },
+});
+
+const gearHistory = tool({
+  name: 'gear_history',
+  title: 'Gear by trip',
+  description:
+    'What an account wore, as trips (the hub\'s gear history): changes less than 20 minutes apart that share at least two items are one trip, with its start, end, number of swaps and setups, and the kit per slot, the longest worn first. Newest first. Default the last 7 days. Needs "equipment". REST: GET /api/v1/accounts/{id}/equipment-history (the raw changes).',
+  input: {
+    account,
+    from: when.optional().describe('Default 7 days before `to`.'),
+    to: when.optional(),
+  },
+  async run(ctx, args) {
+    const who = await resolveAccount(ctx.db, ctx.principal, args.account);
+    const r = range(args, ctx.now);
+    const h = await apiEquipmentHistory(
+      ctx.db,
+      ctx.principal,
+      who.id,
+      { from: r.from ?? new Date((r.to ?? ctx.now).getTime() - 7 * DAY_MS), ...r },
+      ctx.now,
+    );
+    if (!h) throw notShared(who, 'gear', 'equipment');
+    const trips = gearTrips(
+      h.changes.map((c) => ({
+        changedAt: c.changedAt,
+        items: c.items.map((i) => ({
+          id: i.id,
+          gePrice: i.gePrice,
+          quantity: i.quantity,
+          ...(i.name !== null ? { name: i.name } : {}),
+          ...(i.equipmentSlot !== null ? { equipmentSlot: i.equipmentSlot } : {}),
+        })),
+      })),
+      new Date(Math.min(Date.parse(h.to), ctx.now.getTime())),
+    );
+    const list = capped(trips);
+    return result(
+      `${who.name}: ${plural(trips.length, 'trip')} with gear changes between ${day(h.from)} and ${day(h.to)}`,
+      {
+        account: who.name,
+        from: h.from,
+        to: h.to,
+        trips: list.items.map((t) => ({
+          start: t.startedAt,
+          end: t.endedAt,
+          swaps: t.swaps,
+          setups: t.setups,
+          kit: Object.fromEntries(
+            t.kit.map((k) => [k.slot.toLowerCase(), k.items.map((i) => i.name ?? `item ${i.id}`)]),
+          ),
+        })),
+        truncated: list.truncated,
+      },
+      ctx.now,
+    );
+  },
+});
+
 /** Every tool, in the order tools/list gives them. */
 export const TOOLS: readonly ToolDef[] = [
   listAccounts,
@@ -902,4 +1213,7 @@ export const TOOLS: readonly ToolDef[] = [
   sessions,
   locations,
   daySummary,
+  wealth,
+  progress,
+  gearHistory,
 ];

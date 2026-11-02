@@ -32,6 +32,7 @@ import {
   type ApiGains,
   type ApiGuildCollectionLog,
   type ApiHiscores,
+  type ApiKillsLeaderboards,
   type ApiLeaderboards,
   type ApiLocations,
   type ApiLocationsMulti,
@@ -39,6 +40,7 @@ import {
   type ApiMe,
   type ApiMember,
   type ApiOwner,
+  type ApiProgress,
   type ApiSessions,
   type ApiSnapshotAccount,
   type ApiWealth,
@@ -57,6 +59,7 @@ import type {
   WireHiscores,
   WireItem,
   WireItems,
+  WireKillsLeaderboard,
   WireLeaderboards,
   WireLocations,
   WireLocationsMulti,
@@ -64,6 +67,7 @@ import type {
   WireMe,
   WireMember,
   WireOwner,
+  WireProgress,
   WireSessions,
   WireDay,
   WireSkills,
@@ -376,6 +380,85 @@ export function wireLootLeaderboard(l: ApiLootLeaderboard): WireLootLeaderboard 
     from: l.from,
     to: l.to,
     entries: l.entries.map((e) => ({ rank: e.rank, event: wireEvent(e.event) })),
+  };
+}
+
+export function wireKillsLeaderboard(l: ApiKillsLeaderboards): WireKillsLeaderboard {
+  return {
+    period: l.period,
+    from: l.from,
+    to: l.to,
+    leaderboards: l.leaderboards.map((board) => ({
+      boss: board.boss,
+      entries: board.entries.map((e) => ({
+        rank: e.rank,
+        account: { id: e.account.id, name: e.account.name },
+        kills: e.kills,
+      })),
+    })),
+  };
+}
+
+export function wireProgress(p: ApiProgress): WireProgress {
+  const activities = (list: readonly { name: string; ms: number }[]) =>
+    list.map((a) => ({ name: a.name, ms: a.ms }));
+  return {
+    account: { id: p.account.id, name: p.account.name },
+    timezone: p.timezone,
+    range: p.range,
+    from: p.from,
+    to: p.to,
+    ...(p.playtime && {
+      playtime: {
+        sessions: p.playtime.sessions,
+        online_ms: p.playtime.onlineMs,
+        active_ms: p.playtime.activeMs,
+        longest_ms: p.playtime.longestMs,
+        activities: activities(p.playtime.activities),
+        days: p.playtime.days.map((d) => ({
+          date: d.date,
+          active_ms: d.activeMs,
+          activities: activities(d.activities),
+        })),
+      },
+    }),
+    ...(p.xp && {
+      xp: {
+        gained: p.xp.gained,
+        skills: p.xp.skills.map((s) => ({
+          skill: s.skill,
+          level: s.level,
+          xp: s.xp,
+          gained: s.gained,
+          xp_per_hour: s.xpPerHour,
+        })),
+      },
+    }),
+    ...(p.loot && { loot: { gp: p.loot.gp, drops: p.loot.drops } }),
+    ...(p.bosses && {
+      bosses: {
+        kills: p.bosses.kills,
+        read_at: p.bosses.readAt,
+        list: p.bosses.list.map((b) => ({
+          boss: b.boss,
+          kill_count: b.killCount,
+          gained: b.gained,
+          rank: b.rank,
+          gp: b.gp,
+        })),
+      },
+    }),
+    ...(p.wealth && { wealth: { change: p.wealth.change } }),
+    goals: p.goals.map((g) => ({
+      kind: g.kind,
+      target: g.target,
+      value: g.value,
+      current: g.current,
+      progress: g.progress,
+      remaining: g.remaining,
+      per_day: g.perDay,
+      eta_days: g.etaDays,
+    })),
   };
 }
 

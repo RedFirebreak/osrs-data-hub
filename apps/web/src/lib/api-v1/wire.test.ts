@@ -3,10 +3,24 @@
  * and slot names, an event's `data` with its camelCase plugin keys), and omitted vs null kept apart.
  * Each result is parsed with its response schema, so the mappers and the documentation agree.
  */
-import type { ApiAccountDetail, ApiEvent, ApiSnapshotAccount } from '@hub/server';
+import type { ApiAccountDetail, ApiEvent, ApiProgress, ApiSnapshotAccount } from '@hub/server';
 import { describe, expect, it } from 'vitest';
-import { AccountDetail, Event, Item, MemberResponse, SnapshotAccount } from './schemas';
-import { wireAccountDetail, wireEvent, wireItem, wireMember, wireSnapshotAccount } from './wire';
+import {
+  AccountDetail,
+  Event,
+  Item,
+  MemberResponse,
+  ProgressResponse,
+  SnapshotAccount,
+} from './schemas';
+import {
+  wireAccountDetail,
+  wireEvent,
+  wireItem,
+  wireMember,
+  wireProgress,
+  wireSnapshotAccount,
+} from './wire';
 
 const AT = '2026-09-29T10:00:00.000Z';
 
@@ -263,5 +277,74 @@ describe('wireMember', () => {
       is_admin: false,
       name: null,
     });
+  });
+});
+
+describe('wireProgress', () => {
+  const data = ProgressResponse.shape.data;
+  const head: ApiProgress = {
+    account: { id: 'acc1', name: 'Zezima' },
+    timezone: 'UTC',
+    range: '7d',
+    from: AT,
+    to: AT,
+    goals: [],
+  };
+
+  it('renames the hub’s keys, keeps activity and skill names, and leaves out unread sections', () => {
+    const full = wireProgress({
+      ...head,
+      playtime: {
+        sessions: 1,
+        onlineMs: 600_000,
+        activeMs: 300_000,
+        longestMs: 600_000,
+        activities: [{ name: 'Slayer', ms: 300_000 }],
+        days: [
+          { date: '2026-09-29', activeMs: 300_000, activities: [{ name: 'Slayer', ms: 300_000 }] },
+        ],
+      },
+      xp: {
+        gained: 10,
+        skills: [{ skill: 'Slayer', level: 90, xp: 5, gained: 10, xpPerHour: null }],
+      },
+      loot: { gp: 1, drops: 1 },
+      bosses: {
+        kills: 2,
+        readAt: AT,
+        list: [{ boss: 'Zulrah', killCount: 9, gained: 2, rank: null, gp: null }],
+      },
+      wealth: { change: -5 },
+      goals: [
+        {
+          kind: 'kc',
+          target: 'Zulrah',
+          value: 10,
+          current: 9,
+          progress: 0.9,
+          remaining: 1,
+          perDay: 0.3,
+          etaDays: 4,
+        },
+      ],
+    });
+    expect(data.parse(full)).toEqual(full);
+    expect(full.playtime).toMatchObject({
+      online_ms: 600_000,
+      active_ms: 300_000,
+      longest_ms: 600_000,
+    });
+    expect(full.bosses?.list[0]).toEqual({
+      boss: 'Zulrah',
+      kill_count: 9,
+      gained: 2,
+      rank: null,
+      gp: null,
+    });
+    expect(full.goals[0]).toMatchObject({ per_day: 0.3, eta_days: 4 });
+
+    const bare = wireProgress(head);
+    expect(data.parse(bare)).toEqual(bare);
+    expect(Object.keys(bare)).toEqual(['account', 'timezone', 'range', 'from', 'to', 'goals']);
   });
 });

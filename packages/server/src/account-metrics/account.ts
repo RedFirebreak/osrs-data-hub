@@ -49,7 +49,11 @@ import {
 } from '@hub/core';
 import type { DbOrTx } from '@hub/db';
 import { readSessionWealth, readSessions, type PlaySession } from '../accounts/history';
-import { loadVisibleAccount, type AccountWithAccess } from '../accounts/load';
+import {
+  loadVisibleAccount,
+  type AccessRestriction,
+  type AccountWithAccess,
+} from '../accounts/load';
 import { getGains, loadCurrentSkills, seriesResolution } from '../accounts/xp';
 import { loadHiscoresViews, type HiscoresView } from '../hiscores/read';
 import { readGoals, toGoalViews, type GoalView } from './goals';
@@ -199,15 +203,16 @@ export { MAX_SESSIONS } from '../accounts/history';
  * The Metrics view of an account for `viewer`, or null when the account isn't visible (the page
  * answers 404). `now` is the render time, `timezone` the viewer's (Settings). `fineSteps` draws the
  * comparison by the hour up to eight days (comparisonStepMs), for a page that shows it as one line.
+ * `restrict` narrows the viewer's access to an API key's (GET /accounts/{id}/progress, D-139).
  */
 export async function getAccountMetrics(
   db: DbOrTx,
   viewer: Principal,
   publicId: string,
   query: MetricsQuery,
-  opts: { now: Date; timezone: string; fineSteps?: boolean },
+  opts: { now: Date; timezone: string; fineSteps?: boolean; restrict?: AccessRestriction },
 ): Promise<AccountMetrics | null> {
-  const entry = await loadVisibleAccount(db, viewer, publicId);
+  const entry = await loadVisibleAccount(db, viewer, publicId, opts.restrict);
   if (!entry) return null;
   const has = (c: Category) => entry.access.categories.has(c);
   const access: MetricsAccess = {

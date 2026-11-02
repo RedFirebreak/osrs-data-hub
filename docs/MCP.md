@@ -3,7 +3,7 @@
 The hub answers questions from an AI assistant (Claude, Claude Code, Cursor, the Claude API) through
 the [Model Context Protocol](https://modelcontextprotocol.io). "What did Stefan do all day?", "who
 has a Tumeken's shadow?" and "biggest drops this week?" each become a tool call or two against the
-same read-only data API v1 serves ([API.md](API.md)). Design: D-128 … D-135 in
+same read-only data API v1 serves ([API.md](API.md)). Design: D-128 … D-139 in
 [ARCHITECTURE.md](ARCHITECTURE.md).
 
 - **Endpoint:** `POST https://<your hub>/api/v1/mcp`, Streamable HTTP, stateless, JSON responses.
@@ -109,18 +109,27 @@ them (D-134). Dates are ISO: `2026-11-01` is that whole UTC day, `2026-11-01T18:
 | `get_gains` | `account`, `period?` (day, week, month, year) or `from`/`to` | XP gained per skill, most first, and the total | `stats` | `GET /accounts/{id}/gains` |
 | `recent_events` | `types?`, `accounts?`, `min_value?`, `from?`, `to?`, `limit?` (≤ 50), `cursor?` | events newest first: type, account, time, value, one line | `events` | `GET /events?from=&to=` |
 | `search_events` | `item?`, `npc?` (one of them), and the inputs of `recent_events` | the same, for drops with that item or from that NPC, deaths to it, superiors | `events` | `GET /events?item=&npc=` |
-| `leaderboard` | `kind` (`gains` or `loot`), `skill?`, `period?` (day, week, month), `limit?` | ranks with names and XP, or the most valuable drops with their line | `stats` / `events` | `GET /leaderboards/gains`, `/leaderboards/loot` |
+| `leaderboard` | `kind` (`gains`, `loot` or `kills`), `skill?`, `boss?`, `period?` (day, week, month; kills week or month), `limit?` | ranks with names and XP, the most valuable drops with their line, or boss kills gained per boss | `stats` / `events` / `hiscores` | `GET /leaderboards/gains`, `/leaderboards/loot`, `/leaderboards/kills` |
 | `get_hiscores` | `accounts` (≤ 10, 50 with a service key), `fields?` (`bosses`, `clues`, `minigames`, `skills`) | kill counts most first, clues, minigames, levels and ranks, and when they were read | `hiscores` | `GET /hiscores?accounts=` |
 | `collection_log` | `account`, `source?`, `since?`, `limit?` | the total from the hiscores, the slots the hub saw as `item (kc N) from source on day`, counts per source | `events` or `hiscores` | `GET /accounts/{id}/collection-log` |
 | `who_has` | `item`, `accounts?` | per matching item its holders with when and the kill count, and `searchable`: how many accounts were searched | `events` | `GET /collection-log?item=` |
 | `sessions` | `account`, `from?`, `to?` | sessions newest first: start, end or `ongoing`, minutes, worlds; the total | `activity` | `GET /accounts/{id}/sessions` |
 | `locations` | `account`, `from?`, `to?`, `summarise?` (default true) | stays per place (minutes, how the player arrived), the places with most time, teleports; or the last 200 points with their place | `location_history` | `GET /accounts/{id}/locations` |
+| `wealth` | `account`, `from?`, `to?` (default the last 30 days) | wealth now (total, bank, carried), at the start, the change, the highest and lowest day, and the total per UTC day (thinned to 50) | `inventory` | `GET /accounts/{id}/wealth` |
+| `progress` | `account`, `range?` (`today`, `7d` default, `30d`, `90d`, `1y`) or `from`/`to` | the Progress page: sessions, time online and active, where the time went per activity and per day; XP per skill with XP/h; loot; boss kill counts and kills gained; the change in wealth; goals; `not_shared` names the parts the key can't read | any of `activity` + `stats` (playtime), `stats`, `events`, `hiscores`, `inventory` | `GET /accounts/{id}/progress` |
+| `gear_history` | `account`, `from?`, `to?` (default the last 7 days) | gear as trips, newest first: start, end, swaps, setups and the kit per slot | `equipment` | `GET /accounts/{id}/equipment-history` |
 | `day_summary` | `account`, `date?` (default today) or `from`/`to` (≤ 7 dates) | one call for "what did X do all day": minutes played and the sessions, XP per skill, events per type with the most valuable and the new log slots, and the places with most time; `not_shared` names the parts the key can't read | any of `activity`, `stats`, `events`, `location_history` | `GET /accounts/{id}/day` |
 
 Places are named as the live map names them ("Lumbridge", "Grand Exchange", "Wilderness (level
 20)"; the list is `GET /regions.json`, D-138); an unnamed one is `Region <id>`, the game's map region
 of 64 × 64 tiles. `day_summary` takes calendar dates in the time zone of the key's owner (UTC for a
-service key), unlike the other tools' UTC dates, so "today" is the owner's today.
+service key), unlike the other tools' UTC dates, so "today" is the owner's today; so does
+`progress` for its days and its `from`/`to` dates.
+
+Wealth is bank + inventory + worn gear at Grand Exchange prices: the bank as the plugin last read it
+(it counts from the first reading, never estimated before), the rest at each snapshot. Kills come
+from the hiscores, read after each session: a kill shows up once the hub read the hiscores again, and
+an account's first reading counts none.
 
 ## Resources
 
@@ -134,6 +143,7 @@ service key), unlike the other tools' UTC dates, so "today" is the owner's today
 
 - `guild_today`: who is online, the day's top gains, the big drops and new log slots.
 - `player_day` (`account`, `date?`): a light write-up of one account's day, from one `day_summary` call.
+- `player_week` (`account`): a recap of one account's last seven days, from one `progress` call.
 - `who_has` (`item`): the lookup, phrased as an answer.
 
 ## Errors
