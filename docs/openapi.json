@@ -718,6 +718,26 @@
             "description": "Only events with `value_gp` ≥ this (events without a value are left out)."
           },
           {
+            "name": "item",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Only `loot` and `pk_loot` events with an item whose name contains this, case-insensitive: any item of the drop, not only `item_id`. A hub from before this parameter ignores it.",
+            "example": "Tumeken"
+          },
+          {
+            "name": "npc",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Only `loot` and `pk_loot` (the drop’s source), `death` (the killer) and `superior_spawn` events whose NPC name contains this, case-insensitive.",
+            "example": "Zulrah"
+          },
+          {
             "name": "limit",
             "in": "query",
             "required": false,

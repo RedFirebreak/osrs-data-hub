@@ -10,7 +10,7 @@ the hub. It is **pull-only**: poll `/snapshot` and the `/events` cursor feed; th
   website renders it as its API reference. A test fails when it is stale; refresh it with
   `pnpm openapi:update`.
 
-Design decisions: D-69 … D-77, D-88 … D-94, D-98, D-100 and D-131 in [ARCHITECTURE.md](ARCHITECTURE.md).
+Design decisions: D-69 … D-77, D-88 … D-94, D-98, D-100, D-131 and D-136 in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Authentication
 
@@ -335,7 +335,7 @@ Give either `period` or `from` (optionally with `to`), not both.
     {"data":{"account":{"id":"oC8RsqiTuyak","name":"Alpha Main"},"period":"week","from":"2026-09-22T14:14:12.421Z",
      "to":"2026-09-29T14:14:12.421Z","gains":[{"skill":"Overall","xp":5000},{"skill":"Attack","xp":5000},…]},"meta":{…}}
 
-### GET /events?cursor=&types=&accounts=&min_value=&limit=&from=&to=
+### GET /events?cursor=&types=&accounts=&min_value=&item=&npc=&limit=&from=&to=
 
 The cursor feed of events on accounts whose `events` category the key can read (see
 [The events cursor](#the-events-cursor)). With `from` and/or `to` it reads a time range instead (see
@@ -347,9 +347,16 @@ Parameters:
   `achievement_diary`, `combat_task`, or an unknown plugin type as sent;
 - `accounts`: up to 100 ids, each readable, else 404;
 - `min_value`: `value_gp` ≥ this;
+- `item` (2–64 characters, case-insensitive, part of a name): only `loot` and `pk_loot` events with an
+  item whose name contains it. Any item of the drop counts, not only the one in `item_id` (D-136);
+- `npc` (the same rules): only events whose NPC name contains it: the source of `loot` and `pk_loot`,
+  the killer of a `death`, the monster of a `superior_spawn`;
 - `limit`: 1–500, default 100;
 - `from`, `to`: read a time range instead of the feed; `to` defaults to now, `from` to 30 days before
   `to`.
+
+`item` and `npc` work in both modes and combine with the other filters. A hub from before them ignores
+them (unknown parameters are ignored), so a client that needs them should check `/openapi.json`.
 
 `data` is the page of events, oldest first; `meta.next_cursor` is the cursor for the next call. Each
 event's `data` is the plugin's event object, passed through unchanged (its shape depends on `type`).
@@ -717,7 +724,8 @@ Other rules:
   - `/events?cursor=` for the drop feed (e.g. `types=loot,collection_log,pk_loot&min_value=1000000`);
   - `/leaderboards/gains?period=day|week|month`;
   - `/accounts?online=true` for "who's online";
-  - `/collection-log?item=` for "who has a Tumeken's shadow" (with `events`).
+  - `/collection-log?item=` for "who has a Tumeken's shadow" (with `events`);
+  - `/events?item=&from=` or `/events?npc=` for "when did X last get a drop from Zulrah".
   - Suggested key: `events`, `stats`, `activity` (+ `hiscores` for kill counts and the log's count).
 - **Live map** ([ha-osrs-map](https://github.com/RedFirebreak/ha-osrs-map), polling the hub
   server-side with a **service key**, D-88):

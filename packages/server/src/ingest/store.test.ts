@@ -8,6 +8,7 @@ import {
   carriedValue,
   floorTo,
   isOnline,
+  lootItemRows,
   normalizeEvents,
   parsePayload,
   sessionWealthChange,
@@ -24,6 +25,7 @@ import {
   events,
   latestState,
   locationSamples,
+  lootItems,
   osrsAccounts,
   playSessions,
   rawPayloads,
@@ -564,6 +566,40 @@ describe('events', () => {
       { type: 'achievement_diary', tier: 'easy' },
     ]);
     expect(await counterValue(h.metrics.ingestEvents, { type: 'other' })).toBeGreaterThan(0);
+  });
+
+  it('indexes every item of a loot and PK loot drop once, a resend adding none (D-136)', async () => {
+    const device = await h.seedDevice();
+    const hash = newHash();
+    const body = wire('event-loot', { hash, freshEventIds: true });
+    expect((await h.send(device, body)).status).toBe(200);
+    expect((await h.send(device, body)).status).toBe(200);
+    const pk = wire('event-pkloot', { hash, freshEventIds: true });
+    expect((await h.send(device, pk)).status).toBe(200);
+    const { id } = await account(hash);
+    const [loot, pkLoot] = await eventRows(id);
+    const rows = await t.db
+      .select()
+      .from(lootItems)
+      .where(eq(lootItems.accountId, id))
+      .orderBy(asc(lootItems.eventSeq), asc(lootItems.idx));
+    expect(rows).toEqual([
+      { eventSeq: loot!.seq, idx: 0, accountId: id, itemId: 532, name: 'big bones', quantity: 1 },
+      {
+        eventSeq: loot!.seq,
+        idx: 1,
+        accountId: id,
+        itemId: 11828,
+        name: 'armadyl chestplate',
+        quantity: 1,
+      },
+      ...lootItemRows('pk_loot', pkLoot!.data).map((r) => ({
+        eventSeq: pkLoot!.seq,
+        accountId: id,
+        ...r,
+      })),
+    ]);
+    expect(rows.length).toBe(6);
   });
 
   it('strips NUL from stored event data (DB-1)', async () => {

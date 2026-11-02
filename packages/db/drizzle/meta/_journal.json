@@ -134,6 +134,13 @@
       "when": 1792944467146,
       "tag": "0018_activity_marks",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1793646242527,
+      "tag": "0019_loot_items",
+      "breakpoints": true
     }
   ]
 }

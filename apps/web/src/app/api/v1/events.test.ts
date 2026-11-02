@@ -144,6 +144,22 @@ describe('GET /api/v1/events', () => {
     expect(main.data.map((e) => e.id)).toEqual([loot]);
   });
 
+  it('searches by any item of a drop and by NPC, in the feed and in a range (D-136)', async () => {
+    // event-loot: Big bones and an Armadyl chestplate from Kree'arra; item_id is the chestplate.
+    const range = `&from=${encodeURIComponent(new Date(Date.now() - 3_600_000).toISOString())}`;
+    for (const extra of ['', range]) {
+      expect((await page(ownerKey, `?item=big%20BONES${extra}`)).data.map((e) => e.id)).toEqual([
+        loot,
+      ]);
+      expect((await page(ownerKey, `?npc=kree${extra}`)).data.map((e) => e.id)).toEqual([loot]);
+      expect((await page(ownerKey, `?item=bones&npc=zulrah${extra}`)).data).toEqual([]);
+    }
+    for (const q of ['?item=a', `?npc=${'x'.repeat(65)}`]) {
+      const res = await GET(v1Request(ctx, `/events${q}`, { key: ownerKey.key }));
+      expect(res.status, q).toBe(400);
+    }
+  });
+
   it('serves guild members the events shared with them, and nothing without `events`', async () => {
     expect((await page(memberKey, '?types=loot')).data.map((e) => e.id)).toEqual([loot]);
     expect((await page(statsKey)).data).toEqual([]);

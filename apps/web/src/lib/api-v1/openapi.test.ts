@@ -103,6 +103,8 @@ describe('the OpenAPI document', () => {
       'types',
       'accounts',
       'min_value',
+      'item',
+      'npc',
       'limit',
       'from',
       'to',
