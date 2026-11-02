@@ -10,7 +10,7 @@ the hub. It is **pull-only**: poll `/snapshot` and the `/events` cursor feed; th
   website renders it as its API reference. A test fails when it is stale; refresh it with
   `pnpm openapi:update`.
 
-Design decisions: D-69 … D-77, D-88 … D-94, D-98 and D-100 in [ARCHITECTURE.md](ARCHITECTURE.md).
+Design decisions: D-69 … D-77, D-88 … D-94, D-98, D-100 and D-131 in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Authentication
 
@@ -550,6 +550,65 @@ visible account whose `hiscores` the key reads, by name.
     {"data":[{"account":{…},"status":"ok","fetched_at":"…","mode":"regular","skills":[…],"activities":[…]},…],
      "meta":{"generated_at":"…","count":2}}
 
+### GET /accounts/{id}/collection-log?source=&since=&limit=
+
+The account's collection log, as its collection log page shows it (D-118, D-131): the count from the
+official hiscores (`hiscores`) and the slots the hub saw logged (`events`). The key needs one of the
+two on the account, else 404; the part it can't read is `null`.
+
+    GET /api/v1/accounts/oC8RsqiTuyak/collection-log?limit=2
+
+    {"data":{"account":{"id":"oC8RsqiTuyak","name":"Alpha Main"},
+      "total":{"logged":612,"rank":4321,"mode_rank":null,"mode":"regular","fetched_at":"2026-10-24T10:17:00.000Z","gained_30d":3},
+      "slots":[{"item":"Tanzanite fang","item_id":12922,"kill_count":212,"value_gp":10221949,
+                "logged_at":"2026-10-21T18:00:03.000Z","source":"Zulrah"},
+               {"item":"Pet snakeling","item_id":12921,"kill_count":null,"value_gp":0,
+                "logged_at":"2026-10-20T09:00:00.000Z","source":null}],
+      "groups":[{"source":"Zulrah","count":4},{"source":"Vorkath","count":1},{"source":null,"count":2}]},
+     "meta":{"generated_at":"…","count":2,"truncated":true}}
+
+- `total.logged`: "Collections Logged" on the hiscores, the whole log's count; `null` when the
+  hiscores don't list the account for it. `gained_30d` is its rise over 30 days (never counting a
+  first reading). `fetched_at` is cut to the UTC day without `activity`, as on `/hiscores` (D-50).
+- `slots`: only what the hub saw: slots logged since the account was paired, never on a special world,
+  each item once (at the first time). Newest first. `kill_count` is what the plugin read from the chat;
+  `source` is the loot source of the drop that came within 10 seconds of it, `null` without one (pets,
+  shop rewards). At most the newest 2,500 are read.
+- `source` keeps only slots from that source (case-insensitive); `since` only slots logged at or after
+  it; `limit` (1–500, default 100) cuts `slots`, and `meta.truncated` says it did.
+- `groups` counts every slot that matched the filters, not only those listed: the most first, `null`
+  last.
+
+### GET /collection-log?item=&accounts=&limit=
+
+The guild's collection log page (D-118, D-131) over every account whose `events` or `hiscores` the
+key reads and that isn't hidden from the guild (D-104). A user key sees what its creator's guild log
+page shows, narrowed to the key; a service key the guild audience.
+
+    GET /api/v1/collection-log?item=tumeken
+
+    {"data":{"board":[{"account":{"id":"oC8RsqiTuyak","name":"Alpha Main"},"logged":612,"gained_30d":3,"seen":7,
+                       "latest":{"item":"Tanzanite fang","item_id":12922,"logged_at":"2026-10-21T18:00:03.000Z"}},…],
+      "recent":[{"account":{"id":"oC8RsqiTuyak","name":"Alpha Main"},"item":"Tanzanite fang","item_id":12922,
+                 "kill_count":212,"value_gp":10221949,"logged_at":"2026-10-21T18:00:03.000Z","source":"Zulrah"},…],
+      "items":[{"item":"Tumeken's shadow (uncharged)","item_id":27277,
+                "holders":[{"account":{"id":"jHSfP5UICcQt","name":"Bravo Alt"},"logged_at":"2026-10-12T20:41:09.000Z","kill_count":57}]}]},
+     "meta":{"generated_at":"…","searchable":23,"truncated":false}}
+
+- `board`: most logged first (the hiscores' count, then the slots seen); `logged` and `gained_30d` need
+  `hiscores`, `seen` and `latest` need `events` (`null` otherwise). An account with neither a hiscores
+  count nor a slot seen is left out. `limit` (1–500, default 100) cuts it, and `meta.truncated` says
+  so.
+- `recent`: the 12 newest slots across these accounts.
+- `item` ("who has X", 2–64 characters, case-insensitive, part of the name): `items` lists every item
+  whose name contains it that someone logged, the most holders first, at most 30; holders first
+  logged first. Without `item`, `items` is `null`. Only slots the hub saw count: someone who got the
+  item before pairing isn't a holder.
+- `meta.searchable`: how many accounts the slots and the lookup were read from (those whose `events`
+  the key reads), so an answer can say "none of the 23 accounts that share their log".
+- `accounts`: only these ids (at most 10 with a user key, 50 with a service key, D-92), each one the
+  board could list, else 404.
+
 ### GET /members/{discord_id}
 
 **Service keys only** (D-100). Whether one Discord account is a member of the hub, and an admin. It is
@@ -657,8 +716,9 @@ Other rules:
 - **Discord bot:**
   - `/events?cursor=` for the drop feed (e.g. `types=loot,collection_log,pk_loot&min_value=1000000`);
   - `/leaderboards/gains?period=day|week|month`;
-  - `/accounts?online=true` for "who's online".
-  - Suggested key: `events`, `stats`, `activity`.
+  - `/accounts?online=true` for "who's online";
+  - `/collection-log?item=` for "who has a Tumeken's shadow" (with `events`).
+  - Suggested key: `events`, `stats`, `activity` (+ `hiscores` for kill counts and the log's count).
 - **Live map** ([ha-osrs-map](https://github.com/RedFirebreak/ha-osrs-map), polling the hub
   server-side with a **service key**, D-88):
   - poll `/snapshot?since=` (1/s at most; every 2–10 s is plenty) with a key holding `location_live` and

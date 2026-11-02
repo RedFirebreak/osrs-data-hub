@@ -21,10 +21,18 @@ import {
 } from '@hub/core';
 import { API_KEY_KINDS, SESSION_END_REASONS } from '@hub/db';
 import {
+  COLLECTION_LOG_DEFAULT_LIMIT,
+  COLLECTION_LOG_ITEM_MAX_LENGTH,
+  COLLECTION_LOG_ITEM_MIN_LENGTH,
+  COLLECTION_LOG_LOOKUP_ITEMS,
+  COLLECTION_LOG_MAX_LIMIT,
+  COLLECTION_LOG_SOURCE_MAX_LENGTH,
   DISCORD_ID_PATTERN,
   EVENTS_DEFAULT_LIMIT,
   EVENTS_MAX_LIMIT,
   GAINS_PERIODS,
+  GUILD_COLLECTION_LOG_DEFAULT_LIMIT,
+  GUILD_COLLECTION_LOG_MAX_LIMIT,
   HISTORY_DEFAULT_DAYS,
   LEADERBOARD_PERIODS,
   LOCATIONS_DEFAULT_HOURS,
@@ -36,6 +44,7 @@ import {
   MAX_LOCATION_POINTS,
   MAX_LOCATION_POINTS_PER_RESPONSE,
   MAX_SERIES_POINTS,
+  MAX_SLOTS_PER_ACCOUNT,
   MAX_XP_SKILLS,
   SNAPSHOT_SINCE_OVERLAP_MS,
   XP_DEFAULT_DAYS,
@@ -246,6 +255,52 @@ export const HiscoresMultiQuery = z.object({
     .optional()
     .meta({
       description: `Comma-separated account ids: up to ${MAX_BULK_ACCOUNTS} with a user key, ${MAX_BULK_ACCOUNTS_SERVICE} with a service key, each one whose \`hiscores\` the key may read, else 404. Without it (or empty): every visible account whose \`hiscores\` the key reads, sorted by name.`,
+    }),
+});
+
+/** GET /accounts/{id}/collection-log. */
+export const AccountCollectionLogQuery = z.object({
+  source: z
+    .string()
+    .trim()
+    .min(1, 'empty value')
+    .max(COLLECTION_LOG_SOURCE_MAX_LENGTH)
+    .optional()
+    .meta({
+      description:
+        'Only the slots that came with a drop from this source, case-insensitive (`Zulrah`). Slots without a source (pets, shop rewards) never match.',
+      example: 'Zulrah',
+    }),
+  since: instant.optional().meta({
+    description: 'Only slots logged at or after this time (ISO-8601 date-time).',
+  }),
+  limit: wholeNumber(1, COLLECTION_LOG_MAX_LIMIT)
+    .optional()
+    .meta({
+      description: `Slots to list, newest first, 1 to ${COLLECTION_LOG_MAX_LIMIT}. Default ${COLLECTION_LOG_DEFAULT_LIMIT}. \`groups\` still counts every slot that matched.`,
+    }),
+});
+
+/** GET /collection-log. */
+export const CollectionLogQuery = z.object({
+  item: z
+    .string()
+    .transform((s) => s.trim().replace(/\s+/g, ' '))
+    .pipe(z.string().min(COLLECTION_LOG_ITEM_MIN_LENGTH).max(COLLECTION_LOG_ITEM_MAX_LENGTH))
+    .optional()
+    .meta({
+      description: `Who has it: a part of an item name, case-insensitive, ${COLLECTION_LOG_ITEM_MIN_LENGTH} to ${COLLECTION_LOG_ITEM_MAX_LENGTH} characters (\`shadow\` finds Tumeken's shadow). Fills \`items\`, at most ${COLLECTION_LOG_LOOKUP_ITEMS} of them, the most holders first.`,
+      example: 'Tumeken',
+    }),
+  accounts: csv(accountIdItem, MAX_BULK_ACCOUNTS_SERVICE)
+    .optional()
+    .meta({
+      description: `Comma-separated account ids: only these, up to ${MAX_BULK_ACCOUNTS} with a user key, ${MAX_BULK_ACCOUNTS_SERVICE} with a service key, each one the guild board could list (the key reads its \`events\` or \`hiscores\` and it isn’t hidden from the guild), else 404. Default: every such account.`,
+    }),
+  limit: wholeNumber(1, GUILD_COLLECTION_LOG_MAX_LIMIT)
+    .optional()
+    .meta({
+      description: `Board rows, 1 to ${GUILD_COLLECTION_LOG_MAX_LIMIT}. Default ${GUILD_COLLECTION_LOG_DEFAULT_LIMIT}.`,
     }),
 });
 
@@ -742,6 +797,113 @@ export const Hiscores = z.object({
     }),
 });
 
+// GET /accounts/{id}/collection-log and GET /collection-log (D-131)
+const slotShape = {
+  item: z.string().meta({ description: 'The item’s name as the game’s popup wrote it.' }),
+  item_id: int.nullable().meta({
+    description: 'The item id; null when the plugin couldn’t resolve the name.',
+  }),
+  kill_count: int.nullable().meta({
+    description: 'The kill count the plugin read from the chat line before it; null without one.',
+  }),
+  value_gp: int.nullable().meta({ description: 'Grand Exchange value; 0 for untradeables.' }),
+  logged_at: timestamp,
+  source: z.string().nullable().meta({
+    description:
+      'The loot source of the drop within 10 seconds of it (`Zulrah`); null without one (a pet, a shop reward).',
+  }),
+};
+
+export const CollectionLogSlot = z.object(slotShape).meta({
+  description:
+    'A collection log slot the hub saw logged (a `collection_log` event). The hub only sees slots logged since the account was paired, never on a special world, and lists an item once, at the first time.',
+});
+
+const AccountCollectionLogData = z.object({
+  account: AccountRef,
+  total: z
+    .object({
+      logged: int.nullable().meta({
+        description:
+          '"Collections Logged" on the official hiscores: the whole log’s count; null when not listed.',
+      }),
+      rank: int.nullable(),
+      mode_rank: modeRank,
+      mode: z.enum(HISCORE_MODES),
+      fetched_at: timestamp.nullable().meta({
+        description:
+          'When the hiscores were read; null before the first lookup. Cut to the UTC day for a key that can’t read the account’s `activity`.',
+      }),
+      gained_30d: int.meta({ description: 'Its rise over the last 30 days.' }),
+    })
+    .nullable()
+    .meta({ description: 'From the hiscores (`hiscores`); null without it.' }),
+  slots: z
+    .array(CollectionLogSlot)
+    .nullable()
+    .meta({
+      description: `The slots the hub saw (\`events\`), newest first, filtered and cut at \`limit\` (\`meta.truncated\`); null without \`events\`. At most the newest ${MAX_SLOTS_PER_ACCOUNT.toLocaleString('en-US')} are read.`,
+    }),
+  groups: z
+    .array(
+      z.object({
+        source: z.string().nullable().meta({ description: 'null: slots without a source.' }),
+        count: int.min(1),
+      }),
+    )
+    .nullable()
+    .meta({
+      description:
+        'Every slot that matched the filters (not only those listed), counted by source: the most first, null last. Null without `events`.',
+    }),
+});
+
+const GuildCollectionLogData = z.object({
+  board: z
+    .array(
+      z.object({
+        account: AccountRef,
+        logged: int.nullable().meta({
+          description:
+            '"Collections Logged" on the hiscores; null without `hiscores` or when not listed.',
+        }),
+        gained_30d: int
+          .nullable()
+          .meta({ description: 'Its rise over 30 days; null without `hiscores`.' }),
+        seen: int.nullable().meta({ description: 'Slots the hub saw; null without `events`.' }),
+        latest: z
+          .object({ item: z.string(), item_id: int.nullable(), logged_at: timestamp })
+          .nullable()
+          .meta({
+            description: 'The newest slot seen; null without `events` or before the first.',
+          }),
+      }),
+    )
+    .meta({
+      description:
+        'Most logged first (the hiscores’ count, then the slots seen), at most `limit` (`meta.truncated`). An account with nothing to show is left out.',
+    }),
+  recent: z
+    .array(z.object({ account: AccountRef, ...slotShape }))
+    .meta({ description: 'The newest slots across these accounts, newest first, at most 12.' }),
+  items: z
+    .array(
+      z.object({
+        item: z.string(),
+        item_id: int.nullable(),
+        holders: z
+          .array(
+            z.object({ account: AccountRef, logged_at: timestamp, kill_count: int.nullable() }),
+          )
+          .meta({ description: 'First logged first.' }),
+      }),
+    )
+    .nullable()
+    .meta({
+      description: `The \`item\` lookup: every matching item someone logged, the most holders first, at most ${COLLECTION_LOG_LOOKUP_ITEMS}; null without \`item\`.`,
+    }),
+});
+
 const LeaderboardsData = z.object({
   period: z.enum(LEADERBOARD_PERIODS),
   from: timestamp,
@@ -791,6 +953,19 @@ const SnapshotMeta = ListMeta.extend({
   }),
 });
 
+const AccountCollectionLogMeta = ListMeta.extend({
+  truncated: z
+    .boolean()
+    .meta({ description: 'More slots matched than `limit` lets `slots` list.' }),
+});
+const CollectionLogMeta = Meta.extend({
+  searchable: int.min(0).meta({
+    description:
+      'How many accounts the slots and the lookup were read from (those whose `events` the key reads), for “of N accounts”.',
+  }),
+  truncated: z.boolean().meta({ description: 'The board had more rows than `limit`.' }),
+});
+
 type MetaExtra<M extends z.ZodType> = Omit<z.infer<M>, 'generated_at'>;
 
 /**
@@ -801,7 +976,9 @@ export type WireMetaExtra =
   | Record<string, never>
   | MetaExtra<typeof ListMeta>
   | MetaExtra<typeof EventsMeta>
-  | MetaExtra<typeof SnapshotMeta>;
+  | MetaExtra<typeof SnapshotMeta>
+  | MetaExtra<typeof AccountCollectionLogMeta>
+  | MetaExtra<typeof CollectionLogMeta>;
 
 function envelope<D extends z.ZodType, M extends z.ZodType>(data: D, meta: M) {
   return z.object({ data, meta });
@@ -825,6 +1002,11 @@ export const LeaderboardsResponse = envelope(LeaderboardsData, Meta);
 export const LootLeaderboardResponse = envelope(LootLeaderboardData, Meta);
 export const HiscoresResponse = envelope(Hiscores, Meta);
 export const HiscoresMultiResponse = envelope(z.array(Hiscores), ListMeta);
+export const AccountCollectionLogResponse = envelope(
+  AccountCollectionLogData,
+  AccountCollectionLogMeta,
+);
+export const CollectionLogResponse = envelope(GuildCollectionLogData, CollectionLogMeta);
 
 export const ErrorResponse = z.object({
   error: z.object({
@@ -858,6 +1040,9 @@ export type WireOwner = z.infer<typeof Owner>;
 export type WireLeaderboards = z.infer<typeof LeaderboardsData>;
 export type WireLootLeaderboard = z.infer<typeof LootLeaderboardData>;
 export type WireHiscores = z.infer<typeof Hiscores>;
+export type WireAccountCollectionLog = z.infer<typeof AccountCollectionLogData>;
+export type WireCollectionLog = z.infer<typeof GuildCollectionLogData>;
+export type WireCollectionLogSlot = z.infer<typeof CollectionLogSlot>;
 export type WireItem = z.infer<typeof Item>;
 export type WireSkills = z.infer<typeof Skills>;
 export type WireItems = z.infer<typeof Items>;

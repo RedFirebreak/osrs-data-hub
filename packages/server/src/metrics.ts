@@ -112,6 +112,7 @@ export const API_ROUTE_GROUPS = [
   'locations',
   'leaderboards',
   'hiscores',
+  'collection-log',
   'members',
   'openapi',
   'unknown',

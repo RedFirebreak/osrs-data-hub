@@ -23,11 +23,13 @@ import {
   wireSkills,
   wireVitals,
   wireWealthDay,
+  type ApiAccountCollectionLog,
   type ApiAccountDetail,
   type ApiAccountSummary,
   type ApiEquipmentHistory,
   type ApiEvent,
   type ApiGains,
+  type ApiGuildCollectionLog,
   type ApiHiscores,
   type ApiLeaderboards,
   type ApiLocations,
@@ -43,8 +45,11 @@ import {
   type ApiXpSeries,
 } from '@hub/server';
 import type {
+  WireAccountCollectionLog,
   WireAccountDetail,
   WireAccountSummary,
+  WireCollectionLog,
+  WireCollectionLogSlot,
   WireEquipmentHistory,
   WireEvent,
   WireGains,
@@ -342,5 +347,68 @@ export function wireHiscores(h: ApiHiscores): WireHiscores {
       rank: a.rank,
       mode_rank: a.modeRank,
     })),
+  };
+}
+
+type SlotFields = ApiAccountCollectionLog['slots'] & {};
+
+/** A collection log slot's own fields. */
+function wireSlot(s: SlotFields[number]): WireCollectionLogSlot {
+  return {
+    item: s.item,
+    item_id: s.itemId,
+    kill_count: s.killCount,
+    value_gp: s.value,
+    logged_at: s.at,
+    source: s.source,
+  };
+}
+
+/** GET /accounts/{id}/collection-log. */
+export function wireAccountCollectionLog(l: ApiAccountCollectionLog): WireAccountCollectionLog {
+  return {
+    account: l.account,
+    total:
+      l.total === null
+        ? null
+        : {
+            logged: l.total.logged,
+            rank: l.total.rank,
+            mode_rank: l.total.modeRank,
+            mode: l.total.mode,
+            fetched_at: l.total.fetchedAt,
+            gained_30d: l.total.gained30,
+          },
+    slots: l.slots === null ? null : l.slots.map(wireSlot),
+    groups: l.groups === null ? null : l.groups.map((g) => ({ source: g.source, count: g.count })),
+  };
+}
+
+/** GET /collection-log. */
+export function wireCollectionLog(l: ApiGuildCollectionLog): WireCollectionLog {
+  return {
+    board: l.board.map((r) => ({
+      account: r.account,
+      logged: r.logged,
+      gained_30d: r.gained30,
+      seen: r.seen,
+      latest:
+        r.latest === null
+          ? null
+          : { item: r.latest.item, item_id: r.latest.itemId, logged_at: r.latest.at },
+    })),
+    recent: l.recent.map((s) => ({ account: s.account, ...wireSlot(s) })),
+    items:
+      l.items === null
+        ? null
+        : l.items.map((i) => ({
+            item: i.item,
+            item_id: i.itemId,
+            holders: i.holders.map((h) => ({
+              account: h.account,
+              logged_at: h.at,
+              kill_count: h.killCount,
+            })),
+          })),
   };
 }
