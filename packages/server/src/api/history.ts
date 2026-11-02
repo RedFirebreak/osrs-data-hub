@@ -10,7 +10,7 @@
  */
 import type { Category, TrailStep } from '@hub/core';
 import type { DbOrTx, SessionEndReason } from '@hub/db';
-import { DAY_MS } from '@hub/core';
+import { DAY_MS, regionName } from '@hub/core';
 import {
   MAX_LOCATION_POINTS,
   readEquipmentHistory,
@@ -110,6 +110,8 @@ export interface ApiLocationPoint {
   plane: number;
   world: number | null;
   isOnBoat: boolean;
+  /** The place (regionName, D-138); null when unnamed. */
+  region: string | null;
   /** How the player got here from the point before; null when that point isn't known (D-103). */
   via: TrailStep | null;
 }
@@ -150,6 +152,7 @@ function toLocationPoints(rows: readonly LocationPoint[]): ApiLocationPoint[] {
     plane: p.plane,
     world: p.world,
     isOnBoat: p.onBoat,
+    region: regionName(p.x, p.y),
     via: p.via,
   }));
 }

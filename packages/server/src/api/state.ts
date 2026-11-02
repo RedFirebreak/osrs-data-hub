@@ -4,7 +4,7 @@
  * principal holds its category on the account; what a section contains comes from the account page's
  * helpers (accounts/account-page.ts, accounts/load.ts), so the UI and the API agree on it.
  */
-import { DAY_MS, floorTo, itemsValue, type Category } from '@hub/core';
+import { DAY_MS, floorTo, itemsValue, regionName, type Category } from '@hub/core';
 import { latestState, type DbOrTx } from '@hub/db';
 import { getTableColumns, inArray, sql } from 'drizzle-orm';
 import { locationOf, skillLevels, vitalsOf, vitalsUpdatedAt } from '../accounts/account-page';
@@ -62,6 +62,8 @@ export interface ApiLocation {
   y: number;
   plane: number;
   isOnBoat: boolean;
+  /** The place, e.g. "Lumbridge" or "Wilderness (level 12)" (regionName, D-138); null when unnamed. */
+  region: string | null;
   /** No location received for more than 2 minutes (D-18, D-74): the player may be elsewhere now. */
   stale: boolean;
 }
@@ -185,7 +187,11 @@ export function accountSections(
     out.skills = section(stamp(row?.skillsUpdatedAt ?? null), row ? skillsOf(row) : null);
   }
   if (can('location_live')) {
-    out.location = section(row?.locationUpdatedAt ?? null, row ? locationOf(row, now) : null);
+    const live = row ? locationOf(row, now) : null;
+    out.location = section(
+      row?.locationUpdatedAt ?? null,
+      live && { ...live, region: regionName(live.x, live.y) },
+    );
   }
   if (can('equipment')) {
     const at = row?.equipmentUpdatedAt ?? null;

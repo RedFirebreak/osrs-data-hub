@@ -403,8 +403,13 @@ The location trail, oldest first (`location_history`, kept 30 days). Default: th
 (the other histories default to 30 days).
 
     {"data":{"account":{…},"from":"…","to":"…","truncated":false,"points":[
-      {"at":"2026-09-29T13:24:25.236Z","x":3164,"y":3487,"plane":0,"world":302,"is_on_boat":false,"via":null},
-      {"at":"2026-09-29T13:24:25.832Z","x":3166,"y":3489,"plane":0,"world":302,"is_on_boat":false,"via":"move"},…]},"meta":{…}}
+      {"at":"2026-09-29T13:24:25.236Z","x":3164,"y":3487,"plane":0,"world":302,"is_on_boat":false,"region":"Grand Exchange","via":null},
+      {"at":"2026-09-29T13:24:25.832Z","x":3166,"y":3489,"plane":0,"world":302,"is_on_boat":false,"region":"Grand Exchange","via":"move"},…]},"meta":{…}}
+
+- **`region`** is the place, as the live map names it ("Lumbridge", "Near Lumbridge" beside it,
+  "Wilderness (level 20)", "Ferox Enclave", "An instance"), or null where none applies. The same
+  field is on the location of `/snapshot` and `/accounts/{id}`; the names are `GET /regions.json`
+  (D-138).
 
 - **What a point is.** With plugin 1.6 or newer: every tile the player was on, one point per game
   tick (0.6 s) on which the tile, plane or boat state changed, dated by the player's PC (D-102). With
@@ -476,6 +481,30 @@ truncated one with `to`, per account or in a call that names fewer accounts.
     {"data":{"from":"…","to":"…","accounts":[
       {"account":{"id":"oC8RsqiTuyak","name":"Alpha Main"},"truncated":false,"points":[{"at":"2026-09-29T13:24:25.236Z","x":3164,"y":3487,"plane":0,"world":302,"is_on_boat":false,"via":null},…]},
       {"account":{"id":"jHSfP5UICcQt","name":"Bravo Alt"},"truncated":false,"points":[]}]},"meta":{…}}
+
+### GET /accounts/{id}/day?date= (or from=&to=)
+
+What an account did on a date, in one call (D-138; the MCP tool `day_summary` answers with it):
+
+    {"data":{"account":{…},"timezone":"Europe/Amsterdam","dates":{"from":"2026-11-02","to":"2026-11-02"},
+      "from":"2026-11-01T23:00:00.000Z","to":"2026-11-02T19:41:00.000Z",
+      "sessions":{"count":2,"total_ms":12600000,"list":[{"started_at":"…","ended_at":null,"duration_ms":5400000,"worlds":[302]},…]},
+      "gains":{"total":412000,"skills":[{"skill":"Slayer","xp":250000},…]},
+      "events":{"count":31,"by_type":{"loot":24,"level_up":5,"collection_log":2},"top":[…],"collection_log":[…],"truncated":false},
+      "places":{"stays":14,"teleports":6,"list":[{"name":"Catacombs of Kourend","region":6557,"ms":5100000,"visits":2},…],"truncated":false}},"meta":{…}}
+
+- **Dates.** `date=YYYY-MM-DD` for one date (default today), or `from` and `to` for up to 7. A date
+  is a calendar date in the time zone of whoever made the key (their settings; UTC for a service
+  key), which `timezone` says; `from`/`to` in the body are the instants covered, ending now for
+  today. A date that hasn't started yet, or a malformed one, is a 400.
+- **Sections.** Each is what its own endpoint serves for the same instants, and is only there when
+  the key reads its category: `sessions` (`activity`, as `/sessions`: overlapping the dates, newest
+  first), `gains` (`stats`, as `/gains`: Overall as `total`, then the skills that gained, most
+  first), `events` (`events`, as `/events?from=&to=`: counted per type, the 5 most valuable and the
+  collection log slots, each an event as `/events` serves it; `truncated` past 2,000 events) and
+  `places` (`location_history`, as `/locations`: the trail as stays at a named place; a stay ends when
+  the player moves to another place or at a `gap`; per place the time and the stays, most time first,
+  at most 50). A key that reads none of the four gets the account's 404.
 
 ### GET /leaderboards/gains?skill=&period=day|week|month
 
@@ -667,6 +696,14 @@ consent made; no other endpoint takes them. Its 401 names where that sign-in sta
 
 The OpenAPI 3.1 description of all of the above, generated from the same schemas the routes validate
 with (D-75). Public; no key needed.
+
+### GET /regions.json
+
+The place names behind `region` (D-138): `{"source":"…","regions":{"12850":"Lumbridge",…}}`, the
+game's map region id (64 × 64 tiles, `((x >> 6) << 8) | (y >> 6)`) to its name, from RuneLite
+(BSD-2-Clause). The places that follow from the coordinates (the Wilderness and its level, the Ferox
+Enclave, instances, "Near …") are worked out on top of it and aren't listed. Public, no key and no
+rate limit; cache it for a day, it only changes with a hub release.
 
 ## The events cursor
 

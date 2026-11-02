@@ -87,7 +87,7 @@ describe('the OpenAPI document', () => {
       const ok = (op.responses as Json)['200'] as Json;
       const schema = ((ok.content as Json)['application/json'] as Json).schema as Json;
       expect(schema, p).toBeTruthy();
-      if (p === '/openapi.json') {
+      if (p === '/openapi.json' || p === '/regions.json') {
         expect(op.security, p).toEqual([]);
         continue;
       }

@@ -16,6 +16,7 @@ describe('apiRouteGroup', () => {
     expect(apiRouteGroup(`${base}/api/v1/leaderboards/gains`)).toBe('leaderboards');
     expect(apiRouteGroup(`${base}/api/v1/members/100000000000000042`)).toBe('members');
     expect(apiRouteGroup(`${base}/api/v1/openapi.json`)).toBe('openapi');
+    expect(apiRouteGroup(`${base}/api/v1/regions.json`)).toBe('regions');
   });
 
   it('has a group for every top-level route segment under app/api/v1, and no group without one', () => {

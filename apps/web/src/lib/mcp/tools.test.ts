@@ -1,8 +1,9 @@
 /**
  * The MCP tools (D-130, D-132): each one over data sent the way the plugin sends it, through a real
  * key's principal, asserting the trimmed shape a model gets: a summary, names before ids, formatted
- * GP, no plugin `data`, and "this key can't read" instead of a bare 404. Plus the pure parts: dates,
- * the stays of a trail, and how an account name is resolved (D-134).
+ * GP, no plugin `data`, and "this key can't read" instead of a bare 404. Plus the pure parts: dates
+ * and how an account name is resolved (D-134). A trail's stays are tested with the read model
+ * (packages/server/src/api/day.test.ts).
  */
 import { authenticateApiKey, type ApiPrincipal } from '@hub/server';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -16,7 +17,7 @@ import {
 } from '@/app/api/v1/test-support';
 import { withTestDb, type WebTestContext } from '@/lib/test-utils';
 import { ToolError, resolveAccount } from './resolve';
-import { TOOLS, parseWhen, regionId, stays, type ToolContext, type ToolResult } from './tools';
+import { TOOLS, parseWhen, type ToolContext, type ToolResult } from './tools';
 
 vi.mock('next/server', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -71,7 +72,7 @@ async function refusal(promise: Promise<unknown>): Promise<string> {
 }
 
 describe('the tool list', () => {
-  it('has the eleven tools of M7, each with a description naming its REST twin', () => {
+  it('has the tools of M7 and day_summary (M8), each with a description naming its REST twin', () => {
     expect(TOOLS.map((t) => t.name)).toEqual([
       'list_accounts',
       'get_account',
@@ -84,6 +85,7 @@ describe('the tool list', () => {
       'who_has',
       'sessions',
       'locations',
+      'day_summary',
     ]);
     for (const t of TOOLS) expect(t.description, t.name).toMatch(/REST: GET \/api\/v1\//);
   });
@@ -269,17 +271,53 @@ describe('sessions and locations', () => {
     expect(r.summary).toMatch(/^Alpha Main: \d+ sessions?, /);
   });
 
-  it('summarises the trail by region, or gives the points', async () => {
+  it('summarises the trail by named place, or gives the points', async () => {
     const r = await call('locations', { account: 'Alpha Main' });
-    const stayList = r.stays as { region: number }[];
+    const stayList = r.stays as { place: string }[];
     expect(stayList.length).toBeGreaterThan(0);
-    const at = fixture('snapshot-normal').player?.location as { x: number; y: number };
-    expect(stayList[0]!.region).toBe(regionId(at.x, at.y));
+    // snapshot-normal stands at 3164, 3487.
+    expect(stayList[0]!.place).toBe('Grand Exchange');
+    expect(r.places).toEqual([expect.objectContaining({ place: 'Grand Exchange' })]);
+    expect(r.summary).toMatch(/most time in Grand Exchange/);
     const raw = await call('locations', { account: 'Alpha Main', summarise: false });
-    expect((raw.points as unknown[]).length).toBeGreaterThan(0);
+    expect((raw.points as { place: string }[])[0]?.place).toBe('Grand Exchange');
     expect(await refusal(call('locations', { account: 'Alpha Main' }, statsOnly))).toMatch(
       /needs the "location_history" category/,
     );
+  });
+});
+
+describe('day_summary', () => {
+  it('answers a whole day in one call', async () => {
+    const r = await call('day_summary', { account: 'Alpha Main' });
+    expect(r.summary).toMatch(
+      /^Alpha Main on \d{4}-\d{2}-\d{2} \(UTC\): played .+, gained .+ XP, \d+ events?, most time in Grand Exchange$/,
+    );
+    expect(r.timezone).toBe('UTC');
+    expect(r.gains).toMatchObject({ total_xp: ATTACK_GAIN });
+    const events = r.events as { by_type: Record<string, number>; top: { value: string }[] };
+    expect(events.by_type).toEqual({ loot: 2, collection_log: 1 });
+    expect(events.top[0]?.value).toMatch(/[KM]$/);
+    expect(JSON.stringify(r)).not.toContain('"data"');
+    expect(r).not.toHaveProperty('not_shared');
+  });
+
+  it('leaves out what the key cannot read, and says so', async () => {
+    const r = await call('day_summary', { account: 'Alpha Main' }, statsOnly);
+    expect(Object.keys(r)).not.toContain('places');
+    expect(r.not_shared).toEqual([
+      'sessions (needs "activity")',
+      'events (needs "events")',
+      'places (needs "location_history")',
+    ]);
+  });
+
+  it('refuses dates it cannot answer', async () => {
+    expect(
+      await refusal(
+        call('day_summary', { account: 'Alpha Main', from: '2026-10-01', to: '2026-10-31' }),
+      ),
+    ).toMatch(/at most 7 days/);
   });
 });
 
@@ -315,23 +353,5 @@ describe('parseWhen', () => {
 
   it("refuses what isn't a date", () => {
     expect(() => parseWhen('yesterday', 'from', now)).toThrow(ToolError);
-  });
-});
-
-describe('stays', () => {
-  const at = (minute: number) => new Date(Date.UTC(2026, 10, 1, 12, minute)).toISOString();
-  it('groups a trail by region and ends a stay at a gap', () => {
-    const result = stays([
-      { at: at(0), x: 3200, y: 3200, plane: 0, via: null },
-      { at: at(5), x: 3210, y: 3210, plane: 0, via: 'move' },
-      { at: at(10), x: 2440, y: 3090, plane: 0, via: 'teleport' },
-      { at: at(20), x: 2441, y: 3091, plane: 0, via: 'move' },
-      { at: at(60), x: 2442, y: 3092, plane: 0, via: 'gap' },
-    ]);
-    expect(result.map((s) => [s.region, s.ms / 60_000, s.arrived_by])).toEqual([
-      [regionId(3200, 3200), 10, null],
-      [regionId(2440, 3090), 10, 'teleport'],
-      [regionId(2442, 3092), 0, 'gap'],
-    ]);
   });
 });

@@ -11,6 +11,7 @@ const GROUPS: ReadonlySet<string> = new Set(API_ROUTE_GROUPS);
 export function apiRouteGroup(url: string): ApiRouteGroup {
   const segment = /^\/api\/v1\/([^/?#]+)/.exec(new URL(url, 'http://x').pathname)?.[1];
   if (segment === 'openapi.json') return 'openapi';
+  if (segment === 'regions.json') return 'regions';
   return segment !== undefined && GROUPS.has(segment) ? (segment as ApiRouteGroup) : 'unknown';
 }
 

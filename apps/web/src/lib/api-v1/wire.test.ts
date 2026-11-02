@@ -146,13 +146,22 @@ describe('wireSnapshotAccount', () => {
 
     const located = wireSnapshotAccount({
       ...account,
-      location: { x: 1, y: 2, plane: 0, isOnBoat: true, stale: true, updatedAt: AT },
+      location: {
+        x: 1,
+        y: 2,
+        plane: 0,
+        isOnBoat: true,
+        region: 'Lumbridge',
+        stale: true,
+        updatedAt: AT,
+      },
     });
     expect(located.location).toEqual({
       x: 1,
       y: 2,
       plane: 0,
       is_on_boat: true,
+      region: 'Lumbridge',
       stale: true,
       updated_at: AT,
     });

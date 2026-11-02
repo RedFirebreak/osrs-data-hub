@@ -14,6 +14,7 @@ import {
   GAINS_PERIODS,
   apiAccountCategories,
   apiAccountCollectionLog,
+  apiDay,
   apiEventsInRange,
   apiGains,
   apiGetAccount,
@@ -25,9 +26,12 @@ import {
   apiLootLeaderboard,
   apiSessions,
   apiWealth,
+  placeStays,
+  placesOf,
   type ApiEvent,
   type ApiHiscores,
   type ApiItem,
+  type ApiPlace,
   type ApiPrincipal,
 } from '@hub/server';
 import { z } from 'zod';
@@ -716,50 +720,13 @@ const sessions = tool({
   },
 });
 
-/** The game's map region of a tile (64 by 64 tiles), RuneLite's `regionId`. */
-export function regionId(x: number, y: number): number {
-  return ((x >> 6) << 8) | (y >> 6);
-}
-
-interface Stay {
-  region: number;
-  plane: number;
-  from: string;
-  to: string;
-  ms: number;
-  arrived_by: string | null;
-}
-
-/**
- * A trail (oldest first) as stays: consecutive points in one region, how the player got there, and
- * how long they were there. A stay ends at its last point when the next step is a gap (the player was
- * away); otherwise when the next stay starts.
- */
-export function stays(
-  points: readonly { at: string; x: number; y: number; plane: number; via: string | null }[],
-): Stay[] {
-  const out: Stay[] = [];
-  for (const p of points) {
-    const region = regionId(p.x, p.y);
-    const last = out.at(-1);
-    if (last && last.region === region && p.via !== 'gap') {
-      last.to = p.at;
-      continue;
-    }
-    if (last && p.via !== 'gap') last.to = p.at;
-    out.push({ region, plane: p.plane, from: p.at, to: p.at, ms: 0, arrived_by: p.via });
-  }
-  for (const s of out) s.ms = Date.parse(s.to) - Date.parse(s.from);
-  return out;
-}
-
 const RAW_POINTS = 200;
 
 const locations = tool({
   name: 'locations',
   title: 'Where an account went',
   description:
-    'Where an account was, from its location trail (kept 30 days, default the last 24 hours). Summarised (default): stays per map region with minutes and how the player arrived (move, teleport, entrance, …), newest first, and the regions where the most time went. Regions are the game\'s numeric map regions (64 by 64 tiles). summarise=false gives the last 200 points with how each was reached. Needs "location_history". REST: GET /api/v1/accounts/{id}/locations.',
+    'Where an account was, from its location trail (kept 30 days, default the last 24 hours). Summarised (default): stays per place ("Lumbridge", "Grand Exchange", "Wilderness (level 20)", as the live map names them) with minutes and how the player arrived (move, teleport, entrance, …), newest first, and the places where the most time went. summarise=false gives the last 200 points with their place and how each was reached. For a whole day, day_summary is one call. Needs "location_history". REST: GET /api/v1/accounts/{id}/locations.',
   input: {
     account,
     from: when.optional(),
@@ -778,47 +745,143 @@ const locations = tool({
           account: who.name,
           from: l.from,
           to: l.to,
-          points: raw.map((p) => ({ at: p.at, x: p.x, y: p.y, plane: p.plane, via: p.via })),
+          points: raw.map((p) => ({
+            at: p.at,
+            place: p.region,
+            x: p.x,
+            y: p.y,
+            plane: p.plane,
+            via: p.via,
+          })),
           truncated: l.truncated || l.points.length > raw.length,
         },
         ctx.now,
       );
     }
-    const all = stays(l.points);
-    const byRegion = new Map<number, { region: number; ms: number; visits: number }>();
-    for (const s of all) {
-      const r = byRegion.get(s.region) ?? { region: s.region, ms: 0, visits: 0 };
-      r.ms += s.ms;
-      r.visits += 1;
-      byRegion.set(s.region, r);
-    }
-    const regions = [...byRegion.values()].sort((a, b) => b.ms - a.ms);
-    const teleports = all.filter((s) => s.arrived_by === 'teleport').length;
+    const all = placeStays(l.points);
+    const places = placesOf(all);
+    const teleports = all.filter((s) => s.arrivedBy === 'teleport').length;
     const list = capped([...all].reverse());
-    const top = regions[0];
+    const top = places[0];
     return result(
       all.length === 0
         ? `${who.name}: no location points between ${day(l.from)} and ${day(l.to)}`
-        : `${who.name}: ${plural(all.length, 'stay')} in ${plural(regions.length, 'region')}, ${plural(teleports, 'teleport')}; most time in region ${top!.region} (${minutes(top!.ms)})`,
+        : `${who.name}: ${plural(all.length, 'stay')} in ${plural(places.length, 'place')}, ${plural(teleports, 'teleport')}; most time in ${top!.name} (${minutes(top!.ms)})`,
       {
         account: who.name,
         from: l.from,
         to: l.to,
         stays: list.items.map((s) => ({
-          region: s.region,
+          place: s.name,
           plane: s.plane,
           from: s.from,
           to: s.to,
           minutes: Math.round(s.ms / 60_000),
-          arrived_by: s.arrived_by,
+          arrived_by: s.arrivedBy,
         })),
-        regions: capped(regions).items.map((r) => ({
-          region: r.region,
-          minutes: Math.round(r.ms / 60_000),
-          visits: r.visits,
-        })),
+        places: capped(places).items.map(placeRow),
         teleports,
         truncated: list.truncated || l.truncated,
+      },
+      ctx.now,
+    );
+  },
+});
+
+function placeRow(p: ApiPlace) {
+  return { place: p.name, minutes: Math.round(p.ms / 60_000), visits: p.visits };
+}
+
+const localDate = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'a date: YYYY-MM-DD')
+  .describe("A date, YYYY-MM-DD, in the time zone of the key's owner (UTC for a service key).");
+
+const daySummary = tool({
+  name: 'day_summary',
+  title: 'What an account did on a day',
+  description:
+    "Everything about one account's day in one call: how long it played (sessions), the XP it gained per skill, its events (counts per type, the most valuable drops, new collection log slots) and where it spent its time (named places with minutes and visits). Give date for one day (default today), or from and to for up to 7 days. Dates are in the time zone of the key's owner. Parts the key can't read are left out and named in not_shared. Use this for \"what did X do today / yesterday / this weekend\". REST: GET /api/v1/accounts/{id}/day.",
+  input: {
+    account,
+    date: localDate.optional(),
+    from: localDate.optional(),
+    to: localDate.optional(),
+  },
+  async run(ctx, args) {
+    const who = await resolveAccount(ctx.db, ctx.principal, args.account);
+    const params = {
+      ...(args.date !== undefined ? { date: args.date } : {}),
+      ...(args.from !== undefined ? { from: args.from } : {}),
+      ...(args.to !== undefined ? { to: args.to } : {}),
+    };
+    const d = await apiDay(ctx.db, ctx.principal, who.id, params, ctx.now);
+    if (!d) {
+      throw new ToolError(
+        `This key can't read any of ${who.name}'s day: it needs "activity", "stats", "events" or "location_history", shared with you by the owner. hub://me lists what the key may read.`,
+      );
+    }
+    const dates = d.dates.from === d.dates.to ? d.dates.from : `${d.dates.from} to ${d.dates.to}`;
+    const hidden = (
+      [
+        ['sessions', 'activity'],
+        ['gains', 'stats'],
+        ['events', 'events'],
+        ['places', 'location_history'],
+      ] as const
+    )
+      .filter(([section]) => d[section] === undefined)
+      .map(([section, category]) => `${section} (needs "${category}")`);
+    const parts: string[] = [];
+    if (d.sessions) parts.push(`played ${minutes(d.sessions.totalMs)}`);
+    if (d.gains) parts.push(`gained ${compact(d.gains.total)} XP`);
+    if (d.events) parts.push(plural(d.events.count, 'event'));
+    if (d.places?.list[0]) parts.push(`most time in ${d.places.list[0].name}`);
+    return result(
+      `${who.name} on ${dates} (${d.timezone}): ${parts.join(', ') || 'nothing readable'}`,
+      {
+        account: who.name,
+        timezone: d.timezone,
+        dates: d.dates,
+        from: d.from,
+        to: d.to,
+        ...(d.sessions && {
+          sessions: {
+            count: d.sessions.count,
+            total_minutes: Math.round(d.sessions.totalMs / 60_000),
+            list: capped(d.sessions.list).items.map((x) => ({
+              start: x.startedAt,
+              end: x.endedAt ?? 'ongoing',
+              minutes: Math.round(x.durationMs / 60_000),
+              worlds: x.worlds,
+            })),
+          },
+        }),
+        ...(d.gains && {
+          gains: {
+            total_xp: d.gains.total,
+            total: compact(d.gains.total),
+            skills: d.gains.skills.map((g) => ({ skill: g.skill, xp: g.xp })),
+          },
+        }),
+        ...(d.events && {
+          events: {
+            count: d.events.count,
+            by_type: d.events.byType,
+            top: d.events.top.map(eventRow),
+            collection_log: capped(d.events.collectionLog).items.map(eventRow),
+            truncated: d.events.truncated,
+          },
+        }),
+        ...(d.places && {
+          places: {
+            stays: d.places.stays,
+            teleports: d.places.teleports,
+            list: d.places.list.map(placeRow),
+            truncated: d.places.truncated,
+          },
+        }),
+        ...(hidden.length > 0 ? { not_shared: hidden } : {}),
       },
       ctx.now,
     );
@@ -838,4 +901,5 @@ export const TOOLS: readonly ToolDef[] = [
   whoHas,
   sessions,
   locations,
+  daySummary,
 ];

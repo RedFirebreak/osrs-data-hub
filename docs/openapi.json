@@ -64,7 +64,7 @@
     },
     {
       "name": "Meta",
-      "description": "This document."
+      "description": "This document and the place names."
     }
   ],
   "paths": {
@@ -876,6 +876,103 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SessionsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/accounts/{id}/day": {
+      "get": {
+        "operationId": "getAccountDay",
+        "tags": [
+          "Histories"
+        ],
+        "summary": "One day of an account",
+        "description": "What the account did on a date, or on up to 7 dates (`from`/`to`), in one call: `sessions` (`activity`), `gains` (`stats`), `events` counted by type with the most valuable and the collection log slots (`events`), and `places`: the trail as stays at named places, with the time spent at each (`location_history`). Each section is what its own endpoint serves for the same instants and is left out when the key can’t read its category; the account 404s when the key reads none of them. A date is a calendar date in the key creator’s time zone (their settings; UTC for a service key), as `timezone` says. Default: today, up to now. A date that hasn’t started yet is a 400. The MCP tool `day_summary` answers with this.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9A-Za-z]{1,64}$"
+            },
+            "description": "The account's public id (opaque, base62), as `id` in `/accounts`.",
+            "example": "4fT9kQ2mXa7B"
+          },
+          {
+            "name": "date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "One date (`YYYY-MM-DD`) in the key creator’s time zone (UTC for a service key). Default: today. Not with `from`/`to`.",
+            "example": "2026-11-02"
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "The first date of a range, with `to`: at most 7 dates."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "The last date of the range, included."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK: `{ data, meta }`.",
+            "headers": {
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/X-RateLimit-Remaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/X-RateLimit-Reset"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DayResponse"
                 }
               }
             }
@@ -1793,6 +1890,44 @@
         }
       }
     },
+    "/regions.json": {
+      "get": {
+        "operationId": "getRegions",
+        "tags": [
+          "Meta"
+        ],
+        "summary": "Place names",
+        "description": "The names the hub gives the game’s 64 × 64 map regions (`regions`: region id → name; a region id is `(x >> 6) << 8 | y >> 6`), from RuneLite (BSD-2-Clause, `source`). A location’s `region` is one of these, or a name the hub derives from the coordinates: “Near …” beside a named region, “Wilderness (level N)”, “Ferox Enclave”, “An instance”. Public: no key, no rate limit; cache it for a day.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "The names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "source",
+                    "regions"
+                  ],
+                  "properties": {
+                    "source": {
+                      "type": "string"
+                    },
+                    "regions": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/mcp": {
       "post": {
         "operationId": "postMcp",
@@ -1979,6 +2114,13 @@
                 "is_on_boat": {
                   "type": "boolean"
                 },
+                "region": {
+                  "description": "The place, as the live map names it: a RuneLite region name (\"Lumbridge\", \"Grand Exchange\"), \"Near …\" for an unnamed region beside a named one, \"Wilderness (level N)\", \"Ferox Enclave\" or \"An instance\"; null where none applies. The names are in `/regions.json`.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "via": {
                   "anyOf": [
                     {
@@ -2006,6 +2148,7 @@
                 "plane",
                 "world",
                 "is_on_boat",
+                "region",
                 "via"
               ]
             },
@@ -2776,6 +2919,13 @@
                   "is_on_boat": {
                     "type": "boolean"
                   },
+                  "region": {
+                    "description": "The place, as the live map names it: a RuneLite region name (\"Lumbridge\", \"Grand Exchange\"), \"Near …\" for an unnamed region beside a named one, \"Wilderness (level N)\", \"Ferox Enclave\" or \"An instance\"; null where none applies. The names are in `/regions.json`.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
                   "stale": {
                     "type": "boolean",
                     "description": "No location received for more than 2 minutes: the player may be elsewhere now."
@@ -2788,6 +2938,7 @@
                   "y",
                   "plane",
                   "is_on_boat",
+                  "region",
                   "stale"
                 ]
               },
@@ -3122,6 +3273,13 @@
           "is_on_boat": {
             "type": "boolean"
           },
+          "region": {
+            "description": "The place, as the live map names it: a RuneLite region name (\"Lumbridge\", \"Grand Exchange\"), \"Near …\" for an unnamed region beside a named one, \"Wilderness (level N)\", \"Ferox Enclave\" or \"An instance\"; null where none applies. The names are in `/regions.json`.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "stale": {
             "type": "boolean",
             "description": "No location received for more than 2 minutes: the player may be elsewhere now."
@@ -3137,6 +3295,7 @@
           "y",
           "plane",
           "is_on_boat",
+          "region",
           "stale",
           "updated_at"
         ]
@@ -3896,6 +4055,273 @@
           "meta"
         ]
       },
+      "DayResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "object",
+            "properties": {
+              "account": {
+                "$ref": "#/components/schemas/AccountRef"
+              },
+              "timezone": {
+                "type": "string",
+                "description": "The time zone the dates are in: the key creator’s, `UTC` for a service key."
+              },
+              "dates": {
+                "type": "object",
+                "properties": {
+                  "from": {
+                    "type": "string",
+                    "format": "date"
+                  },
+                  "to": {
+                    "type": "string",
+                    "format": "date"
+                  }
+                },
+                "required": [
+                  "from",
+                  "to"
+                ],
+                "description": "The first and the last date covered."
+              },
+              "from": {
+                "type": "string",
+                "format": "date-time",
+                "description": "The start of the first date."
+              },
+              "to": {
+                "type": "string",
+                "format": "date-time",
+                "description": "The end of the last date, or now if that is sooner."
+              },
+              "sessions": {
+                "description": "`activity`: the play sessions overlapping the dates (as `/sessions`).",
+                "type": "object",
+                "properties": {
+                  "count": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "total_ms": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "list": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "started_at": {
+                          "type": "string",
+                          "format": "date-time",
+                          "description": "ISO-8601 UTC."
+                        },
+                        "ended_at": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "date-time",
+                              "description": "ISO-8601 UTC."
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "duration_ms": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "worlds": {
+                          "type": "array",
+                          "items": {
+                            "type": "integer"
+                          }
+                        }
+                      },
+                      "required": [
+                        "started_at",
+                        "ended_at",
+                        "duration_ms",
+                        "worlds"
+                      ]
+                    },
+                    "description": "Newest first."
+                  }
+                },
+                "required": [
+                  "count",
+                  "total_ms",
+                  "list"
+                ]
+              },
+              "gains": {
+                "description": "`stats`: XP gained over the dates (as `/gains`).",
+                "type": "object",
+                "properties": {
+                  "total": {
+                    "type": "integer",
+                    "description": "Overall XP gained."
+                  },
+                  "skills": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "skill": {
+                          "type": "string"
+                        },
+                        "xp": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "skill",
+                        "xp"
+                      ]
+                    },
+                    "description": "The skills that gained, most first."
+                  }
+                },
+                "required": [
+                  "total",
+                  "skills"
+                ]
+              },
+              "events": {
+                "description": "`events`: the events of the dates (as `/events` with `from`/`to`).",
+                "type": "object",
+                "properties": {
+                  "count": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "by_type": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "integer"
+                    },
+                    "description": "Events per type."
+                  },
+                  "top": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/Event"
+                    },
+                    "description": "The 5 most valuable (`value_gp`), most first."
+                  },
+                  "collection_log": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/Event"
+                    },
+                    "description": "The `collection_log` events, oldest first."
+                  },
+                  "truncated": {
+                    "type": "boolean",
+                    "description": "More than 2000 events: the counts cover the newest 2000."
+                  }
+                },
+                "required": [
+                  "count",
+                  "by_type",
+                  "top",
+                  "collection_log",
+                  "truncated"
+                ]
+              },
+              "places": {
+                "description": "`location_history`: the trail of the dates (as `/locations`) as named places.",
+                "type": "object",
+                "properties": {
+                  "stays": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "Separate stays: one ends when the player moves to another place or leaves."
+                  },
+                  "teleports": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "Stays the player teleported into."
+                  },
+                  "list": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "description": "The place (as `region` on a location), or `Region <id>` where it has no name."
+                        },
+                        "region": {
+                          "type": "integer",
+                          "description": "The game’s map region (64 by 64 tiles) of its first stay."
+                        },
+                        "ms": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "description": "Time spent there."
+                        },
+                        "visits": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "description": "Separate stays."
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "region",
+                        "ms",
+                        "visits"
+                      ]
+                    },
+                    "description": "Where the time went, most first, at most 50."
+                  },
+                  "truncated": {
+                    "type": "boolean",
+                    "description": "The trail held more points than one read carries, or there were more places."
+                  }
+                },
+                "required": [
+                  "stays",
+                  "teleports",
+                  "list",
+                  "truncated"
+                ]
+              }
+            },
+            "required": [
+              "account",
+              "timezone",
+              "dates",
+              "from",
+              "to"
+            ]
+          },
+          "meta": {
+            "type": "object",
+            "properties": {
+              "generated_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "When the hub built this response."
+              }
+            },
+            "required": [
+              "generated_at"
+            ]
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ]
+      },
       "EquipmentHistoryResponse": {
         "type": "object",
         "properties": {
@@ -4103,6 +4529,13 @@
                     "is_on_boat": {
                       "type": "boolean"
                     },
+                    "region": {
+                      "description": "The place, as the live map names it: a RuneLite region name (\"Lumbridge\", \"Grand Exchange\"), \"Near …\" for an unnamed region beside a named one, \"Wilderness (level N)\", \"Ferox Enclave\" or \"An instance\"; null where none applies. The names are in `/regions.json`.",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
                     "via": {
                       "anyOf": [
                         {
@@ -4130,6 +4563,7 @@
                     "plane",
                     "world",
                     "is_on_boat",
+                    "region",
                     "via"
                   ]
                 },

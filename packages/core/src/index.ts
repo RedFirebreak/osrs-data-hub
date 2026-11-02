@@ -12,6 +12,7 @@ export * from './json';
 export * from './map-link';
 export * from './names';
 export * from './prayers';
+export * from './regions';
 export * from './presence';
 export * from './ratelimit';
 export * from './sharing';
