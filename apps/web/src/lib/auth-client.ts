@@ -3,13 +3,17 @@
  * Better Auth in the browser. The client talks to `/api/auth` on the page's own origin: APP_URL is
  * an origin without a path (D-26), so no base URL needs to reach the bundle.
  */
+import { oauthProviderClient } from '@better-auth/oauth-provider/client';
 import { inferAdditionalFields } from 'better-auth/client/plugins';
 import { createAuthClient } from 'better-auth/react';
 import type { Auth } from './auth';
 
 export const authClient = createAuthClient({
   basePath: '/api/auth',
-  plugins: [inferAdditionalFields<Auth>()],
+  // oauthProviderClient: on the login page of an assistant's sign-in (D-137), the signed request in
+  // the address goes along with "Sign in with Discord", so the hub carries on to the consent page
+  // after Discord instead of to Home.
+  plugins: [inferAdditionalFields<Auth>(), oauthProviderClient()],
 });
 
 /** The origin relative paths are resolved against to check they stay on it. */

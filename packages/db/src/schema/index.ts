@@ -7,3 +7,4 @@ export * from './admin';
 export * from './hiscores';
 export * from './metrics';
 export * from './friends';
+export * from './oauth';

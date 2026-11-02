@@ -1,6 +1,6 @@
 # Gotchas
 
-90 traps, grouped into five files, found while building osrs-data-hub. Each is written up
+92 traps, grouped into five files, found while building osrs-data-hub. Each is written up
 once under a stable ID and referenced by ID from everywhere else, so there is exactly one place to edit
 when something changes. Package-agnostic: things that are true of the shared layer (the HA Exporter
 plugin protocol, Next.js, Better Auth, Drizzle, Postgres/TimescaleDB, pg-boss, the Discord API, and the
@@ -22,7 +22,7 @@ defeats the point of them being separate.
 
 | File | Covers | Entries |
 |---|---|---|
-| [auth.md](auth.md) | `AUTH`, `DISCORD` — Better Auth 1.7 (Discord provider, Drizzle adapter, hooks, sessions, endpoints) and the Discord HTTP API (OAuth, guild member lookups) | 14 |
+| [auth.md](auth.md) | `AUTH`, `DISCORD` — Better Auth 1.7 (Discord provider, Drizzle adapter, hooks, sessions, endpoints) and the Discord HTTP API (OAuth, guild member lookups) | 16 |
 | [database.md](database.md) | `DB`, `TSDB` — Postgres behaviour, drizzle-orm 0.45 and drizzle-kit 0.31 (queries, errors, the migrator), and TimescaleDB 2.30 (hypertables, compression, continuous aggregates, policies, the Docker image) | 28 |
 | [nextjs.md](nextjs.md) | `NEXT` — Next.js 16 (route handlers, server actions, RSC, proxy.ts, instrumentation, basePath, standalone output, the dev and build CLI) | 17 |
 | [plugin.md](plugin.md) | `PLUGIN` — the HA Exporter v1.5 wire protocol as seen from the hub (payload shapes, Gson serialization, the OkHttp transport, status handling, the retry queue, the pairing panel) | 14 |
@@ -58,6 +58,8 @@ The `gotcha` skill walks this, including a trap that fits no existing file.
 | [AUTH-11](auth.md#auth-11) | Better Auth | A cross-origin `POST /api/auth/sign-out` (or any cookie-carrying POST to Better Auth) succeeds in vitest with a foreign or missing `Origin`, although production answers 403. |
 | [AUTH-12](auth.md#auth-12) | Better Auth | Signed-in users who use the hub every day are still signed out about 7 days after signing in; the `session` row's `expires_at` keeps moving forward, the browser's cookie doesn't. |
 | [AUTH-13](auth.md#auth-13) | Better Auth | While the database is down, every signed-in route answers 500 instead of 503, and the log shows `[Better Auth]: INTERNAL_SERVER_ERROR DrizzleQueryError: Failed query: select … from "session" … params: <session token>`. |
+| [AUTH-14](auth.md#auth-14) | Better Auth | A member allows an MCP client on the consent page and the hub answers 401 `{"error":"invalid_request","error_description":"request not found"}`, or the provider's authorize answers 200 with `{"redirect":true,"url":…}` instead of redirecting. |
+| [AUTH-15](auth.md#auth-15) | Better Auth | Every Better Auth route (`/api/auth/ok`, sign-in, `get-session`) answers 500 with an empty body and nothing in the log, while the rest of the hub works. |
 | [DISCORD-1](auth.md#discord-1) | Discord | Re-verification marks every member, or a large share of them, as having left the guild in a single run. |
 | **[database.md](database.md)** | | |
 | [DB-1](database.md#db-1) | Database | An insert fails with `22P02 invalid input syntax for type json` or `unsupported Unicode escape sequence` (`\u0000 cannot be converted to text`), or a lookup by a URL path segment containing `%00` fails with `22021 invalid byte sequence for encoding "UTF8": 0x00`. |

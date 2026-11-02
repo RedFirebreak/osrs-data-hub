@@ -2,36 +2,46 @@
  * POST /api/v1/mcp (D-128): the hub's MCP server over Streamable HTTP, stateless, with JSON responses
  * (no SSE stream: nothing is pushed, D-3). Behind withApiKey like every v1 route (D-129): the key is
  * the credential, one POST is one request against its limit and in the hub_api_* metrics (D-130,
- * D-135), and each POST gets a server of its own for that key's principal.
+ * D-135), and each POST gets a server of its own for that key's principal. A client that connected
+ * by signing in (Claude.ai, D-137) sends one of the hub's OAuth access tokens instead, which acts as
+ * the key its consent made; the 401 names where to start that sign-in (RFC 9728).
  *
  * The body is read here, capped (readJson), and handed to the transport as parsedBody: the request
  * is never copied (NEXT-13). GET (a stream the server would push on) and DELETE (ending a session it
  * never started) answer 405, as the spec asks of a server without them.
  */
+import { getConfig } from '@hub/core';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 import { mcpPreflight, withCors } from '@/lib/api-v1/cors';
 import { withApiKey } from '@/lib/api-v1/with-api-key';
 import { errorJson, readJson } from '@/lib/http';
+import { mcpResource, mcpResourceMetadataUrl } from '@/lib/mcp/oauth';
 import { createMcpServer } from '@/lib/mcp/server';
 
 /** Largest JSON-RPC message accepted: a tool call is a few hundred bytes. */
 const MCP_MAX_BODY_BYTES = 64 * 1024;
 
 export async function POST(request: Request): Promise<Response> {
-  return withApiKey(request, async ({ db, principal }) => {
-    const body = await readJson(request, { maxBytes: MCP_MAX_BODY_BYTES });
-    const server = createMcpServer(db, principal);
-    const transport = new WebStandardStreamableHTTPServerTransport({
-      sessionIdGenerator: undefined,
-      enableJsonResponse: true,
-    });
-    await server.connect(transport);
-    try {
-      return await transport.handleRequest(request, { parsedBody: body });
-    } finally {
-      await server.close();
-    }
-  });
+  const config = getConfig();
+  const oauth = { resource: mcpResource(config), resourceMetadata: mcpResourceMetadataUrl(config) };
+  return withApiKey(
+    request,
+    async ({ db, principal }) => {
+      const body = await readJson(request, { maxBytes: MCP_MAX_BODY_BYTES });
+      const server = createMcpServer(db, principal);
+      const transport = new WebStandardStreamableHTTPServerTransport({
+        sessionIdGenerator: undefined,
+        enableJsonResponse: true,
+      });
+      await server.connect(transport);
+      try {
+        return await transport.handleRequest(request, { parsedBody: body });
+      } finally {
+        await server.close();
+      }
+    },
+    { oauth },
+  );
 }
 
 function methodNotAllowed(): Response {

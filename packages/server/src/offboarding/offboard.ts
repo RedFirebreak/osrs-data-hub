@@ -15,6 +15,7 @@ import {
 } from '@hub/db';
 import { and, asc, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import { SYSTEM_ACTOR, audit } from '../audit';
+import { forgetOAuthGrant } from '../api/oauth-grants';
 import { getMetrics, type HubMetrics } from '../metrics';
 import {
   auditTransfer,
@@ -380,11 +381,13 @@ async function revokeDevices(tx: Tx, userId: string, now: Date): Promise<number>
   return res.rowCount ?? 0;
 }
 
+/** Every key, and with them what the user granted connected assistants (D-137). */
 async function revokeApiKeys(tx: Tx, userId: string, now: Date): Promise<number> {
   const res = await tx
     .update(apiKeys)
     .set({ revokedAt: now })
     .where(and(eq(apiKeys.userId, userId), isNull(apiKeys.revokedAt)));
+  await forgetOAuthGrant(tx, userId, null);
   return res.rowCount ?? 0;
 }
 

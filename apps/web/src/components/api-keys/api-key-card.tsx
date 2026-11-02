@@ -89,12 +89,27 @@ export function ApiKeyCard({ apiKey, now, timezone, actions, inactiveActions }: 
     >
       <CardHeader className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="min-w-0 truncate text-base font-semibold">{apiKey.name}</h3>
-        <ApiKeyStatusBadge status={apiKey.status} />
+        <div className="flex items-center gap-2">
+          {apiKey.connected && (
+            <Badge
+              variant="secondary"
+              title="Made when you connected an assistant by signing in. Revoke it to disconnect."
+            >
+              Connected assistant
+            </Badge>
+          )}
+          <ApiKeyStatusBadge status={apiKey.status} />
+        </div>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-4">
           <Field label="Key" className="col-span-2 sm:col-span-1">
-            <code className="font-mono text-xs break-all">{maskedKey(apiKey.prefix)}</code>
+            {apiKey.connected ? (
+              // The assistant holds sign-in tokens that act as this key; the key itself is never shown.
+              <span className="text-muted-foreground">Signed in, no key to copy</span>
+            ) : (
+              <code className="font-mono text-xs break-all">{maskedKey(apiKey.prefix)}</code>
+            )}
           </Field>
           <Field label="Created">
             <RelativeTime date={apiKey.createdAt} now={now} />

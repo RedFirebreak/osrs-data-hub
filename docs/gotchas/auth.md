@@ -20,6 +20,8 @@ Better Auth paths are relative to the installed packages: `better-auth/dist`, `@
 | [AUTH-11](#auth-11) | A cross-origin `POST /api/auth/sign-out` (or any cookie-carrying POST to Better Auth) succeeds in vitest with a foreign or missing `Origin`, although production answers 403. |
 | [AUTH-12](#auth-12) | Signed-in users who use the hub every day are still signed out about 7 days after signing in; the `session` row's `expires_at` keeps moving forward, the browser's cookie doesn't. |
 | [AUTH-13](#auth-13) | While the database is down, every signed-in route answers 500 instead of 503, and the log shows `[Better Auth]: INTERNAL_SERVER_ERROR DrizzleQueryError: Failed query: select … from "session" … params: <session token>`. |
+| [AUTH-14](#auth-14) | A member allows an MCP client on the consent page and the hub answers 401 `{"error":"invalid_request","error_description":"request not found"}`, or the provider's authorize answers 200 with `{"redirect":true,"url":…}` instead of redirecting. |
+| [AUTH-15](#auth-15) | Every Better Auth route (`/api/auth/ok`, sign-in, `get-session`) answers 500 with an empty body and nothing in the log, while the rest of the hub works. |
 | [DISCORD-1](#discord-1) | Re-verification marks every member, or a large share of them, as having left the guild in a single run. |
 
 ### AUTH-1
@@ -167,6 +169,31 @@ nothing on the thrown error, so an outage looks like a bug. Fix: map a Better Au
 `betterAuthLogger`; lib/session.test.ts checks that the token reaches no log call).
 
 *Source: `OBSERVED` (apps/web vitest, database unreachable, better-auth 1.7.6 + drizzle-orm 0.45.3, 2026-09-29: the token appeared twice on stderr, `handleApi` answered 500); `SOURCE` (better-auth api/routes/session.mjs:231-232)*
+
+### AUTH-14
+**A member allows an MCP client on the consent page and the hub answers 401 `{"error":"invalid_request","error_description":"request not found"}`, or the provider's authorize answers 200 with `{"redirect":true,"url":…}` instead of redirecting.**
+The OAuth provider plugin's consent endpoint carries on with the authorization itself, and that step
+throws `UNAUTHORIZED` "request not found" when its context has no `request`
+(oauth-provider authorize-*.mjs, `authorizeEndpoint`): an `auth.api.oauth2Consent({ body, headers })`
+call from a route handler has none. The provider also answers JSON instead of a redirect whenever
+`Sec-Fetch-Mode` is `cors` (`isBrowserFetchRequest`), which Node's own `fetch` always sends, so a test
+script built on `fetch` never sees the 302. Fix: answer consent through `auth.handler(new Request(…))`
+with the browser's cookie and Origin copied (apps/web `app/api/app/oauth/consent/route.ts`; never a copy
+of the incoming request, NEXT-13), and drive navigations in scripts with `node:http`.
+
+*Source: `OBSERVED` (dev stack, better-auth 1.7.15 + @better-auth/oauth-provider 1.7.15, 2026-11-02); `SOURCE` (oauth-provider authorize-*.mjs `authorizeEndpoint`, `handleRedirect`; @better-auth/core utils/fetch-metadata.mjs)*
+
+### AUTH-15
+**Every Better Auth route (`/api/auth/ok`, sign-in, `get-session`) answers 500 with an empty body and nothing in the log, while the rest of the hub works.**
+`betterAuth()` throws on an invalid configuration (for example the OAuth provider's
+`storeClientSecret: 'hashed'` together with `disableJwtPlugin: true`: "unable to store hashed secrets
+because id tokens will be signed with secret"), and the hub builds it lazily in `getAuth()` on the first
+auth request. The error escapes the route handler before any of our logging, so each request retries the
+construction and fails the same way, silently; pages that don't touch auth keep working. Fix: build the
+auth instance once in a test or a script when changing its options (apps/web `lib/auth.ts`), and leave
+`storeClientSecret` at its default (encrypted) with `disableJwtPlugin`.
+
+*Source: `OBSERVED` (dev stack, @better-auth/oauth-provider 1.7.15, 2026-11-02)*
 
 ### DISCORD-1
 **Re-verification marks every member, or a large share of them, as having left the guild in a single run.**

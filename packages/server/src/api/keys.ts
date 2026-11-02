@@ -15,6 +15,7 @@ import { audit } from '../audit';
 import { isUuid } from '../uuid';
 import { formatKey, newKeyPrefix, newKeySecret } from './key-format';
 import { API_RATE_LIMIT, SERVICE_KEY_RATE_LIMIT } from './limits';
+import { forgetOAuthGrant } from './oauth-grants';
 import { isPublicIdLike } from './params';
 
 /** Most active (neither revoked nor expired) keys one user may hold at once (D-69). */
@@ -69,6 +70,11 @@ export interface ApiKeyInfo {
   revokedAt: string | null;
   /** revoked wins over expired. */
   status: ApiKeyStatus;
+  /**
+   * Made by connecting an assistant through sign-in (D-137): the assistant's tokens act as this key,
+   * and revoking it disconnects the assistant.
+   */
+  connected: boolean;
 }
 
 /**
@@ -387,6 +393,7 @@ export function keyInfoOf(row: KeyRow, accounts: ApiKeyAccount[] | null, now: Da
     lastUsedAt: row.lastUsedAt?.toISOString() ?? null,
     revokedAt: row.revokedAt?.toISOString() ?? null,
     status: apiKeyStatus(row, now),
+    connected: row.oauthClientId !== null,
   };
 }
 
@@ -684,7 +691,8 @@ export type RevokedKey = Pick<KeyRow, 'id' | 'userId' | 'prefix' | 'name'>;
 /**
  * Revokes the key `keyId` if it is one of the keys `scope` selects (the keys the actor may revoke),
  * for revokeApiKey and revokeServiceKey: sets `revoked_at` once and runs `auditRevoked` in the same
- * transaction, only when this call revoked it. True when the key is in scope, revoked now or before
+ * transaction, only when this call revoked it. Revoking a connected assistant's key also forgets what
+ * the user granted that client (forgetOAuthGrant, D-137). True when the key is in scope, revoked now or before
  * (idempotent); false when it isn't, or `keyId` isn't a uuid.
  */
 export async function revokeKey(
@@ -705,8 +713,13 @@ export async function revokeKey(
         userId: apiKeys.userId,
         prefix: apiKeys.prefix,
         name: apiKeys.name,
+        oauthClientId: apiKeys.oauthClientId,
       });
     if (revoked) {
+      // A connected assistant's key: its tokens and consent go with it (D-137).
+      if (revoked.oauthClientId !== null && revoked.userId !== null) {
+        await forgetOAuthGrant(tx, revoked.userId, revoked.oauthClientId);
+      }
       await auditRevoked(tx, revoked);
       return true;
     }

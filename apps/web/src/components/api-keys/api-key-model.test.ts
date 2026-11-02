@@ -1,4 +1,4 @@
-import { DAY_MS } from '@hub/core';
+import { AI_ASSISTANT_CATEGORIES, DAY_MS } from '@hub/core';
 import {
   API_KEY_MAX_EXPIRY_DAYS,
   API_KEY_NAME_MAX,
@@ -9,7 +9,6 @@ import {
 import { describe, expect, it } from 'vitest';
 import { failureMessage, fieldErrorsFrom, refreshesPage } from '@/lib/api-client';
 import {
-  AI_ASSISTANT_CATEGORIES,
   aiAssistantPreset,
   DELETE_KEY_FAILURE,
   EDIT_KEY_FAILURE,

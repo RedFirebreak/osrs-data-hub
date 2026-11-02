@@ -11,12 +11,14 @@ import {
   type GuildAudience,
   type Viewer,
 } from '@hub/core';
-import { apiKeys, pgErrorCode, type DbOrTx } from '@hub/db';
+import { apiKeys, oauthAccessToken, pgErrorCode, type DbOrTx } from '@hub/db';
 import { eq, sql } from 'drizzle-orm';
 import { loadViewer } from '../accounts/access';
 import { getLogger } from '../logger';
 import { parseKey } from './key-format';
 import { apiKeyStatus, keyRateLimit, type KeyRow } from './keys';
+import { OAUTH_ACCESS_TOKEN_PREFIX, forgetOAuthGrant, oauthTokenHash } from './oauth-grants';
+import { oauthKeyFor } from './oauth-keys';
 
 /** How often `last_used_at` is written per key at most. */
 export const LAST_USED_RESOLUTION_MS = 60_000;
@@ -67,7 +69,8 @@ export type ApiPrincipal = UserApiPrincipal | ServiceApiPrincipal;
 
 /**
  * Why a request's key was refused (all answered 401; the web doesn't tell them apart):
- * missing (no Authorization header), malformed (not `Bearer ohub_<prefix>_<secret>`), unknown (no key
+ * missing (no Authorization header), malformed (not `Bearer ohub_<prefix>_<secret>`, or an OAuth
+ * token where none is accepted), unknown (no key
  * with that prefix, or a wrong secret: indistinguishable on purpose), revoked, expired, inactive_user
  * (a user key whose creator is in grace or gone; never a service key, which has no user).
  */
@@ -88,17 +91,24 @@ export type ApiAuthResult =
  * On success, `last_used_at` is written when it is older than LAST_USED_RESOLUTION_MS (one small
  * UPDATE, skipped when the loaded row is recent and never waiting for a row lock); a failure there is
  * logged by code and never fails the request.
+ *
+ * With `options.oauthResource`, a bearer token starting with `ohat_` is one of the hub's OAuth access
+ * tokens instead (authenticateOAuthToken, D-137); the reasons are the same.
  */
 export async function authenticateApiKey(
   db: DbOrTx,
   authorization: string | null | undefined,
   now: Date = new Date(),
+  options: ApiAuthOptions = {},
 ): Promise<ApiAuthResult> {
   if (typeof authorization !== 'string' || authorization.trim() === '') {
     return { ok: false, reason: 'missing' };
   }
   if (authorization.length > MAX_AUTHORIZATION_LENGTH) return { ok: false, reason: 'malformed' };
   const token = BEARER_RE.exec(authorization.trim())?.[1];
+  if (token !== undefined && options.oauthResource && token.startsWith(OAUTH_ACCESS_TOKEN_PREFIX)) {
+    return authenticateOAuthToken(db, token, options.oauthResource, now);
+  }
   const parts = token === undefined ? null : parseKey(token);
   if (parts === null) return { ok: false, reason: 'malformed' };
   const { prefix, secret } = parts;
@@ -106,6 +116,68 @@ export async function authenticateApiKey(
   const [row] = await db.select().from(apiKeys).where(eq(apiKeys.prefix, prefix));
   const matches = constantTimeEqual(sha256Hex(secret), row?.secretHash ?? NO_KEY_HASH);
   if (!row || !matches) return { ok: false, reason: 'unknown' };
+  return principalOf(db, row, now);
+}
+
+/** What a route accepts besides `ohub_` keys. */
+export interface ApiAuthOptions {
+  /**
+   * Accept the hub's OAuth access tokens (`ohat_…`, D-137) issued for this resource (the MCP
+   * endpoint's URL), each acting as the key its user's connection made. Off for every other route:
+   * a token is issued for the MCP endpoint only.
+   */
+  oauthResource?: string;
+}
+
+/**
+ * An OAuth access token (D-137): its row is found by the hash of the token without its prefix (as
+ * the provider stored it), must be neither revoked nor expired and issued for `resource` (or for no
+ * resource in particular), and then acts as its user's active key for that client (oauthKeyFor).
+ * Without such a key (revoked on the API keys page, or by offboarding) the grant is forgotten, so
+ * the client has to ask again and the user gets the consent page, which makes a new key.
+ */
+async function authenticateOAuthToken(
+  db: DbOrTx,
+  token: string,
+  resource: string,
+  now: Date,
+): Promise<ApiAuthResult> {
+  const hash = oauthTokenHash(token.slice(OAUTH_ACCESS_TOKEN_PREFIX.length));
+  const [grant] = await db
+    .select({
+      clientId: oauthAccessToken.clientId,
+      userId: oauthAccessToken.userId,
+      expiresAt: oauthAccessToken.expiresAt,
+      revoked: oauthAccessToken.revoked,
+      resources: oauthAccessToken.resources,
+    })
+    .from(oauthAccessToken)
+    .where(eq(oauthAccessToken.token, hash));
+  if (!grant || grant.userId === null) return { ok: false, reason: 'unknown' };
+  if (grant.resources && grant.resources.length > 0 && !grant.resources.includes(resource)) {
+    return { ok: false, reason: 'unknown' };
+  }
+  if (grant.revoked !== null) return { ok: false, reason: 'revoked' };
+  if (grant.expiresAt === null || grant.expiresAt.getTime() <= now.getTime()) {
+    return { ok: false, reason: 'expired' };
+  }
+  const row = await oauthKeyFor(db, grant.userId, grant.clientId, now);
+  if (!row) {
+    try {
+      await forgetOAuthGrant(db, grant.userId, grant.clientId);
+    } catch (err) {
+      getLogger().warn({ pgCode: pgErrorCode(err) }, 'api: OAuth grant not forgotten');
+    }
+    return { ok: false, reason: 'revoked' };
+  }
+  return principalOf(db, row, now);
+}
+
+/**
+ * A key row whose secret (or token) checked out, as a principal: refused when revoked or expired,
+ * or for a user key whose creator isn't active.
+ */
+async function principalOf(db: DbOrTx, row: KeyRow, now: Date): Promise<ApiAuthResult> {
   const status = apiKeyStatus(row, now);
   if (status !== 'active') return { ok: false, reason: status };
   const categories = new Set(row.categories.filter(isCategory));

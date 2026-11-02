@@ -71,6 +71,10 @@ Terminate TLS in the proxy you already run and forward to `127.0.0.1:3000`. Six 
    client appears as the proxy's address, and one client with a bad key locks every API client out
    for about a minute. The MCP endpoint (`POST /api/v1/mcp`, [MCP.md](MCP.md)) needs nothing more: it
    answers plain JSON, and the hub answers its preflight; pass `Authorization` and `Mcp-*` headers on.
+   For assistants that connect by signing in (Claude.ai, D-137), `/.well-known/oauth-*` must reach the
+   hub too (a proxy that serves its own `/.well-known/` for certificates should pass the rest on), and
+   the hub must be on public HTTPS: the sign-in insists on an `https` issuer for any host but
+   `localhost`.
 5. **Never redirect `/api/osrs-data/*`.** The plugin turns a 301/302 into a body-less GET and doesn't
    follow 307/308, so data is lost silently (PLUGIN-2). Redirect http → https for the UI only, or tell
    players to use the `https://` URL exactly as the wizard shows it.

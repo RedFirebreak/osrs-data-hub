@@ -185,7 +185,9 @@ describe('POST /api/v1/mcp', () => {
 
     const unauthorized = await post({ jsonrpc: '2.0', id: 1, method: 'tools/list' });
     expect(unauthorized.status).toBe(401);
-    expect(unauthorized.headers.get('www-authenticate')).toBe('Bearer');
+    expect(unauthorized.headers.get('www-authenticate')).toBe(
+      'Bearer resource_metadata="http://hub.test/.well-known/oauth-protected-resource/api/v1/mcp"',
+    );
     expectCors(unauthorized);
 
     for (let i = 0; i < API_RATE_LIMIT; i++) getApiLimits().perKey.hit(key.info.id);
