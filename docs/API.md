@@ -530,7 +530,8 @@ It reads the page's own model, so it says what the page says, narrowed to the ke
   - `playtime` (`activity` and `stats`): play sessions in the range, time logged in (`online_ms`) and
     active time (`active_ms`: 5-minute blocks with XP, a drop, a step, an inventory change or a gear
     change; D-107, D-127), the longest session, and where the active time went: per activity (a skill,
-    a boss, …; the top 8 and `Other`) and per day.
+    a boss, …; the top 8 and `Other`) and per day. Blocks with no activity to name (a walk, an
+    inventory change) count in `active_ms` but in no activity, as on the page.
   - `xp` (`stats`): XP gained (Overall; hiscores fills of mobile play included), and every skill with
     its level, XP, gain and `xp_per_hour` over its active time (null without such time).
   - `loot` (`events`): the value of the drops and their number.
