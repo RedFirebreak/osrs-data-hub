@@ -3,11 +3,16 @@
  * newest slots across the guild, and the lookup "who has X". Each account adds only what the viewer
  * may read of it: the hiscores' "Collections Logged" and its rise over 30 days need `hiscores`, the
  * slots the hub saw need `events`. An account hidden from the guild (D-104) is never on the board,
- * as on the other guild leaderboards.
+ * as on the other guild leaderboards. The public API reads the same model with the key as `restrict`
+ * (GET /collection-log, api/collection-log.ts).
  */
 import { isHiddenFromGuild, type Principal } from '@hub/core';
 import type { DbOrTx } from '@hub/db';
-import { loadVisibleAccounts, type AccountWithAccess } from '../accounts/load';
+import {
+  loadVisibleAccounts,
+  type AccessRestriction,
+  type AccountWithAccess,
+} from '../accounts/load';
 import { leaderboardStarts } from '../accounts/guild';
 import { readKillGains } from '../account-metrics/read';
 import { loadHiscoresViews } from '../hiscores/read';
@@ -71,9 +76,9 @@ export function lookupQuery(raw: unknown): string | null {
 export async function getGuildCollectionLog(
   db: DbOrTx,
   viewer: Principal,
-  opts: { now: Date; timezone?: string; query?: string | null },
+  opts: { now: Date; timezone?: string; query?: string | null; restrict?: AccessRestriction },
 ): Promise<GuildCollectionLog> {
-  const visible = (await loadVisibleAccounts(db, viewer)).filter(
+  const visible = (await loadVisibleAccounts(db, viewer, opts.restrict)).filter(
     (e) =>
       !isHiddenFromGuild(e.raw) &&
       (e.access.categories.has('events') || e.access.categories.has('hiscores')),

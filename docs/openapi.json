@@ -47,6 +47,10 @@
       "description": "Ranks, kill counts, clues and minigames from the official hiscores (`hiscores`)."
     },
     {
+      "name": "Collection log",
+      "description": "The collection log: the hiscores’ count (`hiscores`) and the slots the hub saw (`events`)."
+    },
+    {
       "name": "Leaderboards",
       "description": "Gains leaderboards (`stats`) and the loot leaderboard (`events`)."
     },
@@ -1342,6 +1346,188 @@
         }
       }
     },
+    "/accounts/{id}/collection-log": {
+      "get": {
+        "operationId": "getAccountCollectionLog",
+        "tags": [
+          "Collection log"
+        ],
+        "summary": "Collection log",
+        "description": "The account’s collection log page: `total` is \"Collections Logged\" from the official hiscores (`hiscores`), the whole log’s count; `slots` are the slots the hub saw logged since the account was paired (`events`), newest first, each with the kill count the plugin read and the loot source of the drop that came with it. `groups` counts every matching slot by source. The key needs one of the two categories on the account, else 404; the part it can’t read is null. Filter with `source` and `since`; `limit` cuts `slots` (default 100, at most 500) and `meta.truncated` says so.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9A-Za-z]{1,64}$"
+            },
+            "description": "The account's public id (opaque, base62), as `id` in `/accounts`.",
+            "example": "4fT9kQ2mXa7B"
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "description": "Only the slots that came with a drop from this source, case-insensitive (`Zulrah`). Slots without a source (pets, shop rewards) never match.",
+            "example": "Zulrah"
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "Only slots logged at or after this time (ISO-8601 date-time)."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{1,16}$"
+            },
+            "description": "Slots to list, newest first, 1 to 500. Default 100. `groups` still counts every slot that matched."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK: `{ data, meta }`.",
+            "headers": {
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/X-RateLimit-Remaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/X-RateLimit-Reset"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountCollectionLogResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/collection-log": {
+      "get": {
+        "operationId": "getCollectionLog",
+        "tags": [
+          "Collection log"
+        ],
+        "summary": "The guild’s collection log, and who has an item",
+        "description": "The guild’s collection log page over every account whose `events` or `hiscores` the key reads and that isn’t hidden from the guild: the `board` (most logged first), the 12 newest slots across them, and with `item`, who has it: every matching item someone logged, with its holders, first logged first. `meta.searchable` counts the accounts whose slots were searched (those whose `events` the key reads), so an answer can say “none of the 23 accounts that share their log”. `accounts` narrows it to those ids (up to 10 with a user key, 50 with a service key); one the board couldn’t list makes the whole request 404.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "item",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Who has it: a part of an item name, case-insensitive, 2 to 64 characters (`shadow` finds Tumeken's shadow). Fills `items`, at most 30 of them, the most holders first.",
+            "example": "Tumeken"
+          },
+          {
+            "name": "accounts",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated account ids: only these, up to 10 with a user key, 50 with a service key, each one the guild board could list (the key reads its `events` or `hiscores` and it isn’t hidden from the guild), else 404. Default: every such account."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{1,16}$"
+            },
+            "description": "Board rows, 1 to 500. Default 100."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK: `{ data, meta }`.",
+            "headers": {
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/X-RateLimit-Remaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/X-RateLimit-Reset"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionLogResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
     "/leaderboards/gains": {
       "get": {
         "operationId": "getGainsLeaderboards",
@@ -1874,6 +2060,69 @@
           "skills",
           "activities"
         ]
+      },
+      "CollectionLogSlot": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "string",
+            "description": "The item’s name as the game’s popup wrote it."
+          },
+          "item_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The item id; null when the plugin couldn’t resolve the name."
+          },
+          "kill_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The kill count the plugin read from the chat line before it; null without one."
+          },
+          "value_gp": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Grand Exchange value; 0 for untradeables."
+          },
+          "logged_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO-8601 UTC."
+          },
+          "source": {
+            "description": "The loot source of the drop within 10 seconds of it (`Zulrah`); null without one (a pet, a shop reward).",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "item",
+          "item_id",
+          "kill_count",
+          "value_gp",
+          "logged_at",
+          "source"
+        ],
+        "description": "A collection log slot the hub saw logged (a `collection_log` event). The hub only sees slots logged since the account was paired, never on a special world, and lists an item once, at the first time."
       },
       "Item": {
         "type": "object",
@@ -3895,6 +4144,443 @@
             "required": [
               "generated_at",
               "count"
+            ]
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ]
+      },
+      "AccountCollectionLogResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "object",
+            "properties": {
+              "account": {
+                "$ref": "#/components/schemas/AccountRef"
+              },
+              "total": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "logged": {
+                        "anyOf": [
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "description": "\"Collections Logged\" on the official hiscores: the whole log’s count; null when not listed."
+                      },
+                      "rank": {
+                        "anyOf": [
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "mode_rank": {
+                        "anyOf": [
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "description": "Rank on the account’s own iron table (`mode`); null for `regular`, or when not listed there."
+                      },
+                      "mode": {
+                        "type": "string",
+                        "enum": [
+                          "regular",
+                          "ironman",
+                          "hardcore_ironman",
+                          "ultimate_ironman"
+                        ]
+                      },
+                      "fetched_at": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "format": "date-time",
+                            "description": "ISO-8601 UTC."
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "description": "When the hiscores were read; null before the first lookup. Cut to the UTC day for a key that can’t read the account’s `activity`."
+                      },
+                      "gained_30d": {
+                        "type": "integer",
+                        "description": "Its rise over the last 30 days."
+                      }
+                    },
+                    "required": [
+                      "logged",
+                      "rank",
+                      "mode_rank",
+                      "mode",
+                      "fetched_at",
+                      "gained_30d"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "From the hiscores (`hiscores`); null without it."
+              },
+              "slots": {
+                "anyOf": [
+                  {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/CollectionLogSlot"
+                    }
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "The slots the hub saw (`events`), newest first, filtered and cut at `limit` (`meta.truncated`); null without `events`. At most the newest 2,500 are read."
+              },
+              "groups": {
+                "anyOf": [
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "source": {
+                          "description": "null: slots without a source.",
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "count": {
+                          "type": "integer",
+                          "minimum": 1
+                        }
+                      },
+                      "required": [
+                        "source",
+                        "count"
+                      ]
+                    }
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Every slot that matched the filters (not only those listed), counted by source: the most first, null last. Null without `events`."
+              }
+            },
+            "required": [
+              "account",
+              "total",
+              "slots",
+              "groups"
+            ]
+          },
+          "meta": {
+            "type": "object",
+            "properties": {
+              "generated_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "When the hub built this response."
+              },
+              "count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "truncated": {
+                "type": "boolean",
+                "description": "More slots matched than `limit` lets `slots` list."
+              }
+            },
+            "required": [
+              "generated_at",
+              "count",
+              "truncated"
+            ]
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ]
+      },
+      "CollectionLogResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "object",
+            "properties": {
+              "board": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "account": {
+                      "$ref": "#/components/schemas/AccountRef"
+                    },
+                    "logged": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "description": "\"Collections Logged\" on the hiscores; null without `hiscores` or when not listed."
+                    },
+                    "gained_30d": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "description": "Its rise over 30 days; null without `hiscores`."
+                    },
+                    "seen": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "description": "Slots the hub saw; null without `events`."
+                    },
+                    "latest": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "item": {
+                              "type": "string"
+                            },
+                            "item_id": {
+                              "anyOf": [
+                                {
+                                  "type": "integer"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "logged_at": {
+                              "type": "string",
+                              "format": "date-time",
+                              "description": "ISO-8601 UTC."
+                            }
+                          },
+                          "required": [
+                            "item",
+                            "item_id",
+                            "logged_at"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "description": "The newest slot seen; null without `events` or before the first."
+                    }
+                  },
+                  "required": [
+                    "account",
+                    "logged",
+                    "gained_30d",
+                    "seen",
+                    "latest"
+                  ]
+                },
+                "description": "Most logged first (the hiscores’ count, then the slots seen), at most `limit` (`meta.truncated`). An account with nothing to show is left out."
+              },
+              "recent": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "account": {
+                      "$ref": "#/components/schemas/AccountRef"
+                    },
+                    "item": {
+                      "type": "string",
+                      "description": "The item’s name as the game’s popup wrote it."
+                    },
+                    "item_id": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "description": "The item id; null when the plugin couldn’t resolve the name."
+                    },
+                    "kill_count": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "description": "The kill count the plugin read from the chat line before it; null without one."
+                    },
+                    "value_gp": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "description": "Grand Exchange value; 0 for untradeables."
+                    },
+                    "logged_at": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "ISO-8601 UTC."
+                    },
+                    "source": {
+                      "description": "The loot source of the drop within 10 seconds of it (`Zulrah`); null without one (a pet, a shop reward).",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "account",
+                    "item",
+                    "item_id",
+                    "kill_count",
+                    "value_gp",
+                    "logged_at",
+                    "source"
+                  ]
+                },
+                "description": "The newest slots across these accounts, newest first, at most 12."
+              },
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "item": {
+                          "type": "string"
+                        },
+                        "item_id": {
+                          "anyOf": [
+                            {
+                              "type": "integer"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "holders": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "account": {
+                                "$ref": "#/components/schemas/AccountRef"
+                              },
+                              "logged_at": {
+                                "type": "string",
+                                "format": "date-time",
+                                "description": "ISO-8601 UTC."
+                              },
+                              "kill_count": {
+                                "anyOf": [
+                                  {
+                                    "type": "integer"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "account",
+                              "logged_at",
+                              "kill_count"
+                            ]
+                          },
+                          "description": "First logged first."
+                        }
+                      },
+                      "required": [
+                        "item",
+                        "item_id",
+                        "holders"
+                      ]
+                    }
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "The `item` lookup: every matching item someone logged, the most holders first, at most 30; null without `item`."
+              }
+            },
+            "required": [
+              "board",
+              "recent",
+              "items"
+            ]
+          },
+          "meta": {
+            "type": "object",
+            "properties": {
+              "generated_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "When the hub built this response."
+              },
+              "searchable": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "How many accounts the slots and the lookup were read from (those whose `events` the key reads), for “of N accounts”."
+              },
+              "truncated": {
+                "type": "boolean",
+                "description": "The board had more rows than `limit`."
+              }
+            },
+            "required": [
+              "generated_at",
+              "searchable",
+              "truncated"
             ]
           }
         },

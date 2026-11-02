@@ -10,6 +10,8 @@
 import { getConfig } from '@hub/core';
 import {
   API_EVENTS_SETTLE_MS,
+  COLLECTION_LOG_DEFAULT_LIMIT,
+  COLLECTION_LOG_MAX_LIMIT,
   API_RATE_LIMIT,
   API_RATE_WINDOW_MS,
   EVENTS_DEFAULT_LIMIT,
@@ -235,6 +237,27 @@ export const OPERATIONS: readonly OperationSpec[] = [
     notFound: true,
   },
   {
+    path: '/accounts/{id}/collection-log',
+    operationId: 'getAccountCollectionLog',
+    tag: 'Collection log',
+    summary: 'Collection log',
+    description: `The account’s collection log page: \`total\` is "Collections Logged" from the official hiscores (\`hiscores\`), the whole log’s count; \`slots\` are the slots the hub saw logged since the account was paired (\`events\`), newest first, each with the kill count the plugin read and the loot source of the drop that came with it. \`groups\` counts every matching slot by source. The key needs one of the two categories on the account, else 404; the part it can’t read is null. Filter with \`source\` and \`since\`; \`limit\` cuts \`slots\` (default ${COLLECTION_LOG_DEFAULT_LIMIT}, at most ${COLLECTION_LOG_MAX_LIMIT}) and \`meta.truncated\` says so.`,
+    response: S.AccountCollectionLogResponse,
+    query: S.AccountCollectionLogQuery,
+    pathParams: S.AccountPath,
+    notFound: true,
+  },
+  {
+    path: '/collection-log',
+    operationId: 'getCollectionLog',
+    tag: 'Collection log',
+    summary: 'The guild’s collection log, and who has an item',
+    description: `The guild’s collection log page over every account whose \`events\` or \`hiscores\` the key reads and that isn’t hidden from the guild: the \`board\` (most logged first), the 12 newest slots across them, and with \`item\`, who has it: every matching item someone logged, with its holders, first logged first. \`meta.searchable\` counts the accounts whose slots were searched (those whose \`events\` the key reads), so an answer can say “none of the 23 accounts that share their log”. \`accounts\` narrows it to those ids (up to ${MAX_BULK_ACCOUNTS} with a user key, ${MAX_BULK_ACCOUNTS_SERVICE} with a service key); one the board couldn’t list makes the whole request 404.`,
+    response: S.CollectionLogResponse,
+    query: S.CollectionLogQuery,
+    notFound: true,
+  },
+  {
     path: '/leaderboards/gains',
     operationId: 'getGainsLeaderboards',
     tag: 'Leaderboards',
@@ -280,6 +303,7 @@ const SHARED_COMPONENTS: readonly [string, z.ZodType][] = [
   ['Owner', S.Owner],
   ['AccountLocations', S.AccountLocations],
   ['Hiscores', S.Hiscores],
+  ['CollectionLogSlot', S.CollectionLogSlot],
   ['Item', S.Item],
   ['Meter', S.Meter],
   ['Skill', S.Skill],
@@ -525,6 +549,11 @@ export function buildOpenApiDocument(): Json {
         name: 'Hiscores',
         description:
           'Ranks, kill counts, clues and minigames from the official hiscores (`hiscores`).',
+      },
+      {
+        name: 'Collection log',
+        description:
+          'The collection log: the hiscores’ count (`hiscores`) and the slots the hub saw (`events`).',
       },
       {
         name: 'Leaderboards',

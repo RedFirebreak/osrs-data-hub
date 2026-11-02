@@ -2,12 +2,13 @@
  * One account's collection log page (D-118): the hiscores' "Collections Logged" as the headline, and
  * the slots the hub has seen, grouped by where they came from. The headline needs `hiscores`, the
  * slots `events` (the category a collection log entry is already shown under); the page needs one of
- * the two, else it is a 404 like any account the viewer may not see.
+ * the two, else it is a 404 like any account the viewer may not see. The public API reads the same
+ * model with the key as `restrict` (GET /accounts/{id}/collection-log, api/collection-log.ts).
  */
 import { type HiscoreMode, type Principal } from '@hub/core';
 import type { DbOrTx } from '@hub/db';
 import { leaderboardStarts } from '../accounts/guild';
-import { loadVisibleAccount } from '../accounts/load';
+import { loadVisibleAccount, type AccessRestriction } from '../accounts/load';
 import { readKillGains } from '../account-metrics/read';
 import { loadHiscoresViews } from '../hiscores/read';
 import { readSlots, type CollectionLogSlot } from './read';
@@ -49,9 +50,9 @@ export async function getAccountCollectionLog(
   db: DbOrTx,
   viewer: Principal,
   publicId: string,
-  opts: { now: Date; timezone?: string },
+  opts: { now: Date; timezone?: string; restrict?: AccessRestriction },
 ): Promise<AccountCollectionLog | null> {
-  const entry = await loadVisibleAccount(db, viewer, publicId);
+  const entry = await loadVisibleAccount(db, viewer, publicId, opts.restrict);
   if (!entry) return null;
   const events = entry.access.categories.has('events');
   const hiscores = entry.access.categories.has('hiscores');
