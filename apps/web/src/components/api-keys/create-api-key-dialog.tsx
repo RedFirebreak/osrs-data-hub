@@ -118,8 +118,8 @@ export function CreateApiKeyDialog({
               For an AI assistant
             </Button>
             <p className="text-xs text-muted-foreground">
-              Picks what Claude or another assistant needs to answer questions about the guild. Add
-              Equipment and Inventory for questions about gear and wealth.
+              Picks what Claude or another assistant needs to answer questions about the guild, gear
+              and wealth included. Add Live location for “where is X right now”.
             </p>
           </div>
 

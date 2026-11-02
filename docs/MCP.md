@@ -21,9 +21,11 @@ same read-only data API v1 serves ([API.md](API.md)). Design: D-128 … D-139 in
 ## A key for an assistant
 
 On the hub's **API keys** page, **Create key**, then **For an AI assistant**. That ticks `stats`,
-`events`, `activity`, `location_history` and `hiscores`, and names the key "AI assistant". Add
-`equipment` and `inventory` for questions about gear and wealth, and `location_live` for "where is X
-right now". Pick the accounts if the assistant should only see some. The key is shown once.
+`events`, `activity`, `location_history`, `equipment`, `inventory` and `hiscores` (gear and wealth
+since D-140), and names the key "AI assistant". Add `location_live` for "where is X right now". Pick
+the accounts if the assistant should only see some. The key is shown once. A key made before D-140
+lacks `equipment` and `inventory`: edit it on the API keys page (or connect the assistant again) for
+gear and wealth questions.
 
 What the key can't read, the tools say so ("this key can't read Alpha Main's XP: it needs the
 "stats" category, and the owner has to share it with you"), so the assistant can explain a missing
@@ -79,7 +81,7 @@ claude mcp add --transport http scapekeeper https://hub.example.com/api/v1/mcp \
 sends you to the hub, where you sign in with Discord as usual, and shows what it asks for.
 **Allow** adds a key named after the assistant to your API keys page, marked "Connected assistant",
 with the AI assistant categories on every account you can see. Edit it there to let the assistant
-read more (equipment, inventory) or less; revoke it to disconnect the assistant. Connecting the same
+read more (the live location) or less; revoke it to disconnect the assistant. Connecting the same
 assistant again replaces its key. There is nothing to copy: the assistant holds sign-in tokens (an
 hour each, renewed for up to 30 days of not using it) that act as that key, on the MCP endpoint only.
 The hub has to be on public HTTPS for this.

@@ -827,7 +827,7 @@ Other rules:
   - Suggested key: `events`, `stats`, `activity` (+ `hiscores` for kill counts and the log's count).
 - **AI assistants** (Claude, Claude Code, Cursor) through `POST /mcp` ([MCP.md](MCP.md)): a member's
   own key with the "For an AI assistant" preset (`stats`, `events`, `activity`, `location_history`,
-  `hiscores`), or a service key for a guild bot. Claude.ai connects by signing in instead and gets a
+  `equipment`, `inventory`, `hiscores`; D-140), or a service key for a guild bot. Claude.ai connects by signing in instead and gets a
   key of the same kind, marked "Connected assistant" on the API keys page (D-137).
 - **Live map** ([ha-osrs-map](https://github.com/RedFirebreak/ha-osrs-map), polling the hub
   server-side with a **service key**, D-88):
