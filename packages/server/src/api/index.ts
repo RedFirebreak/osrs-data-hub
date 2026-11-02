@@ -5,6 +5,7 @@
  */
 export { MAX_BULK_ACCOUNTS, MAX_BULK_ACCOUNTS_SERVICE } from './access';
 export {
+  apiAccountCategories,
   apiGetAccount,
   apiListAccounts,
   type ApiAccountDetail,

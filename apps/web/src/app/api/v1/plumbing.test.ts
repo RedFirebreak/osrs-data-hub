@@ -94,7 +94,7 @@ describe('CORS', () => {
     // Every route.ts under app/api/v1, the catch-all included: a new route can't be left out.
     const files = v1RouteFiles();
     expect(files.length).toBeGreaterThanOrEqual(17);
-    for (const { file } of files) {
+    for (const { file, segments } of files) {
       const route = (await import(/* @vite-ignore */ pathToFileURL(file).href)) as {
         OPTIONS?: () => Response;
       };
@@ -102,9 +102,15 @@ describe('CORS', () => {
       const res = route.OPTIONS!();
       expect(res.status, file).toBe(204);
       expectCors(res);
-      expect(res.headers.get('access-control-allow-methods')).toBe('GET, OPTIONS');
+      // The MCP endpoint is the one POST route, with the headers an MCP client sends (D-128).
+      const mcp = segments[0] === 'mcp';
+      expect(res.headers.get('access-control-allow-methods')).toBe(
+        mcp ? 'POST, OPTIONS' : 'GET, OPTIONS',
+      );
       expect(res.headers.get('access-control-allow-headers')).toBe(
-        'Authorization, If-None-Match, Content-Type',
+        mcp
+          ? 'Authorization, Content-Type, Accept, Mcp-Protocol-Version, Mcp-Session-Id, Last-Event-ID'
+          : 'Authorization, If-None-Match, Content-Type',
       );
       expect(res.headers.get('access-control-max-age')).toBe('600');
       expect(await res.text()).toBe('');

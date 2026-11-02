@@ -9,6 +9,8 @@ import {
 import { describe, expect, it } from 'vitest';
 import { failureMessage, fieldErrorsFrom, refreshesPage } from '@/lib/api-client';
 import {
+  AI_ASSISTANT_CATEGORIES,
+  aiAssistantPreset,
   DELETE_KEY_FAILURE,
   EDIT_KEY_FAILURE,
   editFormOf,
@@ -80,6 +82,18 @@ describe('the create form', () => {
       accountPublicIds: [],
       expiry: 'never',
     });
+  });
+
+  it('the AI assistant preset adds its categories and names an unnamed key', () => {
+    expect(aiAssistantPreset(emptyCreateForm())).toEqual({
+      name: 'AI assistant',
+      categories: ['stats', 'events', 'activity', 'location_history', 'hiscores'],
+    });
+    expect(aiAssistantPreset({ ...filled, categories: ['inventory'] })).toEqual({
+      name: ' Home Assistant ',
+      categories: ['stats', 'events', 'activity', 'location_history', 'inventory', 'hiscores'],
+    });
+    expect(AI_ASSISTANT_CATEGORIES).not.toContain('equipment');
   });
 
   it('validates like the server', () => {

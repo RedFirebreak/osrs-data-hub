@@ -192,6 +192,8 @@ const EnvSchema = z.object({
       return url;
     }),
   HUB_NAME: z.string().default('osrs-data-hub'),
+  /** The release the image was built from (the release workflow's build argument); `dev` otherwise. */
+  HUB_VERSION: z.string().trim().min(1).max(64).default('dev'),
   MIN_PLUGIN_VERSION: z
     .string()
     .default('1.5')
@@ -236,6 +238,8 @@ function toConfig(e: z.output<typeof EnvSchema>) {
     /** APP_URL origin, e.g. "https://hub.example.com" (no trailing slash). */
     appOrigin: e.APP_URL.origin,
     hubName: hubNameFrom(e.HUB_NAME),
+    /** The hub's release (`2.11.0`), or `dev` for a build that isn't one (hub://me, D-134). */
+    hubVersion: e.HUB_VERSION,
     minPluginVersion: e.MIN_PLUGIN_VERSION,
     databaseUrl: e.DATABASE_URL,
     authSecret: e.AUTH_SECRET,

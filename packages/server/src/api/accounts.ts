@@ -112,6 +112,23 @@ export async function apiGetAccount(
   };
 }
 
+/**
+ * What the key may read on each account it can see (the `categories` of GET /accounts/{id}), without
+ * loading their state: the orientation table the MCP server's `hub://accounts` resource and
+ * `list_accounts` tool serve (D-134). Keyed by public id.
+ */
+export async function apiAccountCategories(
+  db: DbOrTx,
+  principal: ApiPrincipal,
+): Promise<Map<string, Category[]>> {
+  return new Map(
+    (await loadApiAccounts(db, principal)).map(({ account, access }) => [
+      account.publicId,
+      CATEGORIES.filter((c) => access.categories.has(c)),
+    ]),
+  );
+}
+
 function byName(a: string, b: string): number {
   return a.localeCompare(b, 'en', { sensitivity: 'base' });
 }

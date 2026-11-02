@@ -19,7 +19,12 @@ import {
   type Wire,
 } from '../ingest/test-support';
 import { updateUserSettings } from '../settings/user-settings';
-import { apiGetAccount, apiListAccounts, type ApiAccountDetail } from './accounts';
+import {
+  apiAccountCategories,
+  apiGetAccount,
+  apiListAccounts,
+  type ApiAccountDetail,
+} from './accounts';
 import { ApiError } from './errors';
 import {
   apiEquipmentHistory,
@@ -339,6 +344,20 @@ describe('apiGetAccount', () => {
     expect(await apiGetAccount(t.db, memberKey.principal, 'unknown1234', NOW)).toBeNull();
     // A member's defaults: every category (D-96).
     expect((await detail(memberKey, zezima)).categories).toEqual([...CATEGORIES]);
+  });
+});
+
+describe('apiAccountCategories', () => {
+  it('gives every visible account the categories apiGetAccount reports', async () => {
+    for (const key of [ownerKey, memberKey, statsKey]) {
+      const table = await apiAccountCategories(t.db, key.principal);
+      const listed = await apiListAccounts(t.db, key.principal, {}, NOW);
+      expect([...table.keys()].sort()).toEqual(listed.map((a) => a.id).sort());
+      for (const [id, categories] of table) {
+        expect(categories).toEqual((await detail(key, id)).categories);
+      }
+    }
+    expect((await apiAccountCategories(t.db, statsKey.principal)).get(zezima)).toEqual(['stats']);
   });
 });
 

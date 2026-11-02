@@ -78,6 +78,29 @@ export function emptyCreateForm(): CreateKeyForm {
   return { name: '', categories: [], scope: 'all_visible', accountPublicIds: [], expiry: 'never' };
 }
 
+/**
+ * "For an AI assistant" (D-129): what an assistant connected through the hub's MCP server needs to
+ * answer questions about the guild, on top of the form as it is. The categories are added, never
+ * removed (equipment and inventory stay the user's choice: gear and wealth questions), and the name
+ * is filled in only when it's empty.
+ */
+export const AI_ASSISTANT_CATEGORIES: readonly Category[] = [
+  'stats',
+  'events',
+  'activity',
+  'location_history',
+  'hiscores',
+];
+
+export function aiAssistantPreset(form: CreateKeyForm): Pick<CreateKeyForm, 'name' | 'categories'> {
+  return {
+    name: form.name.trim() === '' ? 'AI assistant' : form.name,
+    categories: CATEGORIES.filter(
+      (c) => form.categories.includes(c) || AI_ASSISTANT_CATEGORIES.includes(c),
+    ),
+  };
+}
+
 export type CreateKeyField = 'name' | 'categories' | 'accountPublicIds' | 'expiresInDays';
 export type CreateKeyErrors = Partial<Record<CreateKeyField, string>>;
 
