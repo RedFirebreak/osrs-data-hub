@@ -17,6 +17,7 @@ export * from './presence';
 export * from './ratelimit';
 export * from './sharing';
 export * from './skills';
+export * from './slayer';
 export * from './time';
 export * from './toasts';
 export * from './trail';

@@ -338,6 +338,52 @@ describe('describeEvent: diary and combat task', () => {
   });
 });
 
+describe('describeEvent: slayer tasks (D-141)', () => {
+  it('names the task, its size and Konar location', () => {
+    const assigned = stored('slayerTaskAssigned', {
+      task: 'Abyssal demons',
+      location: 'Catacombs of Kourend',
+      amount: 160,
+    });
+    expect(describeEvent('Zezima', row('slayer_task_assigned', assigned)).line).toBe(
+      'Zezima got a slayer task: 160 Abyssal demons in Catacombs of Kourend',
+    );
+    expect(
+      describeEvent('Zezima', row('slayer_task_assigned', stored('x', { task: 'Kraken' }))).line,
+    ).toBe('Zezima got a slayer task: Kraken');
+    expect(describeEvent('Zezima', row('slayer_task_assigned', null)).line).toBe(
+      'Zezima got a slayer task',
+    );
+  });
+
+  it('says the points earned and the streak, by which master counted it', () => {
+    const done = stored('slayerTaskComplete', {
+      task: 'Kraken',
+      amount: 120,
+      pointsEarned: 15,
+      points: 1249,
+      streakType: 'normal',
+      streak: 100,
+    });
+    expect(describeEvent('Zezima', row('slayer_task_complete', done, { points: 15 })).line).toBe(
+      'Zezima finished a slayer task: 120 Kraken (+15 points, task streak 100)',
+    );
+    const wildy = stored('slayerTaskComplete', {
+      task: 'Black dragons',
+      amount: 12,
+      pointsEarned: 0,
+      streakType: 'wilderness',
+      streak: 3,
+    });
+    expect(describeEvent('Zezima', row('slayer_task_complete', wildy, { points: 0 })).line).toBe(
+      'Zezima finished a slayer task: 12 Black dragons (Wilderness streak 3)',
+    );
+    expect(describeEvent('Zezima', row('slayer_task_complete', null)).line).toBe(
+      'Zezima finished a slayer task',
+    );
+  });
+});
+
 describe('describeEvent: robustness', () => {
   const types = [
     'loot',

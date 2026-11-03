@@ -503,6 +503,43 @@ const vitalsShape = {
   active_prayers: ActivePrayers.nullable(),
 };
 
+const nonNeg = int.min(0);
+const SlayerTask = z
+  .object({
+    name: z.string().nullable().meta({
+      description:
+        'The task as the game names it ("Abyssal demons", "Kraken"); null when the plugin could not look it up.',
+    }),
+    location: z
+      .string()
+      .nullable()
+      .meta({ description: 'Konar\'s tasks only: where to kill them ("Catacombs of Kourend").' }),
+    remaining: nonNeg.meta({ description: 'Kills left, at least 1.' }),
+    amount: nonNeg.meta({
+      description: 'The size of the task when it was assigned, never below `remaining`.',
+    }),
+  })
+  .meta({ description: 'A slayer task.' });
+const slayerStreak = (who: string) =>
+  nonNeg.nullable().meta({ description: `${who}; null when the plugin did not send it.` });
+
+/** The slayer state (D-141); `task` null between tasks. */
+const slayerShape = {
+  task: SlayerTask.nullable().meta({ description: 'The current task; null between tasks.' }),
+  points: nonNeg.meta({ description: 'Slayer reward points.' }),
+  streaks: z
+    .object({
+      normal: slayerStreak('Tasks in a row from every master but Krystilia and Mortimer'),
+      wilderness: slayerStreak("Krystilia's (Wilderness) tasks in a row"),
+      mortimer: slayerStreak("Mortimer's tasks in a row"),
+    })
+    .meta({
+      description:
+        "Task streaks: the game counts Krystilia's and Mortimer's tasks apart from the others. A cancelled task resets none.",
+    }),
+};
+const Slayer = z.object(slayerShape);
+
 const Region = z.string().nullable().meta({
   description:
     'The place, as the live map names it: a RuneLite region name ("Lumbridge", "Grand Exchange"), "Near …" for an unnamed region beside a named one, "Wilderness (level N)", "Ferox Enclave" or "An instance"; null where none applies. The names are in `/regions.json`.',
@@ -619,6 +656,10 @@ export const AccountDetail = z.object({
   categories: categoriesField,
   presence: section(presenceShape, '`activity`.'),
   vitals: section(vitalsShape, '`activity`: HP, prayer, spellbook, active prayers.'),
+  slayer: section(
+    slayerShape,
+    '`activity`: the slayer task, points and streaks as the plugin last sent them (plugin after 1.6.2). A task stays assigned while the player is offline, so it is shown offline too.',
+  ),
   skills: section(
     skillsShape,
     '`stats`. Without `activity`, `updated_at` is cut to the UTC day (the exact time would be the last-seen time).',
@@ -656,6 +697,9 @@ export const SnapshotAccount = z.object({
   prayer: Meter.nullable().optional().meta(inActivity()),
   spellbook: z.string().nullable().optional().meta(inActivity()),
   active_prayers: ActivePrayers.nullable().optional().meta(inActivity()),
+  slayer: Slayer.nullable()
+    .optional()
+    .meta(inActivity('the slayer task, points and streaks; null until the plugin first sent them')),
   location: SnapshotLocation.nullable().optional().meta({
     description:
       '`location_live`: null when never sent, omitted without the category. `stale` after 2 minutes without a location.',

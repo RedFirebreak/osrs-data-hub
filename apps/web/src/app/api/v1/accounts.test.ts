@@ -243,6 +243,7 @@ describe('GET /api/v1/accounts/{id}', () => {
         'owner',
         'presence',
         'skills',
+        'slayer',
         'type',
         'type_label',
         'vitals',

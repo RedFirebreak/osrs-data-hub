@@ -26,6 +26,8 @@ const TYPES = {
   superior_spawn: { plugin: 'superiorSpawn', title: 'Superior spawn', icon: 'sparkles' },
   achievement_diary: { plugin: 'achievementDiary', title: 'Achievement diary', icon: 'map' },
   combat_task: { plugin: 'combatTask', title: 'Combat task', icon: 'swords' },
+  slayer_task_assigned: { plugin: 'slayerTaskAssigned', title: 'Slayer task', icon: 'swords' },
+  slayer_task_complete: { plugin: 'slayerTaskComplete', title: 'Slayer task done', icon: 'swords' },
 } satisfies Record<string, EventTypeInfo>;
 
 /** A stored `events.type` (lower_snake) the hub knows. */

@@ -148,6 +148,13 @@
       "when": 1793649120491,
       "tag": "0020_oauth_provider",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1793718075904,
+      "tag": "0021_slayer",
+      "breakpoints": true
     }
   ]
 }

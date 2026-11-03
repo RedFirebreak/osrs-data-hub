@@ -118,10 +118,11 @@ describe('ingest → NOTIFY → listener → hub, on every event fixture', () =>
     expect(memberEvents.map((m) => m.event.id)).toEqual(stored.map((s) => s.id));
     expect(owner.messages('event').map((m) => Number(m.id))).toEqual(stored.map((s) => s.seq));
 
-    // Death and superior locations: the owner sees them, the member (no location category) doesn't.
+    // Death and superior locations, and a Konar task's area (D-141): the owner sees them, the member
+    // (no location category) doesn't.
     const located = ownerEvents.filter((m) => locationOf(m) !== undefined);
     expect(located.map((m) => m.event.type).sort()).toEqual(
-      ['death', 'death', 'superior_spawn'].sort(),
+      ['death', 'death', 'slayer_task_complete', 'superior_spawn'].sort(),
     );
     expect(memberEvents.filter((m) => locationOf(m) !== undefined)).toEqual([]);
     for (const m of memberEvents) {

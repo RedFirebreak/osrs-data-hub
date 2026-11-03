@@ -206,6 +206,9 @@ export const latestState = pgTable('latest_state', {
   /** RuneLite Prayer names that were on in the last snapshot, prayer book order (D-119). */
   activePrayers: text('active_prayers').array(),
   activePrayersUpdatedAt: tstz('active_prayers_updated_at'),
+  /** The slayer task, points and streaks of the last snapshot (SlayerState, D-141). */
+  slayer: jsonb('slayer'),
+  slayerUpdatedAt: tstz('slayer_updated_at'),
   /** {x, y, plane, isOnBoat} */
   location: jsonb('location'),
   locationUpdatedAt: tstz('location_updated_at'),

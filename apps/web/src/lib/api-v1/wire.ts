@@ -21,6 +21,7 @@ import {
   wirePresence,
   wireSection,
   wireSkills,
+  wireSlayer,
   wireVitals,
   wireWealthDay,
   type ApiAccountCollectionLog,
@@ -101,6 +102,7 @@ type _SharedMappersMatchSchemas = [
   Assert<Same<ReturnType<typeof wireSkills>, WireSkills>>,
   Assert<Same<Built<typeof wirePresence>, SectionOf<'presence'>>>,
   Assert<Same<Built<typeof wireVitals>, SectionOf<'vitals'>>>,
+  Assert<Same<Built<typeof wireSlayer>, SectionOf<'slayer'>>>,
   Assert<Same<Built<typeof wireLocation>, SectionOf<'location'>>>,
   Assert<Same<Built<typeof wireItems>, SectionOf<'equipment'>>>,
   Assert<Same<ReturnType<typeof wireLocation> & { updated_at: string }, WireSnapshotLocation>>,
@@ -165,6 +167,7 @@ export function wireAccountDetail(d: ApiAccountDetail): WireAccountDetail {
   };
   if (d.presence) out.presence = wireSection(d.presence, wirePresence);
   if (d.vitals) out.vitals = wireSection(d.vitals, wireVitals);
+  if (d.slayer) out.slayer = wireSection(d.slayer, wireSlayer);
   if (d.skills) out.skills = wireSection(d.skills, wireSkills);
   if (d.location) out.location = wireSection(d.location, wireLocation);
   if (d.equipment) out.equipment = wireSection(d.equipment, wireItems);
@@ -191,6 +194,7 @@ export function wireSnapshotAccount(a: ApiSnapshotAccount): WireSnapshotAccount 
   if (a.prayer !== undefined) out.prayer = a.prayer;
   if (a.spellbook !== undefined) out.spellbook = a.spellbook;
   if (a.activePrayers !== undefined) out.active_prayers = a.activePrayers;
+  if (a.slayer !== undefined) out.slayer = a.slayer && wireSlayer(a.slayer);
   if (a.location !== undefined) {
     out.location = a.location && { ...wireLocation(a.location), updated_at: a.location.updatedAt };
   }

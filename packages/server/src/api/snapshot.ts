@@ -22,10 +22,12 @@ import {
   itemsOf,
   loadLatestRows,
   skillsOf,
+  slayerOf,
   type ApiEquipment,
   type ApiInventory,
   type ApiLocation,
   type ApiSkills,
+  type ApiSlayer,
   type LatestRow,
 } from './state';
 import type { ApiAccountIdentity, ApiMeter } from './types';
@@ -78,6 +80,8 @@ export interface ApiSnapshotAccount extends ApiAccountIdentity {
    * [] when none is on or the account is offline, null until the plugin first sent them.
    */
   activePrayers?: string[] | null;
+  /** `activity`: the slayer task, points and streaks (D-141); null until the plugin first sent them. */
+  slayer?: ApiSlayer | null;
   /** `location_live`: `stale` after 2 minutes without a location (D-74). */
   location?: ApiSnapshotLocation | null;
   /** `stats`: Overall first, then the in-game grid order. */
@@ -175,6 +179,7 @@ function snapshotAccount(
     out.prayer = vitals?.prayer ?? null;
     out.spellbook = vitals?.spellbook ?? null;
     out.activePrayers = vitals?.activePrayers ?? null;
+    out.slayer = row ? slayerOf(row, access.categories) : null;
   }
   if (can('location_live')) {
     const location = row ? locationOf(row, now) : null;

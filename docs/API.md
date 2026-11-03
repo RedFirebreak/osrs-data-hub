@@ -62,8 +62,8 @@ For the guild's own services (its live map, a shared bot) an admin creates a **s
 | Category | Covers |
 |---|---|
 | `stats` | skills, XP history, gains, levels |
-| `events` | loot, level-ups, deaths, collection log, diaries, combat tasks, superiors |
-| `activity` | online status, world, sessions and playtime, HP, prayer, active prayers, spellbook |
+| `events` | loot, level-ups, deaths, collection log, diaries, combat tasks, superiors, slayer tasks |
+| `activity` | online status, world, sessions and playtime, HP, prayer, active prayers, spellbook, slayer task |
 | `location_live` | current coordinates (for the live map) |
 | `location_history` | the 30-day trail |
 | `equipment` | current gear and its change log |
@@ -215,7 +215,9 @@ Each section sent by the plugin carries `shared: true` and `updated_at`.
      "categories":["stats","events","activity","location_live"],
      "presence":{"shared":true,"updated_at":"2026-09-29T14:13:42.046Z","online":true,"world":302,"special_world":false,
                  "game_state":"LOGGED_IN","last_seen":"2026-09-29T14:13:42.046Z"},
-     "vitals":{"shared":true,"updated_at":"…","hp":{"current":99,"max":99},"prayer":{"current":99,"max":99},"spellbook":"lunar","active_prayers":[],"active_prayers":["PROTECT_FROM_MELEE","PIETY"]},
+     "vitals":{"shared":true,"updated_at":"…","hp":{"current":99,"max":99},"prayer":{"current":99,"max":99},"spellbook":"lunar","active_prayers":["PROTECT_FROM_MELEE","PIETY"]},
+     "slayer":{"shared":true,"updated_at":"…","task":{"name":"Abyssal demons","location":"Catacombs of Kourend",
+               "remaining":87,"amount":160},"points":1234,"streaks":{"normal":99,"wilderness":12,"mortimer":5}},
      "skills":{"shared":true,"updated_at":"…","total_level":2372,"overall_xp":534951983,
                "skills":[{"skill":"Overall","level":2372,"real_level":2372,"xp":534951983},
                          {"skill":"Attack","level":108,"real_level":99,"xp":34517847},…]},
@@ -224,6 +226,14 @@ Each section sent by the plugin carries `shared: true` and `updated_at`.
 
 A section the plugin never sent looks like `"inventory":{"shared":false,"updated_at":null}`. Without
 `activity`, the `updated_at` of skills, equipment and inventory is cut to the UTC day (D-50).
+
+`slayer` (`activity`, plugin after 1.6.2, D-141) is the slayer state as the plugin last sent it, also
+while the player is offline (a task stays assigned): `task` (`null` between tasks) with `name` (as the
+game names it, `null` when the plugin couldn't look it up), `location` (Konar's tasks only, and only for
+a key that reads `location_live` or `location_history`), `remaining` and `amount` (the task's size when
+it was assigned); `points`; and `streaks` `normal`, `wilderness` (Krystilia) and `mortimer`, each `null`
+when not sent. Tasks given and finished are the events `slayer_task_assigned` and
+`slayer_task_complete` (`points` is the points the task gave).
 
 `equipment` and `inventory` hold `items` and `value` (Σ `ge_price × quantity`). An item is
 `{id, name, quantity, ge_price, ha_price, equipment_slot, inventory_slot}`, one entry per occupied slot
@@ -247,7 +257,8 @@ service key). The other fields depend on the key's categories on that account:
 - `activity`: `online`, `world`, `special_world`, `game_state`, `last_seen`, `hp`, `prayer`,
   `spellbook`, `active_prayers` (RuneLite `Prayer` names in prayer book order, such as
   `PROTECT_FROM_MELEE`, `PIETY`, `RP_TRINITAS`; `[]` when none is on or the account is offline, `null`
-  until the plugin first sent them; D-119);
+  until the plugin first sent them; D-119), `slayer` (`{task, points, streaks}` as in `/accounts/{id}`,
+  `null` until the plugin first sent it; D-141);
 - `location_live`: `location` (with `stale` and `updated_at`);
 - `stats`: `skills`;
 - `equipment`: `equipment`;

@@ -63,11 +63,13 @@ export const CATEGORY_LABELS: Readonly<Record<Category, { label: string; covers:
   stats: { label: 'Stats', covers: 'skills, XP history, gains, levels' },
   events: {
     label: 'Events',
-    covers: 'loot, level-ups, deaths, collection log, diaries, combat tasks, superiors',
+    covers:
+      'loot, level-ups, deaths, collection log, diaries, combat tasks, superiors, slayer tasks',
   },
   activity: {
     label: 'Activity',
-    covers: 'online status, world, sessions and playtime, HP, prayer, active prayers, spellbook',
+    covers:
+      'online status, world, sessions and playtime, HP, prayer, active prayers, spellbook, slayer task',
   },
   location_live: { label: 'Live location', covers: 'current coordinates (for the live map)' },
   // No number of days: how long the trail is kept is LOCATION_RETENTION_DAYS (the privacy page says).

@@ -3,6 +3,7 @@ import { isRecord } from '../guards';
 import { INT32_MAX } from '../ints';
 import { parseCombatTaskName } from './combat-task';
 import { deathOutcome } from './death';
+import { slayerStreakLabel } from '../slayer';
 import { highestValueItem, storedEventData } from './stored';
 import {
   EVENT_TYPES,
@@ -34,7 +35,10 @@ export interface EventDescription {
    * "Zezima reached level 85 Strength", "Zezima died (reclaim fee up to 500K)",
    * "Zezima completed a Grandmaster combat task: No Pressure (6 points)",
    * "Zezima completed an Easy Varrock diary task", "Zezima: new collection log item Tanzanite fang",
-   * "A superior Nechryarch spawned for Zezima", unknown types: "Zezima: questComplete".
+   * "A superior Nechryarch spawned for Zezima",
+   * "Zezima got a slayer task: 160 Abyssal demons in Catacombs of Kourend",
+   * "Zezima finished a slayer task: 160 Abyssal demons (+15 points, task streak 100)",
+   * unknown types: "Zezima: questComplete".
    */
   line: string;
   /** lucide-react icon name hint. */
@@ -160,7 +164,33 @@ function lineFor(type: KnownEventType, name: string, event: DescribableEvent): s
       if (points !== null) line += ` (${points} ${points === 1 ? 'point' : 'points'})`;
       return line;
     }
+    case 'slayer_task_assigned':
+      return `${name} got a slayer task${slayerTask(d)}`;
+    case 'slayer_task_complete': {
+      let line = `${name} finished a slayer task${slayerTask(d)}`;
+      const earned = integer(event.points) ?? integer(d.pointsEarned);
+      const streak = integer(d.streak);
+      const parts = [
+        earned !== null && earned > 0
+          ? `+${formatNumber(earned)} ${earned === 1 ? 'point' : 'points'}`
+          : null,
+        streak !== null && streak > 0
+          ? `${slayerStreakLabel(clean(d.streakType) ?? 'normal')} ${formatNumber(streak)}`
+          : null,
+      ].filter((p): p is string => p !== null);
+      if (parts.length > 0) line += ` (${parts.join(', ')})`;
+      return line;
+    }
   }
+}
+
+/** ": 160 Abyssal demons in Catacombs of Kourend" of a slayer task event, or "" without a task. */
+function slayerTask(d: Record<string, unknown>): string {
+  const task = clean(d.task);
+  if (task === null) return '';
+  const amount = integer(d.amount);
+  const location = clean(d.location);
+  return `: ${amount !== null && amount > 0 ? `${formatNumber(amount)} ` : ''}${task}${location === null ? '' : ` in ${location}`}`;
 }
 
 /** Plugin type names are mapped to the stored names; anything else is used as is. */

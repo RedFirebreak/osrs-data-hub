@@ -699,7 +699,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Comma-separated event types: loot, pk_loot, death, level_up, collection_log, superior_spawn, achievement_diary, combat_task, or an unknown plugin type as sent. Default: every type.",
+            "description": "Comma-separated event types: loot, pk_loot, death, level_up, collection_log, superior_spawn, achievement_diary, combat_task, slayer_task_assigned, slayer_task_complete, or an unknown plugin type as sent. Default: every type.",
             "example": "loot,level_up"
           },
           {
@@ -3032,6 +3032,144 @@
               }
             ]
           },
+          "slayer": {
+            "description": "`activity`: the slayer task, points and streaks as the plugin last sent them (plugin after 1.6.2). A task stays assigned while the player is offline, so it is shown offline too. `{ \"shared\": false, \"updated_at\": null }` when the player’s plugin never sent it; the key omitted when the key can’t read the category on this account.",
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "shared": {
+                    "type": "boolean",
+                    "const": true
+                  },
+                  "updated_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "When the hub last received this section."
+                  },
+                  "task": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "description": "The task as the game names it (\"Abyssal demons\", \"Kraken\"); null when the plugin could not look it up.",
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "location": {
+                            "description": "Konar's tasks only: where to kill them (\"Catacombs of Kourend\").",
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "remaining": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "description": "Kills left, at least 1."
+                          },
+                          "amount": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "description": "The size of the task when it was assigned, never below `remaining`."
+                          }
+                        },
+                        "required": [
+                          "name",
+                          "location",
+                          "remaining",
+                          "amount"
+                        ],
+                        "description": "A slayer task."
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "The current task; null between tasks."
+                  },
+                  "points": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "Slayer reward points."
+                  },
+                  "streaks": {
+                    "type": "object",
+                    "properties": {
+                      "normal": {
+                        "anyOf": [
+                          {
+                            "type": "integer",
+                            "minimum": 0
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "description": "Tasks in a row from every master but Krystilia and Mortimer; null when the plugin did not send it."
+                      },
+                      "wilderness": {
+                        "anyOf": [
+                          {
+                            "type": "integer",
+                            "minimum": 0
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "description": "Krystilia's (Wilderness) tasks in a row; null when the plugin did not send it."
+                      },
+                      "mortimer": {
+                        "anyOf": [
+                          {
+                            "type": "integer",
+                            "minimum": 0
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "description": "Mortimer's tasks in a row; null when the plugin did not send it."
+                      }
+                    },
+                    "required": [
+                      "normal",
+                      "wilderness",
+                      "mortimer"
+                    ],
+                    "description": "Task streaks: the game counts Krystilia's and Mortimer's tasks apart from the others. A cancelled task resets none."
+                  }
+                },
+                "required": [
+                  "shared",
+                  "updated_at",
+                  "task",
+                  "points",
+                  "streaks"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "shared": {
+                    "type": "boolean",
+                    "const": false
+                  },
+                  "updated_at": {
+                    "type": "null"
+                  }
+                },
+                "required": [
+                  "shared",
+                  "updated_at"
+                ]
+              }
+            ]
+          },
           "skills": {
             "description": "`stats`. Without `activity`, `updated_at` is cut to the UTC day (the exact time would be the last-seen time). `{ \"shared\": false, \"updated_at\": null }` when the player’s plugin never sent it; the key omitted when the key can’t read the category on this account.",
             "oneOf": [
@@ -3400,6 +3538,120 @@
               }
             ]
           },
+          "slayer": {
+            "description": "`activity`: the slayer task, points and streaks; null until the plugin first sent them. Omitted without it.",
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "task": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "description": "The task as the game names it (\"Abyssal demons\", \"Kraken\"); null when the plugin could not look it up.",
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "location": {
+                            "description": "Konar's tasks only: where to kill them (\"Catacombs of Kourend\").",
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "remaining": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "description": "Kills left, at least 1."
+                          },
+                          "amount": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "description": "The size of the task when it was assigned, never below `remaining`."
+                          }
+                        },
+                        "required": [
+                          "name",
+                          "location",
+                          "remaining",
+                          "amount"
+                        ],
+                        "description": "A slayer task."
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "The current task; null between tasks."
+                  },
+                  "points": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "Slayer reward points."
+                  },
+                  "streaks": {
+                    "type": "object",
+                    "properties": {
+                      "normal": {
+                        "anyOf": [
+                          {
+                            "type": "integer",
+                            "minimum": 0
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "description": "Tasks in a row from every master but Krystilia and Mortimer; null when the plugin did not send it."
+                      },
+                      "wilderness": {
+                        "anyOf": [
+                          {
+                            "type": "integer",
+                            "minimum": 0
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "description": "Krystilia's (Wilderness) tasks in a row; null when the plugin did not send it."
+                      },
+                      "mortimer": {
+                        "anyOf": [
+                          {
+                            "type": "integer",
+                            "minimum": 0
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "description": "Mortimer's tasks in a row; null when the plugin did not send it."
+                      }
+                    },
+                    "required": [
+                      "normal",
+                      "wilderness",
+                      "mortimer"
+                    ],
+                    "description": "Task streaks: the game counts Krystilia's and Mortimer's tasks apart from the others. A cancelled task resets none."
+                  }
+                },
+                "required": [
+                  "task",
+                  "points",
+                  "streaks"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "location": {
             "description": "`location_live`: null when never sent, omitted without the category. `stale` after 2 minutes without a location.",
             "anyOf": [
@@ -3575,7 +3827,7 @@
           },
           "type": {
             "type": "string",
-            "description": "loot, pk_loot, death, level_up, collection_log, superior_spawn, achievement_diary, combat_task, or an unknown plugin type as sent."
+            "description": "loot, pk_loot, death, level_up, collection_log, superior_spawn, achievement_diary, combat_task, slayer_task_assigned, slayer_task_complete, or an unknown plugin type as sent."
           },
           "account": {
             "$ref": "#/components/schemas/AccountRef"

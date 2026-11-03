@@ -12,6 +12,8 @@ describe('eventTypeOptions', () => {
       { value: 'superior_spawn', label: 'Superior spawn' },
       { value: 'achievement_diary', label: 'Achievement diary' },
       { value: 'combat_task', label: 'Combat task' },
+      { value: 'slayer_task_assigned', label: 'Slayer task' },
+      { value: 'slayer_task_complete', label: 'Slayer task done' },
     ]);
   });
 });

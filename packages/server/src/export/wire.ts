@@ -11,6 +11,7 @@ import type {
   ApiLocation,
   ApiPresence,
   ApiSkills,
+  ApiSlayer,
   ApiVitals,
 } from '../api/state';
 import type { ApiItem, ApiSection } from '../api/types';
@@ -69,6 +70,24 @@ export function wirePresence(p: ApiPresence) {
 
 export function wireVitals(v: ApiVitals) {
   return { hp: v.hp, prayer: v.prayer, spellbook: v.spellbook, active_prayers: v.activePrayers };
+}
+
+/** The slayer section (D-141): `task` null between tasks, a streak null when the plugin didn't send it. */
+export function wireSlayer(s: ApiSlayer) {
+  return {
+    task: s.task && {
+      name: s.task.name,
+      location: s.task.location,
+      remaining: s.task.remaining,
+      amount: s.task.amount,
+    },
+    points: s.points,
+    streaks: {
+      normal: s.streaks.normal,
+      wilderness: s.streaks.wilderness,
+      mortimer: s.streaks.mortimer,
+    },
+  };
 }
 
 export function wireLocation(l: ApiLocation) {
