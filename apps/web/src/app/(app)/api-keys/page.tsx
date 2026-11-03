@@ -2,7 +2,8 @@
  * API keys (handoff §12/§13, D-69, D-76): the signed-in user's keys for the public API — active ones
  * with Edit and Revoke, then revoked and expired ones with Delete (D-111) — and "Create key". Explains what keys are for, that
  * access follows the owners' sharing settings on every request, and links to the API reference.
- * Without keys: an empty state with the same call to action.
+ * Without keys: an empty state with the same call to action. "Connect an AI assistant" gives the MCP
+ * URL and how to connect Claude (D-137).
  */
 import { CATEGORIES, getConfig } from '@hub/core';
 import { getDb } from '@hub/db';
@@ -18,6 +19,7 @@ import { BookOpenIcon, KeyRoundIcon } from 'lucide-react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ApiKeyCard } from '@/components/api-keys/api-key-card';
+import { AssistantCard } from '@/components/api-keys/assistant-card';
 import {
   CreateApiKeyDialog,
   type PickableAccount,
@@ -28,6 +30,7 @@ import { RevokeApiKeyButton } from '@/components/api-keys/revoke-api-key-button'
 import { PageHeader } from '@/components/shell/page-header';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { AI_ASSISTANT_DOCS_URL, mcpResource } from '@/lib/mcp/oauth';
 import { requireUser } from '@/lib/session';
 
 export function generateMetadata(): Metadata {
@@ -96,6 +99,8 @@ export default async function ApiKeysPage() {
           </p>
         </CardContent>
       </Card>
+
+      <AssistantCard mcpUrl={mcpResource(getConfig())} docsUrl={AI_ASSISTANT_DOCS_URL} />
 
       {keys.length === 0 ? (
         <EmptyKeys dialog={<CreateApiKeyDialog {...dialog} size="lg" />} />
