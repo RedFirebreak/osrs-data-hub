@@ -22,6 +22,8 @@ describe('event type table', () => {
       'superior_spawn',
       'achievement_diary',
       'combat_task',
+      'slayer_task_assigned',
+      'slayer_task_complete',
     ]);
     expect(LOOT_EVENT_TYPES).toEqual(['loot', 'pk_loot']);
   });

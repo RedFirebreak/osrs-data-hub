@@ -375,3 +375,70 @@ describe('active prayers (snapshot-active-prayers, D-119)', () => {
     expect((await page(member, prayersId, at + 32_000)).vitals.visible).toBe(false);
   });
 });
+
+describe('slayer (snapshot-slayer, D-141)', () => {
+  let slayerHash: string;
+  let slayerId: string;
+  let at: number;
+
+  beforeAll(async () => {
+    slayerHash = newHash();
+    const body = wire('snapshot-slayer', { hash: slayerHash });
+    at = body.timestamp as number;
+    expect((await h.send(ownerDevice, body, { at: at + 1_000 })).status).toBe(200);
+    slayerId = await publicIdOf(slayerHash);
+  });
+
+  it('shows the task, points and streaks to the owner and to a member under activity', async () => {
+    for (const v of [owner, member]) {
+      expect(data((await page(v, slayerId, at + 2_000)).slayer)).toEqual({
+        task: {
+          name: 'Abyssal demons',
+          location: 'Catacombs of Kourend',
+          remaining: 87,
+          amount: 160,
+        },
+        points: 1234,
+        streaks: { normal: 99, wilderness: 12, mortimer: 5 },
+      });
+    }
+  });
+
+  it('keeps the task once offline: it is still assigned', async () => {
+    const later = await page(owner, slayerId, at + 2 * HOUR);
+    expect(data(later.presence).online).toBe(false);
+    expect(data(later.slayer).task?.remaining).toBe(87);
+  });
+
+  it("leaves out a Konar task's location without a location category", async () => {
+    const [row] = await t.db
+      .select({ id: osrsAccounts.id })
+      .from(osrsAccounts)
+      .where(eq(osrsAccounts.publicId, slayerId));
+    await seedSharing(t.db, row!.id, 'location_live', 'private');
+    await seedSharing(t.db, row!.id, 'location_history', 'private');
+    expect(data((await page(member, slayerId, at + 2_000)).slayer).task?.location).toBeNull();
+    expect(data((await page(owner, slayerId, at + 2_000)).slayer).task?.location).toBe(
+      'Catacombs of Kourend',
+    );
+  });
+
+  it('is nothing for a member once activity is private', async () => {
+    const [row] = await t.db
+      .select({ id: osrsAccounts.id })
+      .from(osrsAccounts)
+      .where(eq(osrsAccounts.publicId, slayerId));
+    await seedSharing(t.db, row!.id, 'activity', 'private');
+    expect((await page(member, slayerId, at + 2_000)).slayer.visible).toBe(false);
+  });
+
+  it('is not shared for an account whose plugin never sent it', async () => {
+    const other = newHash();
+    const body = wire('snapshot-normal', { hash: other });
+    expect(
+      (await h.send(ownerDevice, body, { at: (body.timestamp as number) + 1_000 })).status,
+    ).toBe(200);
+    const p = await page(owner, await publicIdOf(other), (body.timestamp as number) + 2_000);
+    expect(p.slayer).toEqual({ visible: true, shared: false });
+  });
+});

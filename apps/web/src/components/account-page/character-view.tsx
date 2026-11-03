@@ -37,6 +37,7 @@ import { InventoryContent } from '@/components/account-page/inventory-content';
 import { LocationContent } from '@/components/account-page/location-content';
 import { PLAYTIME_DAYS, PlaytimeCard } from '@/components/account-page/playtime-card';
 import { WealthCard } from '@/components/account-page/wealth-card';
+import { SlayerCard } from '@/components/account-page/slayer-card';
 import { SkillsPanel } from '@/components/account-page/skills-panel';
 import { VitalsContent } from '@/components/account-page/vitals-content';
 import { WeekSummary } from '@/components/account-page/week-summary';
@@ -101,6 +102,7 @@ export async function CharacterView({ publicId }: CharacterViewProps) {
   const aside = [
     weekSection(ctx),
     rightNowSection(ctx),
+    slayerSection(ctx),
     wornSection(ctx),
     inventorySection(ctx),
     collectionLogSection(ctx),
@@ -326,6 +328,34 @@ function wealthSection({ page, viewer, publicId, renderedAt }: SectionContext) {
       }
     >
       <WealthCard publicId={publicId} viewer={viewer} now={renderedAt} />
+    </Suspense>
+  );
+}
+
+/**
+ * The slayer task, points and streak (`activity`, D-141); its week of finished tasks needs `events`.
+ * Nothing until the plugin has sent slayer data once (older plugins never do).
+ */
+function slayerSection({ page, viewer, publicId, renderedAt }: SectionContext) {
+  const { slayer } = page;
+  if (!slayer.visible || !slayer.shared) return null;
+  return (
+    <Suspense
+      key="slayer"
+      fallback={
+        <CardSkeleton>
+          <ContentSkeleton rows={3} />
+        </CardSkeleton>
+      }
+    >
+      <SlayerCard
+        publicId={publicId}
+        viewer={viewer}
+        slayer={slayer.data}
+        updatedAt={slayer.updatedAt}
+        withEvents={page.recentEvents.visible}
+        now={renderedAt}
+      />
     </Suspense>
   );
 }

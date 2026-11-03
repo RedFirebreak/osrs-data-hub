@@ -7,7 +7,15 @@
  * A tool that can't answer throws ToolError (or the read model's ApiError): the server turns either
  * into a tool result with `isError`, whose text the model reads and can act on.
  */
-import { formatGpChange, gearTrips, type Category } from '@hub/core';
+import {
+  KNOWN_EVENT_TYPES,
+  formatGpChange,
+  gearTrips,
+  mainSlayerStreak,
+  slayerStreakLabel,
+  slayerTaskLabel,
+  type Category,
+} from '@hub/core';
 import type { DbOrTx } from '@hub/db';
 import {
   KILLS_LEADERBOARD_PERIODS,
@@ -220,16 +228,23 @@ const listAccounts = tool({
   },
 });
 
-const ACCOUNT_SECTIONS = ['stats', 'presence', 'equipment', 'inventory', 'wealth'] as const;
+const ACCOUNT_SECTIONS = [
+  'stats',
+  'presence',
+  'slayer',
+  'equipment',
+  'inventory',
+  'wealth',
+] as const;
 
 const getAccount = tool({
   name: 'get_account',
   title: 'Get an account',
   description:
-    'One account now: levels ("stats"), online and world ("presence", needs "activity"), worn gear ("equipment"), inventory ("inventory") and wealth now (bank + inventory + gear, needs "inventory"; for how it changed over time use the wealth tool). Only the sections asked for; default stats and presence. Levels only, unless detail is true. REST: GET /api/v1/accounts/{id} and /accounts/{id}/wealth.',
+    'One account now: levels ("stats"), online and world ("presence", needs "activity"), the slayer task, points and streaks ("slayer", needs "activity"; past tasks are the events slayer_task_assigned and slayer_task_complete), worn gear ("equipment"), inventory ("inventory") and wealth now (bank + inventory + gear, needs "inventory"; for how it changed over time use the wealth tool). Only the sections asked for; default stats and presence. Levels only, unless detail is true. REST: GET /api/v1/accounts/{id} and /accounts/{id}/wealth.',
   input: {
     account,
-    sections: z.array(z.enum(ACCOUNT_SECTIONS)).min(1).max(5).optional(),
+    sections: z.array(z.enum(ACCOUNT_SECTIONS)).min(1).max(ACCOUNT_SECTIONS.length).optional(),
     detail: z.boolean().optional().describe("Also each skill's XP."),
   },
   async run(ctx, args) {
@@ -284,6 +299,31 @@ const getAccount = tool({
         parts.push(
           p.online ? `online on world ${p.world ?? '?'}` : `offline, last seen ${p.lastSeen}`,
         );
+      }
+    }
+    if (wanted.has('slayer')) {
+      const s = d.slayer;
+      if (!s) out.slayer = unavailable('activity');
+      else if (!s.shared) out.slayer = notSent;
+      else {
+        const streak = mainSlayerStreak(s);
+        out.slayer = {
+          task: s.task && {
+            name: s.task.name,
+            ...(s.task.location === null ? {} : { location: s.task.location }),
+            remaining: s.task.remaining,
+            amount: s.task.amount,
+          },
+          points: s.points,
+          streaks: s.streaks,
+          updated_at: s.updatedAt,
+        };
+        parts.push(
+          s.task
+            ? `slayer task ${slayerTaskLabel(s.task)} (${s.task.remaining} of ${s.task.amount} left)`
+            : 'no slayer task',
+        );
+        if (streak !== null) parts.push(`${slayerStreakLabel(streak.streak)} ${streak.value}`);
       }
     }
     if (wanted.has('equipment')) {
@@ -371,8 +411,7 @@ const getGains = tool({
   },
 });
 
-const EVENT_TYPES =
-  'loot, pk_loot, death, level_up, collection_log, superior_spawn, achievement_diary, combat_task';
+const EVENT_TYPES = KNOWN_EVENT_TYPES.join(', ');
 
 const eventInputs = {
   types: z

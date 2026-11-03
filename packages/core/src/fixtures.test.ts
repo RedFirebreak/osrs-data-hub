@@ -19,6 +19,7 @@ import type { LatestStatePatch, PrevState, SnapshotPlan } from './ingest/types';
 import { parsePayload } from './payload/parse';
 import type { ParsedPayload } from './payload/types';
 import { KNOWN_SKILLS, OVERALL } from './skills';
+import type { SlayerState } from './slayer';
 import { payloadTime } from './time';
 
 // ---------------------------------------------------------------------------------------------
@@ -64,6 +65,16 @@ interface WirePlayer {
   inventory?: { items: WireItem[] };
   equipment?: { items: WireItem[] };
   bank?: { value: number; readAt: number };
+  slayer?: WireSlayer;
+}
+
+interface WireSlayer {
+  task?: string;
+  location?: string;
+  remaining?: number;
+  amount?: number;
+  points: number;
+  streaks: { normal: number; wilderness: number; mortimer: number };
 }
 
 interface WireBody {
@@ -91,6 +102,7 @@ const WIRE_PLAYER_KEYS = [
   'inventory',
   'equipment',
   'bank',
+  'slayer',
 ];
 
 function wire(name: FixtureName): WireBody {
@@ -288,6 +300,8 @@ const EXPECTED: Record<FixtureName, Expected> = {
   'event-levelup-multi': withEvents('ironMira', 'level_up', 'level_up', 'level_up'),
   'event-loot': withEvents('zezima', 'loot'),
   'event-pkloot': withEvents('lynxTitan', 'pk_loot'),
+  'event-slayer-assigned': withEvents('zezima', 'slayer_task_assigned'),
+  'event-slayer-complete': withEvents('zezima', 'slayer_task_complete'),
   'event-superior': withEvents('zezima', 'superior_spawn'),
   'event-unknown-type': withEvents('zezima', 'questComplete'),
   'hop-from-special-world-stale': snapshot('zezima', true),
@@ -307,6 +321,7 @@ const EXPECTED: Record<FixtureName, Expected> = {
   'snapshot-location-trail': snapshot('zezima'),
   'snapshot-no-sections': snapshot('zezima'),
   'snapshot-normal': snapshot('zezima'),
+  'snapshot-slayer': snapshot('zezima'),
   'snapshot-world-hop': snapshot('zezima'),
   'special-world-seasonal': { ...withEvents('zezima', 'level_up'), special: true },
 };
@@ -343,11 +358,29 @@ function expectedPatch(w: WireBody, recv: Date, special: boolean): LatestStatePa
       activePrayers: p.activePrayers.prayers,
       activePrayersUpdatedAt: recv,
     }),
+    ...(p.slayer && { slayer: expectedSlayer(p.slayer), slayerUpdatedAt: recv }),
     ...(p.location && { location: p.location, locationUpdatedAt: recv }),
     ...(p.stats && { skills: p.stats.skills, skillsUpdatedAt: recv }),
     ...(p.inventory && { inventory: p.inventory.items, inventoryUpdatedAt: recv }),
     ...(p.equipment && { equipment: p.equipment.items, equipmentUpdatedAt: recv }),
     ...expectedBank(w),
+  };
+}
+
+/** The slayer state a payload carries (D-141): the task only while kills are left. */
+function expectedSlayer(s: WireSlayer): SlayerState {
+  return {
+    task:
+      s.remaining !== undefined && s.remaining > 0
+        ? {
+            name: s.task ?? null,
+            location: s.location ?? null,
+            remaining: s.remaining,
+            amount: s.amount ?? s.remaining,
+          }
+        : null,
+    points: s.points,
+    streaks: s.streaks,
   };
 }
 
@@ -723,6 +756,52 @@ describe('fixtures: active prayers (snapshot-active-prayers, after plugin 1.6.2)
     const { plan } = ingest('snapshot-normal');
     expect(plan.latestPatch).not.toHaveProperty('activePrayers');
     expect(plan.latestPatch).not.toHaveProperty('activePrayersUpdatedAt');
+  });
+});
+
+describe('fixtures: slayer (snapshot-slayer, event-slayer-*, after plugin 1.6.2)', () => {
+  it('after snapshot-normal: the Konar task with its location, points and streaks (D-141)', () => {
+    const [, slayer] = replay(['snapshot-normal', 'snapshot-slayer']);
+    expect(slayer.plan.latestPatch).toMatchObject({
+      slayer: {
+        task: {
+          name: 'Abyssal demons',
+          location: 'Catacombs of Kourend',
+          remaining: 87,
+          amount: 160,
+        },
+        points: 1234,
+        streaks: { normal: 99, wilderness: 12, mortimer: 5 },
+      },
+      slayerUpdatedAt: slayer.recv,
+    });
+    expect(slayer.plan).toMatchObject({ xpWrites: [], equipmentChange: null });
+  });
+
+  it('a completion: no task left, the event with its points in the column and the Slayer skill', () => {
+    const [, , done] = replay(['snapshot-normal', 'snapshot-slayer', 'event-slayer-complete']);
+    expect(done.plan.latestPatch).toMatchObject({
+      slayer: { task: null, points: 1249, streaks: { normal: 100 } },
+    });
+    const [row] = done.normalized.events;
+    expect(row).toMatchObject({ type: 'slayer_task_complete', skill: 'Slayer', points: 15 });
+  });
+
+  it('an assignment: the new task without a location, the event with the Slayer skill', () => {
+    const { plan, normalized } = ingest('event-slayer-assigned');
+    expect(plan.latestPatch).toMatchObject({
+      slayer: { task: { name: 'Kraken', location: null, remaining: 120, amount: 120 } },
+    });
+    expect(normalized.events[0]).toMatchObject({
+      type: 'slayer_task_assigned',
+      skill: 'Slayer',
+      points: null,
+    });
+  });
+
+  it('snapshot-normal, without the section, leaves slayer out of the patch', () => {
+    const { plan } = ingest('snapshot-normal');
+    expect(plan.latestPatch).not.toHaveProperty('slayer');
   });
 });
 

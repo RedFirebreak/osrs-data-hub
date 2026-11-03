@@ -1,5 +1,5 @@
 /**
- * HA Exporter payload fixtures (v1.5, one of v1.6 and one after 1.6.2; wire-exact, anonymized). See ../README.md for
+ * HA Exporter payload fixtures (v1.5, one of v1.6 and some after 1.6.2; wire-exact, anonymized). See ../README.md for
  * what each file is and which plugin code path produces it.
  */
 import { readFileSync, readdirSync } from 'node:fs';
@@ -19,6 +19,8 @@ export const FIXTURES = [
   'event-levelup-multi',
   'event-loot',
   'event-pkloot',
+  'event-slayer-assigned',
+  'event-slayer-complete',
   'event-superior',
   'event-unknown-type',
   'hop-from-special-world-stale',
@@ -38,6 +40,7 @@ export const FIXTURES = [
   'snapshot-location-trail',
   'snapshot-no-sections',
   'snapshot-normal',
+  'snapshot-slayer',
   'snapshot-world-hop',
   'special-world-seasonal',
 ] as const;

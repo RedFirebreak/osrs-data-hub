@@ -4,7 +4,16 @@
  * principal holds its category on the account; what a section contains comes from the account page's
  * helpers (accounts/account-page.ts, accounts/load.ts), so the UI and the API agree on it.
  */
-import { DAY_MS, floorTo, itemsValue, regionName, type Category } from '@hub/core';
+import {
+  DAY_MS,
+  floorTo,
+  itemsValue,
+  readSlayerState,
+  regionName,
+  type Category,
+  type SlayerState,
+  withoutSlayerLocation,
+} from '@hub/core';
 import { latestState, type DbOrTx } from '@hub/db';
 import { getTableColumns, inArray, sql } from 'drizzle-orm';
 import { locationOf, skillLevels, vitalsOf, vitalsUpdatedAt } from '../accounts/account-page';
@@ -36,6 +45,27 @@ export interface ApiVitals {
   spellbook: string | null;
   /** RuneLite `Prayer` names in prayer book order (D-119); [] when none is on or the player is offline. */
   activePrayers: string[] | null;
+}
+
+/**
+ * The slayer task, points and streaks (`activity`, D-141), as the plugin last sent them. A task stays
+ * assigned while the player is offline, so it is passed on offline too.
+ */
+export type ApiSlayer = SlayerState;
+
+/**
+ * The slayer state of a latest_state row, or null when never sent (or unreadable). A Konar task's
+ * location only for a reader with a location category, as an event's location (redactEventData).
+ */
+export function slayerOf(
+  row: Pick<LatestRow, 'slayer' | 'slayerUpdatedAt'>,
+  categories: ReadonlySet<Category>,
+): ApiSlayer | null {
+  const state = row.slayerUpdatedAt === null ? null : readSlayerState(row.slayer);
+  if (state === null) return null;
+  return categories.has('location_live') || categories.has('location_history')
+    ? state
+    : withoutSlayerLocation(state);
 }
 
 export interface ApiSkill {
@@ -133,6 +163,8 @@ export interface ApiStateSections {
   presence?: ApiSection<ApiPresence>;
   /** `activity`. */
   vitals?: ApiSection<ApiVitals>;
+  /** `activity` (D-141). */
+  slayer?: ApiSection<ApiSlayer>;
   /** `stats`. */
   skills?: ApiSection<ApiSkills>;
   /** `location_live`; its `updatedAt` is exact (a live position is presence by nature). */
@@ -182,6 +214,7 @@ export function accountSections(
       row ? vitalsUpdatedAt(row) : null,
       row && presence ? vitalsOf(row, presence.online) : null,
     );
+    out.slayer = section(row?.slayerUpdatedAt ?? null, row ? slayerOf(row, categories) : null);
   }
   if (can('stats')) {
     out.skills = section(stamp(row?.skillsUpdatedAt ?? null), row ? skillsOf(row) : null);

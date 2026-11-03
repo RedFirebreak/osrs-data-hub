@@ -3,6 +3,7 @@ import { isPlainObject } from '../guards';
 import { INT32_MAX, INT32_MIN, SMALLINT_MAX, SMALLINT_MIN } from '../ints';
 import { stripNul } from '../json';
 import { OVERALL } from '../skills';
+import { SLAYER_STREAKS, type SlayerState } from '../slayer';
 import type { ParseResult, PlayerSnapshot, RawEvent, SkillValue } from './types';
 
 /** Cap on listed sections/reasons, so a hostile body can't bloat raw_payloads.meta. */
@@ -26,6 +27,11 @@ const MAX_TRAIL_POINTS = 512;
  */
 const MAX_ACTIVE_PRAYERS = 64;
 const PRAYER_NAME = /^[A-Z0-9_]{1,64}$/;
+/**
+ * player.slayer text limit (D-141): a task or Konar location as the game's DB tables name it
+ * ("Catacombs of Kourend", "TzHaar-Ket-Rak's challenges"), well under 100 characters.
+ */
+const MAX_SLAYER_TEXT = 100;
 /** Names the plugin never puts in stats (plugin Skill.values()); accepting them corrupts the totals. */
 const RESERVED_SKILLS: ReadonlyMap<string, string> = new Map([
   [OVERALL, 'Overall is derived by the hub, never sent by the plugin'],
@@ -95,6 +101,16 @@ const PLAYER = {
       .array(z.string().regex(PRAYER_NAME, 'expected a Prayer constant name'))
       .max(MAX_ACTIVE_PRAYERS, `more than ${MAX_ACTIVE_PRAYERS} prayers`),
   }),
+  slayer: z.looseObject({
+    task: z.string().min(1).max(MAX_SLAYER_TEXT).optional(),
+    location: z.string().min(1).max(MAX_SLAYER_TEXT).optional(),
+    remaining: nonNegInt32.optional(),
+    amount: nonNegInt32.optional(),
+    points: nonNegInt32,
+    streaks: z
+      .looseObject(Object.fromEntries(SLAYER_STREAKS.map((s) => [s, nonNegInt32.optional()])))
+      .optional(),
+  }),
   bank: z.looseObject({
     value: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
     readAt: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
@@ -137,7 +153,10 @@ const eventEnvelope = z.looseObject({
  *   more points drops the whole section; [] is kept), health / prayerPoints ({current, max}: smallint integers → `health` /
  *   `prayer`), spellbook ({id: smallint integer, name: string}), activePrayers.prayers (after plugin 1.6.2,
  *   D-119: at most 64 names of 1..64 characters `A-Z 0-9 _`; one that isn't drops the section; []
- *   is kept), bank ({value, readAt}: safe integers ≥ 0, plugin PR #50, D-124), stats.skills
+ *   is kept), bank ({value, readAt}: safe integers ≥ 0, plugin PR #50, D-124), slayer (after plugin
+ *   1.6.2, PR #52, D-141: {task?, location?: string 1..100, remaining?, amount?: int 0..2^31−1,
+ *   points: int 0..2^31−1, streaks?: {normal?, wilderness?, mortimer?: int 0..2^31−1}} → SlayerState:
+ *   a task only when remaining > 0, its amount raised to remaining; other streak keys ignored), stats.skills
  *   (object of at most 64 entries {xp: integer 0..2^31−1, level: integer 0..32767}, more → section `player.stats`; an
  *   invalid ENTRY, or a name that is empty, longer than 64 characters, "Overall" (hub-derived),
  *   "Combat" (levelUp-only) or "__proto__", drops only that skill and records
@@ -217,6 +236,8 @@ function parsePlayer(value: unknown, skipped: Skipped): PlayerSnapshot | null {
   if (spellbook !== undefined) player.spellbook = spellbook;
   const activePrayers = section('activePrayers', PLAYER.activePrayers);
   if (activePrayers !== undefined) player.activePrayers = activePrayers.prayers;
+  const slayer = section('slayer', PLAYER.slayer);
+  if (slayer !== undefined) player.slayer = toSlayerState(slayer);
   const bank = section('bank', PLAYER.bank);
   if (bank !== undefined) player.bank = { value: bank.value, readAt: bank.readAt };
   const skills = parseSkills(section('stats', PLAYER.stats), skipped);
@@ -226,6 +247,29 @@ function parsePlayer(value: unknown, skipped: Skipped): PlayerSnapshot | null {
   const equipment = section('equipment', itemsSection);
   if (equipment !== undefined) player.equipment = equipment.items;
   return player;
+}
+
+/** The plugin's slayer object as the hub keeps it (D-141). */
+function toSlayerState(s: z.infer<typeof PLAYER.slayer>): SlayerState {
+  const remaining = s.remaining ?? 0;
+  const streaks = s.streaks as Partial<Record<string, number>> | undefined;
+  return {
+    task:
+      remaining > 0
+        ? {
+            name: s.task ?? null,
+            location: s.location ?? null,
+            remaining,
+            amount: Math.max(s.amount ?? remaining, remaining),
+          }
+        : null,
+    points: s.points,
+    streaks: {
+      normal: streaks?.normal ?? null,
+      wilderness: streaks?.wilderness ?? null,
+      mortimer: streaks?.mortimer ?? null,
+    },
+  };
 }
 
 function parseSkills(

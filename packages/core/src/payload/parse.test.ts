@@ -606,6 +606,82 @@ describe('parsePayload: activePrayers (D-119)', () => {
   });
 });
 
+describe('parsePayload: slayer (D-141)', () => {
+  const streaks = { normal: 99, wilderness: 12, mortimer: 5 };
+
+  it('reads a task with its Konar location, points and streaks', () => {
+    const p = normal(
+      (b) =>
+        (b.player.slayer = {
+          task: 'Abyssal demons',
+          location: 'Catacombs of Kourend',
+          remaining: 87,
+          amount: 160,
+          points: 1234,
+          streaks,
+        }),
+    );
+    expect(p.skipped.sections).toEqual([]);
+    expect(p.player!.slayer).toEqual({
+      task: {
+        name: 'Abyssal demons',
+        location: 'Catacombs of Kourend',
+        remaining: 87,
+        amount: 160,
+      },
+      points: 1234,
+      streaks,
+    });
+  });
+
+  it('has no task between tasks, or with none left', () => {
+    for (const slayer of [
+      { points: 10, streaks },
+      { task: 'Kraken', remaining: 0, amount: 120, points: 10, streaks },
+    ]) {
+      expect(normal((b) => (b.player.slayer = slayer)).player!.slayer).toEqual({
+        task: null,
+        points: 10,
+        streaks,
+      });
+    }
+  });
+
+  it('keeps a task whose name the plugin could not look up, and raises the amount to what is left', () => {
+    const p = normal((b) => (b.player.slayer = { remaining: 40, amount: 30, points: 0 }));
+    expect(p.player!.slayer).toEqual({
+      task: { name: null, location: null, remaining: 40, amount: 40 },
+      points: 0,
+      streaks: { normal: null, wilderness: null, mortimer: null },
+    });
+  });
+
+  it('ignores a streak it does not know', () => {
+    const p = normal((b) => (b.player.slayer = { points: 1, streaks: { ...streaks, league: 3 } }));
+    expect(p.player!.slayer?.streaks).toEqual(streaks);
+  });
+
+  it('is absent when not shared', () => {
+    expect(normal().player).not.toHaveProperty('slayer');
+  });
+
+  it('drops the section for a wrong shape', () => {
+    for (const slayer of [
+      { task: 'Kraken', remaining: 5 },
+      { points: -1 },
+      { points: 1.5 },
+      { points: 1, remaining: 'many' },
+      { points: 1, task: 'x'.repeat(101) },
+      { points: 1, streaks: { normal: -2 } },
+      'Kraken',
+    ]) {
+      const p = normal((b) => (b.player.slayer = slayer));
+      expect(p.skipped.sections).toEqual(['player.slayer']);
+      expect(p.player).not.toHaveProperty('slayer');
+    }
+  });
+});
+
 describe('parsePayload: stats.skills', () => {
   it('drops only an invalid skill entry and records its path', () => {
     const p = normal((b) => {

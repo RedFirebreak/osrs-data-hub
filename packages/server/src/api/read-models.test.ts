@@ -379,6 +379,7 @@ describe('apiSnapshot', () => {
       prayer: { current: 99, max: 99 },
       spellbook: 'lunar',
       activePrayers: null,
+      slayer: null,
       location: {
         x: 3164,
         y: 3487,
@@ -408,6 +409,7 @@ describe('apiSnapshot', () => {
       prayer: expect.any(Object) as unknown,
       spellbook: expect.any(String) as unknown,
       activePrayers: null,
+      slayer: null,
       skills: expect.any(Object) as unknown,
     });
     expect(snap.accounts[0]?.location).toBeNull();
@@ -432,6 +434,7 @@ describe('apiSnapshot', () => {
         'online',
         'owner',
         'prayer',
+        'slayer',
         'specialWorld',
         'spellbook',
         'type',

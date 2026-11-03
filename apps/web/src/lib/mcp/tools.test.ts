@@ -38,8 +38,10 @@ async function principalOf(key: string): Promise<ApiPrincipal> {
 beforeAll(async () => {
   ctx = await withTestDb({ label: 'mcptools' });
   world = await seedWorld(ctx);
-  // Kree'arra's drop and the collection log slot it filled, in one payload.
-  const body = fixture('snapshot-normal', { hash: world.main.hash, name: world.main.name });
+  // Kree'arra's drop and the collection log slot it filled, in one payload, on a slayer task. No
+  // stats: seedWorld's last snapshot gained Attack XP, and lower XP would skip the snapshot (D-24).
+  const body = fixture('snapshot-slayer', { hash: world.main.hash, name: world.main.name });
+  delete body.player?.stats;
   body.events = [
     ...(fixture('event-loot').events ?? []),
     ...(fixture('event-collectionlog').events ?? []),
@@ -141,6 +143,33 @@ describe('get_account', () => {
     expect(gear.value).toMatch(/^[\d.]+[KMB]?$/);
     expect((r.inventory as { items: unknown[] }).items.length).toBeGreaterThan(0);
     expect(r.wealth).toMatchObject({ total: expect.any(String) as unknown });
+  });
+
+  it('gives the slayer task, points and streaks when asked (D-141)', async () => {
+    const r = await call('get_account', { account: 'Alpha Main', sections: ['slayer'] });
+    expect(r.summary).toBe(
+      'Alpha Main: slayer task Abyssal demons in Catacombs of Kourend (87 of 160 left), task streak 99',
+    );
+    expect(r.slayer).toMatchObject({
+      task: {
+        name: 'Abyssal demons',
+        location: 'Catacombs of Kourend',
+        remaining: 87,
+        amount: 160,
+      },
+      points: 1234,
+      streaks: { normal: 99, wilderness: 12, mortimer: 5 },
+    });
+    const alt = await call('get_account', { account: 'Bravo Alt', sections: ['slayer'] });
+    expect(alt.slayer).toBe("the player doesn't send this from the plugin");
+    const hidden = await call(
+      'get_account',
+      { account: 'Alpha Main', sections: ['slayer'] },
+      statsOnly,
+    );
+    expect(hidden.slayer).toBe(
+      'not readable with this key (needs "activity", shared by the owner)',
+    );
   });
 
   it("says what the key can't read, and what the player doesn't send", async () => {

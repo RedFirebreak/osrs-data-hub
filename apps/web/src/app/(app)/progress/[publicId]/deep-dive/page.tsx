@@ -4,7 +4,8 @@
  * the effective-hours heatmap, the sessions scatter, the rate through a session, where the time
  * goes, the session recaps, the skills, the bosses and the goals, all from @hub/server
  * getAccountMetrics, which leaves out every panel whose sharing category the viewer lacks. Under
- * them, whatever the range: playtime per day with the recent sessions, and wealth (carried plus bank) per day.
+ * them, whatever the range: the slayer tasks finished in the last 30 days (D-141), playtime per day
+ * with the recent sessions, and wealth (carried plus bank) per day.
  *
  * Not at /metrics: that is the hub's Prometheus endpoint. The visibility check runs before anything
  * streams, so an unknown account is a real 404 (NEXT-14).
@@ -21,6 +22,7 @@ import { getDb } from '@hub/db';
 import {
   getAccountMetrics,
   getSessions,
+  listFeed,
   getUserSettings,
   getWealthHistory,
   type AccountMetrics,
@@ -32,6 +34,8 @@ import { notFound } from 'next/navigation';
 import { Suspense } from 'react';
 import { ActivityContent } from '@/components/account-page/activity-section';
 import { playtimeByDay } from '@/components/account-page/playtime';
+import { SlayerTaskList } from '@/components/account-page/slayer-task-list';
+import { slayerTasksSince } from '@/components/account-page/slayer-tasks';
 import { AccountTypeBadge } from '@/components/accounts/account-type-badge';
 import { MODE_LABELS } from '@/components/account-page/hiscores-content';
 import { MOMENT_OPTIONS } from '@/components/charts/options';
@@ -62,6 +66,9 @@ import { loadVisible } from '@/lib/visible-account';
 const ACTIVITY_DAYS = 30;
 /** Days of wealth shown. */
 const HISTORY_DAYS = 90;
+/** Days of finished slayer tasks listed, and the most read. */
+const SLAYER_DAYS = 30;
+const SLAYER_TASKS = 200;
 
 export async function generateMetadata({
   params,
@@ -240,6 +247,11 @@ async function MetricsContent({ publicId, query }: { publicId: string; query: Me
           )}
         </SectionCard>
       )}
+      {m.access.events && (
+        <Suspense fallback={null}>
+          <SlayerLoader publicId={publicId} timezone={timezone} />
+        </Suspense>
+      )}
       {(m.access.activity || m.access.inventory) && (
         <div className="grid items-start gap-6 lg:grid-cols-2">
           {m.access.activity && (
@@ -281,6 +293,31 @@ async function ActivityLoader({ publicId, timezone }: { publicId: string; timezo
   if (sessions === null) return <NotShared what="play sessions" />;
   const playtime = playtimeByDay(sessions, { now: to, days: ACTIVITY_DAYS, timezone });
   return <ActivityContent sessions={sessions} playtime={playtime} timezone={timezone} />;
+}
+
+/**
+ * The slayer tasks finished in the last SLAYER_DAYS days (D-141): the `events` category. Left out
+ * when there are none, so a player who doesn't do slayer gets no empty section.
+ */
+async function SlayerLoader({ publicId, timezone }: { publicId: string; timezone: string }) {
+  const { viewer } = await requireUser();
+  const now = new Date();
+  const events = await listFeed(getDb().db, viewer, {
+    accountPublicId: publicId,
+    types: ['slayer_task_complete'],
+    limit: SLAYER_TASKS,
+  });
+  const tasks = slayerTasksSince(events, new Date(now.getTime() - SLAYER_DAYS * DAY_MS));
+  if (tasks.length === 0) return null;
+  return (
+    <SectionCard
+      id="slayer"
+      title="Slayer tasks"
+      description={`Every task finished in the last ${SLAYER_DAYS} days, newest first, whatever the range above.`}
+    >
+      <SlayerTaskList tasks={tasks} timezone={timezone} />
+    </SectionCard>
+  );
 }
 
 /** Wealth per day (carried plus bank, D-124): the `inventory` category. */

@@ -8,11 +8,14 @@ import {
   OVERALL,
   itemsValue,
   overallXp,
+  readSlayerState,
   realLevel,
+  withoutSlayerLocation,
   sortSkillsForDisplay,
   totalLevel,
   type Category,
   type ItemData,
+  type SlayerState,
   type Viewer,
 } from '@hub/core';
 import { accountNames, latestState, users, type DbOrTx } from '@hub/db';
@@ -106,6 +109,11 @@ export interface AccountPage {
   presence: Section<Presence>;
   /** activity */
   vitals: Section<Vitals>;
+  /**
+   * activity (D-141): the slayer task, points and streaks of the last snapshot. A task stays assigned
+   * while the player is logged out, so it is shown as it was, offline too.
+   */
+  slayer: Section<SlayerState>;
   /** location_live */
   location: Section<LiveLocation>;
   /** stats: rows in the in-game grid order with Overall first. */
@@ -189,6 +197,7 @@ export async function getAccountPage(
     vitals: sectionOf(can('activity'), state && vitalsUpdatedAt(state), () =>
       vitalsOf(state as LatestRow, toPresence(state as LatestRow, opts.now).online),
     ),
+    slayer: slayerSection(can('activity'), state, can('location_live') || can('location_history')),
     location: locationSection(can('location_live'), state, opts.now),
     skills: dayOnly(skills),
     equipment: dayOnly(
@@ -252,6 +261,20 @@ export type VitalsColumns = Pick<
   | 'activePrayersUpdatedAt'
   | 'activePrayers'
 >;
+
+/**
+ * The slayer section (D-141) from latest_state: not shared until the plugin first sent it, or when the
+ * stored value can't be read. A Konar task's location only with a location category (`located`).
+ */
+export function slayerSection(
+  visible: boolean,
+  state: Pick<LatestRow, 'slayer' | 'slayerUpdatedAt'> | undefined,
+  located: boolean,
+): Section<SlayerState> {
+  const read = state?.slayerUpdatedAt ? readSlayerState(state.slayer) : null;
+  const slayer = read !== null && !located ? withoutSlayerLocation(read) : read;
+  return sectionOf(visible, slayer === null ? null : state?.slayerUpdatedAt, () => slayer!);
+}
 
 /** When the vitals section was last received: the newest of its parts, or null. */
 export function vitalsUpdatedAt(state: VitalsColumns): Date | null {

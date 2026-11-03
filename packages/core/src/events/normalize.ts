@@ -20,6 +20,9 @@ import { itemsValue } from './values';
  */
 const MAX_LEVEL_UPS = 64;
 
+/** The skill a slayer task event carries, so it gets the Slayer icon like a Slayer level-up (D-141). */
+const SLAYER_SKILL = 'Slayer';
+
 const SHUTDOWN_REASONS: Readonly<Record<string, ShutdownReason>> = {
   Logout: 'logout',
   Shutdown: 'shutdown',
@@ -67,6 +70,8 @@ const NO_COLUMNS: Columns = {
  * - superiorSpawn: npcId = data.npcId.
  * - achievementDiary: tier = lowercased trimmed data.tier.
  * - combatTask: tier likewise; points = parseCombatTaskName(data.taskName).points.
+ * - slayerTaskAssigned / slayerTaskComplete (after plugin 1.6.2, D-141): skill = "Slayer" (it picks
+ *   the Slayer icon, D-95); a completion's points = data.pointsEarned.
  * - data: the original event object (`raw`) through stripNul (NUL removed, lone surrogates → U+FFFD,
  *   in all strings and keys). A levelUp's rows all carry the whole event.
  * Numbers that aren't finite/integers where an int is expected become null (never throw), and so
@@ -163,6 +168,10 @@ function columnsFor(type: KnownEventType | undefined, data: unknown): Partial<Co
       return { tier: tier(d.tier) };
     case 'combat_task':
       return { tier: tier(d.tier), points: smallint(parseCombatTaskName(d.taskName).points) };
+    case 'slayer_task_assigned':
+      return { skill: SLAYER_SKILL };
+    case 'slayer_task_complete':
+      return { skill: SLAYER_SKILL, points: smallint(d.pointsEarned) };
     default:
       return {};
   }

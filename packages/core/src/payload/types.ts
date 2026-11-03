@@ -2,6 +2,7 @@
  * Parsed HA Exporter payload (v1.5 and later). Everything the plugin can omit is optional: Gson drops nulls, the
  * player can filter sections, and some sends carry no (or a partial) `player` (PLUGIN-1).
  */
+import type { SlayerState } from '../slayer';
 
 /**
  * One item as sent. Inventory is one entry per occupied slot (not merged) and, from plugin 1.5.1, carries
@@ -77,6 +78,12 @@ export interface PlayerSnapshot {
    * none is on; absent when the player doesn't share them, and from older plugins (D-119).
    */
   activePrayers?: string[];
+  /**
+   * After plugin 1.6.2 (`player.slayer`, plugin PR #52): the current slayer task (null between tasks),
+   * slayer points and task streaks. Sent with every message; absent when the player doesn't share it,
+   * and from older plugins (D-141).
+   */
+  slayer?: SlayerState;
   /**
    * After plugin 1.6.2 (`player.bank`, plugin PR #50): the GE value of the bank as the plugin last read
    * it, and when (epoch ms, the player's clock). Read on every bank visit and kept across logins, so
