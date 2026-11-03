@@ -8,7 +8,7 @@
  */
 import { activityKind, isHiddenFromGuild, type Principal } from '@hub/core';
 import type { DbOrTx } from '@hub/db';
-import { loadVisibleAccounts } from '../accounts/load';
+import { loadVisibleAccounts, type AccessRestriction } from '../accounts/load';
 import { leaderboardStarts, LEADERBOARD_SIZE } from '../accounts/guild';
 import { readKillGains } from './read';
 
@@ -28,9 +28,9 @@ export interface BossLeaderboard {
 export async function getBossLeaderboards(
   db: DbOrTx,
   viewer: Principal,
-  opts: { now: Date; timezone?: string },
+  opts: { now: Date; timezone?: string; restrict?: AccessRestriction },
 ): Promise<Record<BossLeaderboardPeriod, BossLeaderboard[]>> {
-  const ranked = (await loadVisibleAccounts(db, viewer)).filter(
+  const ranked = (await loadVisibleAccounts(db, viewer, opts.restrict)).filter(
     (e) => e.access.categories.has('hiscores') && !isHiddenFromGuild(e.raw),
   );
   const out: Record<BossLeaderboardPeriod, BossLeaderboard[]> = { week: [], month: [] };

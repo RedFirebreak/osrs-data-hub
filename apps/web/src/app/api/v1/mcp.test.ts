@@ -106,11 +106,11 @@ describe('POST /api/v1/mcp', () => {
     expect(result.instructions).toMatch(/Old School RuneScape data of one guild/);
   });
 
-  it('lists the twelve tools, read-only, with their input schemas', async () => {
+  it('lists the fifteen tools, read-only, with their input schemas', async () => {
     const { tools } = (await rpc('tools/list')) as {
       tools: { name: string; inputSchema: { properties?: object }; annotations: object }[];
     };
-    expect(tools).toHaveLength(12);
+    expect(tools).toHaveLength(15);
     const whoHas = tools.find((t) => t.name === 'who_has')!;
     expect(Object.keys(whoHas.inputSchema.properties ?? {})).toEqual(['item', 'accounts']);
     for (const t of tools) expect(t.annotations).toMatchObject({ readOnlyHint: true });
@@ -160,7 +160,12 @@ describe('POST /api/v1/mcp', () => {
 
   it('offers the three prompts', async () => {
     const { prompts } = (await rpc('prompts/list')) as { prompts: { name: string }[] };
-    expect(prompts.map((p) => p.name)).toEqual(['guild_today', 'player_day', 'who_has']);
+    expect(prompts.map((p) => p.name)).toEqual([
+      'guild_today',
+      'player_day',
+      'player_week',
+      'who_has',
+    ]);
     const got = (await rpc('prompts/get', { name: 'who_has', arguments: { item: 'Tumeken' } })) as {
       messages: { content: { text: string } }[];
     };

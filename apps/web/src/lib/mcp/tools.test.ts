@@ -72,7 +72,7 @@ async function refusal(promise: Promise<unknown>): Promise<string> {
 }
 
 describe('the tool list', () => {
-  it('has the tools of M7 and day_summary (M8), each with a description naming its REST twin', () => {
+  it('has the tools of M7, day_summary (M8) and those of D-139, each naming its REST twin', () => {
     expect(TOOLS.map((t) => t.name)).toEqual([
       'list_accounts',
       'get_account',
@@ -86,6 +86,9 @@ describe('the tool list', () => {
       'sessions',
       'locations',
       'day_summary',
+      'wealth',
+      'progress',
+      'gear_history',
     ]);
     for (const t of TOOLS) expect(t.description, t.name).toMatch(/REST: GET \/api\/v1\//);
   });
@@ -318,6 +321,73 @@ describe('day_summary', () => {
         call('day_summary', { account: 'Alpha Main', from: '2026-10-01', to: '2026-10-31' }),
       ),
     ).toMatch(/at most 7 days/);
+  });
+});
+
+describe('wealth (D-139)', () => {
+  it('answers the value now, the change and a line per day', async () => {
+    const r = await call('wealth', { account: 'alpha main' });
+    expect(r.summary).toMatch(
+      /^Alpha Main is worth \S+ \(\d{4}-\d{2}-\d{2}, bank not read yet\): /,
+    );
+    const days = r.days as { day: string; total_gp: number }[];
+    expect(days.length).toBeGreaterThanOrEqual(1);
+    expect(r.now).toMatchObject({ total_gp: days.at(-1)!.total_gp, bank_gp: null });
+    expect(r.change_gp).toBe(days.at(-1)!.total_gp - days[0]!.total_gp);
+  });
+
+  it('says which category it needs', async () => {
+    expect(await refusal(call('wealth', { account: 'Alpha Main' }, statsOnly))).toMatch(
+      /can't read Alpha Main's wealth: it needs the "inventory" category/,
+    );
+  });
+});
+
+describe('progress (D-139)', () => {
+  it('sums the range up, and names what the key cannot read', async () => {
+    const r = await call('progress', { account: 'Alpha Main' });
+    expect(r).toMatchObject({ account: 'Alpha Main', range: '7d', timezone: 'UTC' });
+    expect(r.summary).toMatch(/^Alpha Main, \d{4}-\d{2}-\d{2} to \d{4}-\d{2}-\d{2}: .*online/);
+    expect(r.xp).toMatchObject({ gained: ATTACK_GAIN });
+    expect(r).toHaveProperty('playtime');
+    expect(r).not.toHaveProperty('not_shared');
+
+    const limited = await call('progress', { account: 'Alpha Main', range: '30d' }, statsOnly);
+    expect(limited.not_shared).toEqual([
+      'playtime (needs "activity" and "stats")',
+      'loot (needs "events")',
+      'bosses (needs "hiscores")',
+      'wealth (needs "inventory")',
+    ]);
+  });
+
+  it('refuses a half range', async () => {
+    expect(await refusal(call('progress', { account: 'Alpha Main', from: '2026-10-01' }))).toMatch(
+      /from and to go together/,
+    );
+  });
+});
+
+describe('gear_history (D-139)', () => {
+  it('groups the gear changes into trips with their kit', async () => {
+    const r = await call('gear_history', { account: 'Alpha Main' });
+    const trips = r.trips as { kit: Record<string, string[]> }[];
+    expect(trips.length).toBeGreaterThanOrEqual(1);
+    expect(Object.keys(trips[0]!.kit).length).toBeGreaterThan(0);
+    expect(await refusal(call('gear_history', { account: 'Alpha Main' }, statsOnly))).toMatch(
+      /"equipment"/,
+    );
+  });
+});
+
+describe('leaderboard kind=kills (D-139)', () => {
+  it('answers from the hiscores, week by default, and has no day', async () => {
+    const r = await call('leaderboard', { kind: 'kills' });
+    expect(r).toMatchObject({ kind: 'kills', period: 'week', boards: [] });
+    expect(r.summary).toMatch(/^Nobody gained boss kills \(week\)/);
+    expect(await refusal(call('leaderboard', { kind: 'kills', period: 'day' }))).toMatch(
+      /week or month/,
+    );
   });
 });
 

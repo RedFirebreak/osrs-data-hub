@@ -15,14 +15,17 @@ export type Category = (typeof CATEGORIES)[number];
 /**
  * What a key for an AI assistant reads (D-129): enough to answer questions about the guild through
  * the hub's MCP server. The API keys page's "For an AI assistant" adds these, and a key made by
- * connecting an assistant through sign-in starts with them (D-137). Equipment, inventory and the live
- * location stay the user's choice.
+ * connecting an assistant through sign-in starts with them (D-137). Equipment and inventory joined
+ * so gear and wealth questions work out of the box (D-140); the owners' sharing still decides what it
+ * sees of other people's accounts. The live location stays the user's choice.
  */
 export const AI_ASSISTANT_CATEGORIES: readonly Category[] = [
   'stats',
   'events',
   'activity',
   'location_history',
+  'equipment',
+  'inventory',
   'hiscores',
 ];
 

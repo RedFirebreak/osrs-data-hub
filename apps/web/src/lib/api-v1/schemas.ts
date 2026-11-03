@@ -40,6 +40,7 @@ import {
   GUILD_COLLECTION_LOG_DEFAULT_LIMIT,
   GUILD_COLLECTION_LOG_MAX_LIMIT,
   HISTORY_DEFAULT_DAYS,
+  KILLS_LEADERBOARD_PERIODS,
   LEADERBOARD_PERIODS,
   LOCATIONS_DEFAULT_HOURS,
   LOOT_LEADERBOARD_DEFAULT_LIMIT,
@@ -52,6 +53,9 @@ import {
   MAX_SERIES_POINTS,
   MAX_SLOTS_PER_ACCOUNT,
   MAX_XP_SKILLS,
+  PROGRESS_DEFAULT_RANGE,
+  PROGRESS_MAX_ACTIVITIES,
+  PROGRESS_RANGES,
   SNAPSHOT_SINCE_OVERLAP_MS,
   XP_DEFAULT_DAYS,
   XP_RESOLUTIONS,
@@ -286,6 +290,28 @@ export const DayQuery = z.object({
   to: localDate.optional().meta({ description: 'The last date of the range, included.' }),
 });
 
+/** A `from`/`to` of /progress: a date in the key creator's time zone, or an instant. */
+const dateOrInstant = z.union([
+  localDate,
+  z.iso.datetime({ offset: true, error: 'must be a date or an ISO-8601 date-time' }),
+]);
+
+/** GET /accounts/{id}/progress. */
+export const ProgressQuery = z.object({
+  range: z
+    .enum(PROGRESS_RANGES)
+    .optional()
+    .meta({
+      description: `A preset ending now: \`today\` (since local midnight in the key creator’s time zone, UTC for a service key), \`7d\`, \`30d\`, \`90d\` or \`1y\`. Default \`${PROGRESS_DEFAULT_RANGE}\`. Not with \`from\`/\`to\`.`,
+    }),
+  from: dateOrInstant.optional().meta({
+    description:
+      'A custom range instead, with `to`: dates (`YYYY-MM-DD`, both included, in the key creator’s time zone) or ISO-8601 date-times. At most 366 days; a longer one keeps its end.',
+    example: '2026-10-26',
+  }),
+  to: dateOrInstant.optional().meta({ description: 'The end of the custom range.' }),
+});
+
 /** GET /hiscores. */
 export const HiscoresMultiQuery = z.object({
   accounts: csv(accountIdItem, MAX_BULK_ACCOUNTS_SERVICE)
@@ -364,6 +390,18 @@ export const LootLeaderboardQuery = z.object({
     .meta({
       description: `Drops to return, 1 to ${LOOT_LEADERBOARD_MAX_LIMIT}. Default ${LOOT_LEADERBOARD_DEFAULT_LIMIT}.`,
     }),
+});
+
+/** GET /leaderboards/kills. */
+export const KillsLeaderboardQuery = z.object({
+  boss: z.string().trim().min(1, 'empty value').max(64).optional().meta({
+    description:
+      'One boss, as the hiscores name it, case-insensitive (`zulrah`). Without it: every boss anyone gained kills of.',
+    example: 'Zulrah',
+  }),
+  period: z.enum(KILLS_LEADERBOARD_PERIODS).optional().meta({
+    description: '`week` = the last 7 days, `month` = the last 30. Default `week`.',
+  }),
 });
 
 // ─── Responses ─────────────────────────────────────────────────────────────────────────────────
@@ -979,6 +1017,146 @@ const LootLeaderboardData = z.object({
     }),
 });
 
+const KillsLeaderboardData = z.object({
+  period: z.enum(KILLS_LEADERBOARD_PERIODS),
+  from: timestamp,
+  to: timestamp,
+  leaderboards: z.array(
+    z.object({
+      boss: z.string().meta({ description: 'As the hiscores name it.' }),
+      entries: z
+        .array(z.object({ rank: int.min(1), account: AccountRef, kills: int.min(1) }))
+        .meta({ description: 'Most kills first, at most 10; only accounts that gained kills.' }),
+    }),
+  ),
+});
+
+const ProgressActivity = z.object({
+  name: z.string().meta({
+    description: 'What the time went to: a skill, a boss, “Walking”, …; or “Other” for the rest.',
+  }),
+  ms: int.min(0),
+});
+
+const ProgressData = z.object({
+  account: AccountRef,
+  timezone: z.string().meta({
+    description: 'The time zone days are in: the key creator’s, `UTC` for a service key.',
+  }),
+  range: z.enum([...PROGRESS_RANGES, 'custom']),
+  from: timestamp,
+  to: timestamp,
+  playtime: z
+    .object({
+      sessions: int.min(0),
+      online_ms: int.min(0).meta({ description: 'Time logged in.' }),
+      active_ms: int.min(0).meta({
+        description:
+          'Time in 5-minute blocks with XP, a drop, a step, an inventory change or a gear change.',
+      }),
+      longest_ms: int.min(0).nullable().meta({ description: 'The longest session online.' }),
+      activities: z.array(ProgressActivity).meta({
+        description: `Where the time goes: active time per activity, most first, at most ${PROGRESS_MAX_ACTIVITIES} and “Other”.`,
+      }),
+      days: z
+        .array(
+          z.object({
+            date: localDate,
+            active_ms: int.min(0),
+            activities: z.array(ProgressActivity),
+          }),
+        )
+        .meta({ description: 'Days with active time, oldest first.' }),
+    })
+    .optional()
+    .meta({ description: '`activity` and `stats`: play sessions and active time.' }),
+  xp: z
+    .object({
+      gained: int.meta({ description: 'Overall XP gained in the range.' }),
+      skills: z
+        .array(
+          z.object({
+            skill: z.string(),
+            level: int,
+            xp: int,
+            gained: int,
+            xp_per_hour: int.nullable().meta({
+              description:
+                'Plugin XP per hour of active time spent on the skill; null without `activity` or such time.',
+            }),
+          }),
+        )
+        .meta({ description: 'Every skill, the most gained first.' }),
+    })
+    .optional()
+    .meta({ description: '`stats`.' }),
+  loot: z
+    .object({
+      gp: int.meta({ description: 'Value of the drops in the range (GE).' }),
+      drops: int.min(0),
+    })
+    .optional()
+    .meta({ description: '`events`.' }),
+  bosses: z
+    .object({
+      kills: int.min(0).meta({ description: 'Boss kills gained in the range.' }),
+      read_at: timestamp.nullable().meta({
+        description:
+          'When the hiscores were last read; cut to the UTC day without `activity`. Null if never.',
+      }),
+      list: z
+        .array(
+          z.object({
+            boss: z.string(),
+            kill_count: int,
+            gained: int.min(0),
+            rank: int.nullable(),
+            gp: int
+              .nullable()
+              .meta({ description: 'Loot from it in the range; null without `events`.' }),
+          }),
+        )
+        .meta({ description: 'Bosses on the hiscores: most kills gained first, then kill count.' }),
+    })
+    .optional()
+    .meta({
+      description:
+        '`hiscores`: kill counts and the kills the hiscores gained between readings (a first reading counts none).',
+    }),
+  wealth: z
+    .object({
+      change: int.nullable().meta({
+        description:
+          'Wealth (bank, inventory and gear, as `/wealth`) at the end of the range minus the start; null without readings.',
+      }),
+    })
+    .optional()
+    .meta({ description: '`inventory`.' }),
+  goals: z
+    .array(
+      z.object({
+        kind: z.string().meta({ description: '`level`, `xp` or `kc`.' }),
+        target: z.string().meta({ description: 'The skill or the boss.' }),
+        value: z.number(),
+        current: z.number().nullable(),
+        progress: z.number().nullable().meta({ description: '0 to 1.' }),
+        remaining: z
+          .number()
+          .nullable()
+          .meta({ description: 'XP (level and XP goals) or kills to go.' }),
+        per_day: z.number().nullable().meta({ description: 'XP or kills per day over the range.' }),
+        eta_days: z
+          .number()
+          .nullable()
+          .meta({ description: 'Days to go at that pace; 0 when reached.' }),
+      }),
+    )
+    .meta({
+      description:
+        'The owner’s goals, oldest first: level and XP goals with `stats`, kill-count goals with `hiscores`.',
+    }),
+});
+
 // Envelopes
 const Meta = z.object({
   generated_at: timestamp.meta({ description: 'When the hub built this response.' }),
@@ -1127,6 +1305,8 @@ export const LocationsMultiResponse = envelope(LocationsMultiData, Meta);
 export const DayResponse = envelope(DayData, Meta);
 export const LeaderboardsResponse = envelope(LeaderboardsData, Meta);
 export const LootLeaderboardResponse = envelope(LootLeaderboardData, Meta);
+export const KillsLeaderboardResponse = envelope(KillsLeaderboardData, Meta);
+export const ProgressResponse = envelope(ProgressData, Meta);
 export const HiscoresResponse = envelope(Hiscores, Meta);
 export const HiscoresMultiResponse = envelope(z.array(Hiscores), ListMeta);
 export const AccountCollectionLogResponse = envelope(
@@ -1167,6 +1347,8 @@ export type WireDay = z.infer<typeof DayData>;
 export type WireOwner = z.infer<typeof Owner>;
 export type WireLeaderboards = z.infer<typeof LeaderboardsData>;
 export type WireLootLeaderboard = z.infer<typeof LootLeaderboardData>;
+export type WireKillsLeaderboard = z.infer<typeof KillsLeaderboardData>;
+export type WireProgress = z.infer<typeof ProgressData>;
 export type WireHiscores = z.infer<typeof Hiscores>;
 export type WireAccountCollectionLog = z.infer<typeof AccountCollectionLogData>;
 export type WireCollectionLog = z.infer<typeof GuildCollectionLogData>;

@@ -1087,8 +1087,8 @@
         "tags": [
           "Histories"
         ],
-        "summary": "Carried wealth per day",
-        "description": "Carried value (inventory + equipment at GE prices) per UTC day, oldest first (`inventory`). Default: the last 30 days.",
+        "summary": "Wealth per day",
+        "description": "Wealth per UTC day, oldest first (`inventory`): inventory and equipment at GE prices plus the bank as the plugin last read it (`bank_value`). Default: the last 30 days. The MCP tool `wealth` answers with this.",
         "security": [
           {
             "bearerAuth": []
@@ -1145,6 +1145,125 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/WealthResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/accounts/{id}/progress": {
+      "get": {
+        "operationId": "getAccountProgress",
+        "tags": [
+          "Histories"
+        ],
+        "summary": "Progress over a range",
+        "description": "The account’s Progress page as data, for a range (`range`, default `7d`, or `from`/`to`): `playtime` (`activity` and `stats`: sessions, time online, active time, active time per day and per activity), `xp` (`stats`: gained, per skill with the rate over active time), `loot` (`events`), `bosses` (`hiscores`: kill counts and the kills gained), `wealth` (`inventory`: the change over the range) and `goals`. A section the key can’t read is left out; the account 404s when the key reads none of them. Days are in the key creator’s time zone (UTC for a service key). The MCP tool `progress` answers with this.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9A-Za-z]{1,64}$"
+            },
+            "description": "The account's public id (opaque, base62), as `id` in `/accounts`.",
+            "example": "4fT9kQ2mXa7B"
+          },
+          {
+            "name": "range",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "today",
+                "7d",
+                "30d",
+                "90d",
+                "1y"
+              ]
+            },
+            "description": "A preset ending now: `today` (since local midnight in the key creator’s time zone, UTC for a service key), `7d`, `30d`, `90d` or `1y`. Default `7d`. Not with `from`/`to`."
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              ]
+            },
+            "description": "A custom range instead, with `to`: dates (`YYYY-MM-DD`, both included, in the key creator’s time zone) or ISO-8601 date-times. At most 366 days; a longer one keeps its end.",
+            "example": "2026-10-26"
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              ]
+            },
+            "description": "The end of the custom range."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK: `{ data, meta }`.",
+            "headers": {
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/X-RateLimit-Remaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/X-RateLimit-Reset"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProgressResponse"
                 }
               }
             }
@@ -1782,6 +1901,83 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/LootLeaderboardResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/leaderboards/kills": {
+      "get": {
+        "operationId": "getKillsLeaderboard",
+        "tags": [
+          "Leaderboards"
+        ],
+        "summary": "Boss kill leaderboards",
+        "description": "Boss kills gained over the last 7 (`period=week`, default) or 30 days (`month`), as the guild page ranks them, over the accounts whose `hiscores` the key may read and that aren’t hidden from the guild. Kills are the rises between hiscore readings; an account’s first reading counts none. `boss` narrows it to one board.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "boss",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "description": "One boss, as the hiscores name it, case-insensitive (`zulrah`). Without it: every boss anyone gained kills of.",
+            "example": "Zulrah"
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "week",
+                "month"
+              ]
+            },
+            "description": "`week` = the last 7 days, `month` = the last 30. Default `week`."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK: `{ data, meta }`.",
+            "headers": {
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/X-RateLimit-Remaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/X-RateLimit-Reset"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KillsLeaderboardResponse"
                 }
               }
             }
@@ -4478,6 +4674,403 @@
           "meta"
         ]
       },
+      "ProgressResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "object",
+            "properties": {
+              "account": {
+                "$ref": "#/components/schemas/AccountRef"
+              },
+              "timezone": {
+                "type": "string",
+                "description": "The time zone days are in: the key creator’s, `UTC` for a service key."
+              },
+              "range": {
+                "type": "string",
+                "enum": [
+                  "today",
+                  "7d",
+                  "30d",
+                  "90d",
+                  "1y",
+                  "custom"
+                ]
+              },
+              "from": {
+                "type": "string",
+                "format": "date-time",
+                "description": "ISO-8601 UTC."
+              },
+              "to": {
+                "type": "string",
+                "format": "date-time",
+                "description": "ISO-8601 UTC."
+              },
+              "playtime": {
+                "description": "`activity` and `stats`: play sessions and active time.",
+                "type": "object",
+                "properties": {
+                  "sessions": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "online_ms": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "Time logged in."
+                  },
+                  "active_ms": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "Time in 5-minute blocks with XP, a drop, a step, an inventory change or a gear change."
+                  },
+                  "longest_ms": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "The longest session online."
+                  },
+                  "activities": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "description": "What the time went to: a skill, a boss, “Walking”, …; or “Other” for the rest."
+                        },
+                        "ms": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "ms"
+                      ]
+                    },
+                    "description": "Where the time goes: active time per activity, most first, at most 8 and “Other”."
+                  },
+                  "days": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "date": {
+                          "type": "string",
+                          "format": "date"
+                        },
+                        "active_ms": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "activities": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "name": {
+                                "type": "string",
+                                "description": "What the time went to: a skill, a boss, “Walking”, …; or “Other” for the rest."
+                              },
+                              "ms": {
+                                "type": "integer",
+                                "minimum": 0
+                              }
+                            },
+                            "required": [
+                              "name",
+                              "ms"
+                            ]
+                          }
+                        }
+                      },
+                      "required": [
+                        "date",
+                        "active_ms",
+                        "activities"
+                      ]
+                    },
+                    "description": "Days with active time, oldest first."
+                  }
+                },
+                "required": [
+                  "sessions",
+                  "online_ms",
+                  "active_ms",
+                  "longest_ms",
+                  "activities",
+                  "days"
+                ]
+              },
+              "xp": {
+                "description": "`stats`.",
+                "type": "object",
+                "properties": {
+                  "gained": {
+                    "type": "integer",
+                    "description": "Overall XP gained in the range."
+                  },
+                  "skills": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "skill": {
+                          "type": "string"
+                        },
+                        "level": {
+                          "type": "integer"
+                        },
+                        "xp": {
+                          "type": "integer"
+                        },
+                        "gained": {
+                          "type": "integer"
+                        },
+                        "xp_per_hour": {
+                          "anyOf": [
+                            {
+                              "type": "integer"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "description": "Plugin XP per hour of active time spent on the skill; null without `activity` or such time."
+                        }
+                      },
+                      "required": [
+                        "skill",
+                        "level",
+                        "xp",
+                        "gained",
+                        "xp_per_hour"
+                      ]
+                    },
+                    "description": "Every skill, the most gained first."
+                  }
+                },
+                "required": [
+                  "gained",
+                  "skills"
+                ]
+              },
+              "loot": {
+                "description": "`events`.",
+                "type": "object",
+                "properties": {
+                  "gp": {
+                    "type": "integer",
+                    "description": "Value of the drops in the range (GE)."
+                  },
+                  "drops": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "required": [
+                  "gp",
+                  "drops"
+                ]
+              },
+              "bosses": {
+                "description": "`hiscores`: kill counts and the kills the hiscores gained between readings (a first reading counts none).",
+                "type": "object",
+                "properties": {
+                  "kills": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "Boss kills gained in the range."
+                  },
+                  "read_at": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "format": "date-time",
+                        "description": "ISO-8601 UTC."
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "When the hiscores were last read; cut to the UTC day without `activity`. Null if never."
+                  },
+                  "list": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "boss": {
+                          "type": "string"
+                        },
+                        "kill_count": {
+                          "type": "integer"
+                        },
+                        "gained": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "rank": {
+                          "anyOf": [
+                            {
+                              "type": "integer"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "gp": {
+                          "anyOf": [
+                            {
+                              "type": "integer"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "description": "Loot from it in the range; null without `events`."
+                        }
+                      },
+                      "required": [
+                        "boss",
+                        "kill_count",
+                        "gained",
+                        "rank",
+                        "gp"
+                      ]
+                    },
+                    "description": "Bosses on the hiscores: most kills gained first, then kill count."
+                  }
+                },
+                "required": [
+                  "kills",
+                  "read_at",
+                  "list"
+                ]
+              },
+              "wealth": {
+                "description": "`inventory`.",
+                "type": "object",
+                "properties": {
+                  "change": {
+                    "anyOf": [
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Wealth (bank, inventory and gear, as `/wealth`) at the end of the range minus the start; null without readings."
+                  }
+                },
+                "required": [
+                  "change"
+                ]
+              },
+              "goals": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "description": "`level`, `xp` or `kc`."
+                    },
+                    "target": {
+                      "type": "string",
+                      "description": "The skill or the boss."
+                    },
+                    "value": {
+                      "type": "number"
+                    },
+                    "current": {
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "progress": {
+                      "description": "0 to 1.",
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "remaining": {
+                      "description": "XP (level and XP goals) or kills to go.",
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "per_day": {
+                      "description": "XP or kills per day over the range.",
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "eta_days": {
+                      "description": "Days to go at that pace; 0 when reached.",
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "target",
+                    "value",
+                    "current",
+                    "progress",
+                    "remaining",
+                    "per_day",
+                    "eta_days"
+                  ]
+                },
+                "description": "The owner’s goals, oldest first: level and XP goals with `stats`, kill-count goals with `hiscores`."
+              }
+            },
+            "required": [
+              "account",
+              "timezone",
+              "range",
+              "from",
+              "to",
+              "goals"
+            ]
+          },
+          "meta": {
+            "type": "object",
+            "properties": {
+              "generated_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "When the hub built this response."
+              }
+            },
+            "required": [
+              "generated_at"
+            ]
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ]
+      },
       "LocationsResponse": {
         "type": "object",
         "properties": {
@@ -5285,6 +5878,97 @@
               "from",
               "to",
               "entries"
+            ]
+          },
+          "meta": {
+            "type": "object",
+            "properties": {
+              "generated_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "When the hub built this response."
+              }
+            },
+            "required": [
+              "generated_at"
+            ]
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ]
+      },
+      "KillsLeaderboardResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "object",
+            "properties": {
+              "period": {
+                "type": "string",
+                "enum": [
+                  "week",
+                  "month"
+                ]
+              },
+              "from": {
+                "type": "string",
+                "format": "date-time",
+                "description": "ISO-8601 UTC."
+              },
+              "to": {
+                "type": "string",
+                "format": "date-time",
+                "description": "ISO-8601 UTC."
+              },
+              "leaderboards": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "boss": {
+                      "type": "string",
+                      "description": "As the hiscores name it."
+                    },
+                    "entries": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "rank": {
+                            "type": "integer",
+                            "minimum": 1
+                          },
+                          "account": {
+                            "$ref": "#/components/schemas/AccountRef"
+                          },
+                          "kills": {
+                            "type": "integer",
+                            "minimum": 1
+                          }
+                        },
+                        "required": [
+                          "rank",
+                          "account",
+                          "kills"
+                        ]
+                      },
+                      "description": "Most kills first, at most 10; only accounts that gained kills."
+                    }
+                  },
+                  "required": [
+                    "boss",
+                    "entries"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "period",
+              "from",
+              "to",
+              "leaderboards"
             ]
           },
           "meta": {

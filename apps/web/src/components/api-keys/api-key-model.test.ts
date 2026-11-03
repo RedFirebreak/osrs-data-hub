@@ -86,13 +86,30 @@ describe('the create form', () => {
   it('the AI assistant preset adds its categories and names an unnamed key', () => {
     expect(aiAssistantPreset(emptyCreateForm())).toEqual({
       name: 'AI assistant',
-      categories: ['stats', 'events', 'activity', 'location_history', 'hiscores'],
+      categories: [
+        'stats',
+        'events',
+        'activity',
+        'location_history',
+        'equipment',
+        'inventory',
+        'hiscores',
+      ],
     });
-    expect(aiAssistantPreset({ ...filled, categories: ['inventory'] })).toEqual({
+    expect(aiAssistantPreset({ ...filled, categories: ['location_live'] })).toEqual({
       name: ' Home Assistant ',
-      categories: ['stats', 'events', 'activity', 'location_history', 'inventory', 'hiscores'],
+      categories: [
+        'stats',
+        'events',
+        'activity',
+        'location_live',
+        'location_history',
+        'equipment',
+        'inventory',
+        'hiscores',
+      ],
     });
-    expect(AI_ASSISTANT_CATEGORIES).not.toContain('equipment');
+    expect(AI_ASSISTANT_CATEGORIES).not.toContain('location_live');
   });
 
   it('validates like the server', () => {

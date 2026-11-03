@@ -88,7 +88,7 @@ export function emptyCreateForm(): CreateKeyForm {
 /**
  * "For an AI assistant" (D-129): what an assistant connected through the hub's MCP server needs to
  * answer questions about the guild, on top of the form as it is. The categories are added, never
- * removed (equipment and inventory stay the user's choice: gear and wealth questions), and the name
+ * removed (the live location stays the user's choice), and the name
  * is filled in only when it's empty. The list itself lives in @hub/core (AI_ASSISTANT_CATEGORIES).
  */
 export function aiAssistantPreset(form: CreateKeyForm): Pick<CreateKeyForm, 'name' | 'categories'> {

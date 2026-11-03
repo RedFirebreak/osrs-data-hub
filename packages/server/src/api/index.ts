@@ -105,14 +105,27 @@ export {
   type ApiKeyStatus,
 } from './keys';
 export {
+  KILLS_LEADERBOARD_PERIODS,
   LEADERBOARD_PERIODS,
   LOOT_LEADERBOARD_DEFAULT_LIMIT,
   LOOT_LEADERBOARD_MAX_LIMIT,
+  apiKillsLeaderboard,
   apiLeaderboardGains,
   apiLootLeaderboard,
+  type ApiKillsLeaderboardPeriod,
+  type ApiKillsLeaderboards,
   type ApiLeaderboards,
   type ApiLootLeaderboard,
 } from './leaderboards';
+export {
+  PROGRESS_DEFAULT_RANGE,
+  PROGRESS_MAX_ACTIVITIES,
+  PROGRESS_RANGES,
+  apiProgress,
+  type ApiProgress,
+  type ApiProgressParams,
+  type ApiProgressRange,
+} from './progress';
 export {
   API_RATE_LIMIT,
   API_RATE_WINDOW_MS,
