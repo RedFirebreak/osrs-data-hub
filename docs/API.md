@@ -63,7 +63,7 @@ For the guild's own services (its live map, a shared bot) an admin creates a **s
 |---|---|
 | `stats` | skills, XP history, gains, levels |
 | `events` | loot, level-ups, deaths, collection log, diaries, combat tasks, superiors, slayer tasks |
-| `activity` | online status, world, sessions and playtime, HP, prayer, active prayers, spellbook, slayer task |
+| `activity` | online status, world, sessions and playtime, HP, prayer, active prayers, spellbook, slayer task, run energy, special attack, poison, potion effects |
 | `location_live` | current coordinates (for the live map) |
 | `location_history` | the 30-day trail |
 | `equipment` | current gear and its change log |
@@ -235,6 +235,15 @@ it was assigned); `points`; and `streaks` `normal`, `wilderness` (Krystilia) and
 when not sent. Tasks given and finished are the events `slayer_task_assigned` and
 `slayer_task_complete` (`points` is the points the task gave).
 
+`status` (`activity`, plugin after 1.6.3, D-143) is how the player stands now: `run_energy` and
+`special_attack` (whole percent), `running`, `poison` `{type, damage}` (`type` `none`, `poison` or
+`venom`, `damage` the next hit or `null`), `wilderness_level` (`null` outside the wilderness, and for a
+key without `location_live`) and `effects`, the potions and other effects running now, each `{id, name,
+ends_at, precision_ms}`: `id` is RuneLite's GameTimer name in lower case (`stamina`, `antifire`,
+`divine_super_combat`, `teleblock`, …; show an unknown one by its `name`), `ends_at` when it ends, up to
+`precision_ms` late. An effect whose end has passed is left out. Offline there are no effects, no poison
+and no wilderness level; run energy and special attack keep their last value.
+
 `equipment` and `inventory` hold `items` and `value` (Σ `ge_price × quantity`). An item is
 `{id, name, quantity, ge_price, ha_price, equipment_slot, inventory_slot}`, one entry per occupied slot
 (five sharks are five entries). `equipment_slot` (`HEAD`, `WEAPON`, …) is set on equipment items.
@@ -258,7 +267,8 @@ service key). The other fields depend on the key's categories on that account:
   `spellbook`, `active_prayers` (RuneLite `Prayer` names in prayer book order, such as
   `PROTECT_FROM_MELEE`, `PIETY`, `RP_TRINITAS`; `[]` when none is on or the account is offline, `null`
   until the plugin first sent them; D-119), `slayer` (`{task, points, streaks}` as in `/accounts/{id}`,
-  `null` until the plugin first sent it; D-141);
+  `null` until the plugin first sent it; D-141), `status` (as in `/accounts/{id}`, `null` until the plugin
+  first sent it; D-143);
 - `location_live`: `location` (with `stale` and `updated_at`);
 - `stats`: `skills`;
 - `equipment`: `equipment`;

@@ -209,6 +209,9 @@ export const latestState = pgTable('latest_state', {
   /** The slayer task, points and streaks of the last snapshot (SlayerState, D-141). */
   slayer: jsonb('slayer'),
   slayerUpdatedAt: tstz('slayer_updated_at'),
+  /** Run energy, special attack, poison, wilderness level and running effects of the last snapshot (StatusState, D-143). */
+  status: jsonb('status'),
+  statusUpdatedAt: tstz('status_updated_at'),
   /** {x, y, plane, isOnBoat} */
   location: jsonb('location'),
   locationUpdatedAt: tstz('location_updated_at'),

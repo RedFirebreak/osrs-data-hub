@@ -1,5 +1,6 @@
 import type { ItemData, Location, ParsedPayload } from '../payload/types';
 import type { SlayerState } from '../slayer';
+import type { StatusState } from '../status';
 
 /** The parts of the previous `latest_state` row that snapshot planning needs. */
 export interface PrevState {
@@ -83,6 +84,8 @@ export interface LatestStatePatch {
   activePrayersUpdatedAt?: Date;
   slayer?: SlayerState;
   slayerUpdatedAt?: Date;
+  status?: StatusState;
+  statusUpdatedAt?: Date;
   location?: Location;
   locationUpdatedAt?: Date;
   skills?: Record<string, { xp: number; level: number }>;

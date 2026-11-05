@@ -3,6 +3,7 @@
  * player can filter sections, and some sends carry no (or a partial) `player` (PLUGIN-1).
  */
 import type { SlayerState } from '../slayer';
+import type { StatusState } from '../status';
 
 /**
  * One item as sent. Inventory is one entry per occupied slot (not merged) and, from plugin 1.5.1, carries
@@ -84,6 +85,13 @@ export interface PlayerSnapshot {
    * and from older plugins (D-141).
    */
   slayer?: SlayerState;
+  /**
+   * After plugin 1.6.3 (`player.status`, plugin PR #54): run energy, special attack, poison or venom,
+   * the wilderness level (only when location is shared too) and the running effects with their end
+   * times (the player's clock). Sent with every message; absent when the player doesn't share it, and
+   * from older plugins (D-143).
+   */
+  status?: StatusState;
   /**
    * After plugin 1.6.2 (`player.bank`, plugin PR #50): the GE value of the bank as the plugin last read
    * it, and when (epoch ms, the player's clock). Read on every bank visit and kept across logins, so

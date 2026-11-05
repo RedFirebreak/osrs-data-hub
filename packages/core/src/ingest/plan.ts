@@ -10,6 +10,7 @@ import {
   isStaleSnapshot,
   utcDay,
 } from '../time';
+import { shiftStatusClock } from '../status';
 import { isSpecialWorld } from '../worlds';
 import { METRICS_BUCKET_MS } from '../metrics/sessions';
 import {
@@ -36,7 +37,7 @@ import {
  *   no XP, equipment, location or wealth; session handled as normal (D-45).
  * - normal → latestPatch sets sourceDeviceId/sourceTs(payloadTs) and, for each PRESENT section only,
  *   its columns plus its *UpdatedAt = recv (world/worldTypes/specialWorld=false, health, prayer,
- *   spellbook, active prayers, slayer, location, skills, inventory, equipment). Missing sections are absent from the patch.
+ *   spellbook, active prayers, slayer, status, location, skills, inventory, equipment). Missing sections are absent from the patch.
  *   world and worldTypes are separate sections: specialWorld=false is set only with worldTypes, and
  *   worldUpdatedAt with either. `skills` is the payload's map as sent (not merged with prev).
  * - XP: for each skill in player.skills whose xp differs from prev (or prev lacks it) → write
@@ -164,6 +165,16 @@ export function planSnapshot(
   if (player.slayer !== undefined) {
     patch.slayer = player.slayer;
     patch.slayerUpdatedAt = at;
+  }
+  if (player.status !== undefined) {
+    // End times come from the player's clock. One that is plainly wrong is moved onto the hub's by
+    // the payload's own time; a plausible one stays as sent (a queued payload's age isn't skew).
+    const ts = payload.timestamp;
+    const skewed = ts !== null && !isPlausibleClock(ts, at);
+    patch.status = skewed
+      ? shiftStatusClock(player.status, at.getTime() - Math.round(ts))
+      : player.status;
+    patch.statusUpdatedAt = at;
   }
   if (player.location !== undefined) {
     patch.location = player.location;

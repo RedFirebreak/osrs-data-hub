@@ -9,13 +9,17 @@ import {
   itemsValue,
   overallXp,
   readSlayerState,
+  readStatusState,
   realLevel,
+  statusAt,
+  withoutWilderness,
   withoutSlayerLocation,
   sortSkillsForDisplay,
   totalLevel,
   type Category,
   type ItemData,
   type SlayerState,
+  type StatusState,
   type Viewer,
 } from '@hub/core';
 import { accountNames, latestState, users, type DbOrTx } from '@hub/db';
@@ -114,6 +118,11 @@ export interface AccountPage {
    * while the player is logged out, so it is shown as it was, offline too.
    */
   slayer: Section<SlayerState>;
+  /**
+   * activity (D-143): run energy, special attack, poison, the wilderness level (with location_live)
+   * and the running effects, as they stand now: offline nothing runs (statusAt).
+   */
+  status: Section<StatusState>;
   /** location_live */
   location: Section<LiveLocation>;
   /** stats: rows in the in-game grid order with Overall first. */
@@ -198,6 +207,13 @@ export async function getAccountPage(
       vitalsOf(state as LatestRow, toPresence(state as LatestRow, opts.now).online),
     ),
     slayer: slayerSection(can('activity'), state, can('location_live') || can('location_history')),
+    status: statusSection(
+      can('activity'),
+      state,
+      state ? toPresence(state as LatestRow, opts.now).online : false,
+      can('location_live'),
+      opts.now,
+    ),
     location: locationSection(can('location_live'), state, opts.now),
     skills: dayOnly(skills),
     equipment: dayOnly(
@@ -274,6 +290,23 @@ export function slayerSection(
   const read = state?.slayerUpdatedAt ? readSlayerState(state.slayer) : null;
   const slayer = read !== null && !located ? withoutSlayerLocation(read) : read;
   return sectionOf(visible, slayer === null ? null : state?.slayerUpdatedAt, () => slayer!);
+}
+
+/**
+ * The status section (D-143) from latest_state: not shared until the plugin first sent it, or when the
+ * stored value can't be read. The wilderness level only with location_live (`located`).
+ */
+export function statusSection(
+  visible: boolean,
+  state: Pick<LatestRow, 'status' | 'statusUpdatedAt'> | undefined,
+  online: boolean,
+  located: boolean,
+  now: Date,
+): Section<StatusState> {
+  const read = state?.statusUpdatedAt ? readStatusState(state.status) : null;
+  const at = read === null ? null : statusAt(read, now, online);
+  const status = at !== null && !located ? withoutWilderness(at) : at;
+  return sectionOf(visible, status === null ? null : state?.statusUpdatedAt, () => status!);
 }
 
 /** When the vitals section was last received: the newest of its parts, or null. */

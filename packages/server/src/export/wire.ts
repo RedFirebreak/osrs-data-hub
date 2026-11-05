@@ -12,6 +12,7 @@ import type {
   ApiPresence,
   ApiSkills,
   ApiSlayer,
+  ApiStatus,
   ApiVitals,
 } from '../api/state';
 import type { ApiItem, ApiSection } from '../api/types';
@@ -87,6 +88,26 @@ export function wireSlayer(s: ApiSlayer) {
       wilderness: s.streaks.wilderness,
       mortimer: s.streaks.mortimer,
     },
+  };
+}
+
+/**
+ * The status section (D-143): percents, the poison's next hit (null without poison), the wilderness
+ * level (null outside it) and the running effects with their end as ISO time.
+ */
+export function wireStatus(s: ApiStatus) {
+  return {
+    run_energy: s.runEnergy,
+    running: s.running,
+    special_attack: s.specialAttack,
+    poison: { type: s.poison.type, damage: s.poison.damage },
+    wilderness_level: s.wildernessLevel,
+    effects: s.effects.map((e) => ({
+      id: e.id,
+      name: e.name,
+      ends_at: new Date(e.endsAt).toISOString(),
+      precision_ms: e.precision,
+    })),
   };
 }
 

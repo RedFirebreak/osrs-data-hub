@@ -38,6 +38,7 @@ import { LocationContent } from '@/components/account-page/location-content';
 import { PLAYTIME_DAYS, PlaytimeCard } from '@/components/account-page/playtime-card';
 import { WealthCard } from '@/components/account-page/wealth-card';
 import { SlayerCard } from '@/components/account-page/slayer-card';
+import { StatusEffects, StatusMeters } from '@/components/account-page/status-content';
 import { SkillsPanel } from '@/components/account-page/skills-panel';
 import { VitalsContent } from '@/components/account-page/vitals-content';
 import { WeekSummary } from '@/components/account-page/week-summary';
@@ -360,11 +361,15 @@ function slayerSection({ page, viewer, publicId, renderedAt }: SectionContext) {
   );
 }
 
-/** Where the character is and how it stands: the live location and HP, prayer and spellbook. */
-function rightNowSection({ page, now }: SectionContext) {
-  const { location, vitals } = page;
+/**
+ * Where the character is and how it stands: the live location; HP, prayer and spellbook; and the
+ * status (run energy, special attack, poison, the wilderness level and the running effects, D-143)
+ * once the plugin sent it.
+ */
+function rightNowSection({ page, now, renderedAt }: SectionContext) {
+  const { location, vitals, status } = page;
   if (!location.visible && !vitals.visible) return null;
-  const shared = [location, vitals].filter((s) => s.visible && s.shared);
+  const shared = [location, vitals, status].filter((s) => s.visible && s.shared);
   if (shared.length === 0) {
     return <NotSharedCard key="now" id="now" title="Right now" what="the location, HP or prayer" />;
   }
@@ -372,6 +377,7 @@ function rightNowSection({ page, now }: SectionContext) {
     .map((s) => (s.visible && s.shared ? s.updatedAt : ''))
     .sort()
     .at(-1);
+  const live = status.visible && status.shared ? status.data : null;
   return (
     <SectionCard key="now" id="now" title="Right now" updatedAt={updatedAt} now={now}>
       <div className="flex flex-col gap-5">
@@ -383,7 +389,13 @@ function rightNowSection({ page, now }: SectionContext) {
           ))}
         {vitals.visible &&
           (vitals.shared ? (
-            <VitalsContent vitals={vitals.data} />
+            <VitalsContent
+              vitals={vitals.data}
+              afterMeters={live && <StatusMeters status={live} />}
+              afterPrayers={
+                live && <StatusEffects status={live} renderedAt={renderedAt.getTime()} />
+              }
+            />
           ) : (
             <NotSent what="HP, prayer or the spellbook" />
           ))}

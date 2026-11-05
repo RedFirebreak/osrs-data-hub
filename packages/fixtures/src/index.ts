@@ -41,6 +41,7 @@ export const FIXTURES = [
   'snapshot-no-sections',
   'snapshot-normal',
   'snapshot-slayer',
+  'snapshot-status',
   'snapshot-world-hop',
   'special-world-seasonal',
 ] as const;

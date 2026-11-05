@@ -9,10 +9,14 @@ import {
   floorTo,
   itemsValue,
   readSlayerState,
+  readStatusState,
   regionName,
+  statusAt,
   type Category,
   type SlayerState,
+  type StatusState,
   withoutSlayerLocation,
+  withoutWilderness,
 } from '@hub/core';
 import { latestState, type DbOrTx } from '@hub/db';
 import { getTableColumns, inArray, sql } from 'drizzle-orm';
@@ -66,6 +70,29 @@ export function slayerOf(
   return categories.has('location_live') || categories.has('location_history')
     ? state
     : withoutSlayerLocation(state);
+}
+
+/**
+ * The status (`activity`, D-143): run energy, special attack, poison, the wilderness level and the
+ * running effects. Offline nothing runs and no one is poisoned or in the wilderness (statusAt).
+ */
+export type ApiStatus = StatusState;
+
+/**
+ * The status of a latest_state row as it stands at `now`, or null when never sent (or unreadable).
+ * The wilderness level only for a reader with `location_live`: it says roughly where the player is,
+ * and the plugin itself drops it with the location.
+ */
+export function statusOf(
+  row: Pick<LatestRow, 'status' | 'statusUpdatedAt'>,
+  categories: ReadonlySet<Category>,
+  online: boolean,
+  now: Date,
+): ApiStatus | null {
+  const state = row.statusUpdatedAt === null ? null : readStatusState(row.status);
+  if (state === null) return null;
+  const at = statusAt(state, now, online);
+  return categories.has('location_live') ? at : withoutWilderness(at);
 }
 
 export interface ApiSkill {
@@ -165,6 +192,8 @@ export interface ApiStateSections {
   vitals?: ApiSection<ApiVitals>;
   /** `activity` (D-141). */
   slayer?: ApiSection<ApiSlayer>;
+  /** `activity` (D-143). */
+  status?: ApiSection<ApiStatus>;
   /** `stats`. */
   skills?: ApiSection<ApiSkills>;
   /** `location_live`; its `updatedAt` is exact (a live position is presence by nature). */
@@ -215,6 +244,10 @@ export function accountSections(
       row && presence ? vitalsOf(row, presence.online) : null,
     );
     out.slayer = section(row?.slayerUpdatedAt ?? null, row ? slayerOf(row, categories) : null);
+    out.status = section(
+      row?.statusUpdatedAt ?? null,
+      row && presence ? statusOf(row, categories, presence.online, now) : null,
+    );
   }
   if (can('stats')) {
     out.skills = section(stamp(row?.skillsUpdatedAt ?? null), row ? skillsOf(row) : null);

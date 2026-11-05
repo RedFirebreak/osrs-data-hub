@@ -1246,3 +1246,30 @@ describe('planSnapshot: sessions', () => {
     expect(planSnapshot(prevAfterNormal(), p, ctxFor(p)).session.world).toBeNull();
   });
 });
+
+describe('planSnapshot: status (D-143)', () => {
+  const status = {
+    runEnergy: 50,
+    running: true,
+    specialAttack: 100,
+    poison: { type: 'none' as const, damage: null },
+    wildernessLevel: null,
+    effects: [{ id: 'stamina', name: 'Stamina', endsAt: HAND_BUILT_TS + 60_000, precision: 6000 }],
+  };
+
+  it('keeps end times from a plausible clock as sent', () => {
+    const p = { ...payload({ status }), timestamp: HAND_BUILT_TS };
+    const plan = planSnapshot(NO_STATE, p, ctxFor(p, 5 * 60_000));
+    expect(plan.latestPatch?.status).toEqual(status);
+    expect(plan.latestPatch?.statusUpdatedAt).toBeInstanceOf(Date);
+  });
+
+  it("moves end times from a clock that is plainly wrong onto the hub's", () => {
+    // The player's clock runs an hour behind: received an hour after its own time.
+    const p = { ...payload({ status }), timestamp: HAND_BUILT_TS };
+    const ctx = { ...ctxFor(p), recv: new Date(HAND_BUILT_TS + 3_600_000) };
+    expect(planSnapshot(NO_STATE, p, ctx).latestPatch?.status?.effects[0]!.endsAt).toBe(
+      HAND_BUILT_TS + 3_660_000,
+    );
+  });
+});

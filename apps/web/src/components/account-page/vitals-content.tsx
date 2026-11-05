@@ -81,7 +81,17 @@ function ActivePrayers({ prayers }: { prayers: readonly string[] }) {
   );
 }
 
-export function VitalsContent({ vitals }: { vitals: Vitals }) {
+export function VitalsContent({
+  vitals,
+  afterMeters,
+  afterPrayers,
+}: {
+  vitals: Vitals;
+  /** Under HP and prayer: run energy and special attack (D-143). */
+  afterMeters?: React.ReactNode;
+  /** Under the active prayers: the running effects (D-143). */
+  afterPrayers?: React.ReactNode;
+}) {
   if (!vitals.hp && !vitals.prayer && !vitals.spellbook && !vitals.activePrayers) {
     return <p className="text-sm text-muted-foreground">No vitals received yet.</p>;
   }
@@ -105,7 +115,9 @@ export function VitalsContent({ vitals }: { vitals: Vitals }) {
           tone="bg-sky-600 dark:bg-sky-500"
         />
       )}
+      {afterMeters}
       {vitals.activePrayers && <ActivePrayers prayers={vitals.activePrayers} />}
+      {afterPrayers}
       {vitals.spellbook && (
         <p className="text-sm">
           <span className="text-muted-foreground">Spellbook: </span>
