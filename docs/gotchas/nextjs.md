@@ -1,4 +1,4 @@
-# Next.js 16
+# Next.js
 
 Next.js 16 (route handlers, server actions, RSC, proxy.ts, instrumentation, basePath, standalone output, the dev and build CLI).
 

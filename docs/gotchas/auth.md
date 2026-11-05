@@ -1,4 +1,4 @@
-# Auth: Better Auth and the Discord API
+# Auth
 
 Better Auth 1.7 (Discord provider, Drizzle adapter, hooks, sessions, endpoints) and the Discord HTTP API (OAuth, guild member lookups).
 

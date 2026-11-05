@@ -1,4 +1,4 @@
-# Database: Postgres, Drizzle and TimescaleDB
+# Database
 
 Postgres behaviour, drizzle-orm 0.45 and drizzle-kit 0.31 (queries, errors, the migrator), and TimescaleDB 2.30 (hypertables, compression, continuous aggregates, policies, the Docker image).
 
