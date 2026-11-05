@@ -2,13 +2,13 @@
 /**
  * The player's status (D-143): run energy, special attack, poison or venom, the wilderness level and
  * the effects that are running (potions, an imbued heart, a teleblock), each counting down to its end
- * on the viewer's clock. In "Right now" (Red's pick): run and special as full-width bars under HP and
- * prayer, poison and the wilderness as badges, and the effects as icon cards with the time left, the
- * name and the end time in a tooltip. What has ended drops out here at once; the page's minute refresh
+ * on the viewer's clock. In "Right now" (Red's pick): HP, prayer, run and special as the game's
+ * minimap orbs, poison and the wilderness as badges, and the effects as icon cards with the time left,
+ * the name and the end time in a tooltip. What has ended drops out here at once; the page's minute refresh
  * brings the rest. Client component: only the countdown and the tooltips need it.
  */
 import { STATUS_EFFECT_ITEMS, formatEffectLeft, type StatusState } from '@hub/core';
-import { FootprintsIcon, SkullIcon, SwordsIcon, TimerIcon } from 'lucide-react';
+import { SkullIcon, TimerIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { ItemIcon } from '@/components/icons/osrs-icon';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -68,73 +68,129 @@ export function WildernessBadge({ level }: { level: number | null }) {
   );
 }
 
-/** A bar like HP and prayer's: label with icon, the percent, and the bar under it. */
-function PercentMeter({
+/**
+ * A round gauge like the game's minimap orbs: the value in the middle, the ring filled by its share
+ * of the maximum (a boost over the maximum fills it).
+ */
+function Orb({
   label,
-  icon,
   value,
-  note,
+  max,
   tone,
+  valueText,
 }: {
   label: string;
-  icon: React.ReactNode;
   value: number;
-  note?: string;
+  max: number;
   tone: string;
+  valueText: string;
 }) {
+  const r = 20;
+  const c = 2 * Math.PI * r;
+  const share = max <= 0 ? 0 : Math.min(1, Math.max(0, value / max));
   return (
-    <div className="flex flex-col gap-1.5">
-      <div className="flex items-baseline justify-between gap-2 text-sm">
-        <span className="flex items-center gap-1.5 font-medium">
-          {icon}
-          {label}
-        </span>
-        <span className="tabular-nums">
-          {note && <span className="mr-1.5 text-xs text-muted-foreground">{note}</span>}
-          <span className="font-semibold">{value}</span>
-          <span className="text-muted-foreground"> %</span>
-        </span>
-      </div>
-      <div
+    <div className="flex flex-col items-center gap-1">
+      <svg
+        viewBox="0 0 48 48"
+        className="size-14"
         role="meter"
         aria-label={label}
         aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={value}
-        aria-valuetext={`${value}%${note ? `, ${note}` : ''}`}
-        className="h-2 overflow-hidden rounded-full bg-muted"
+        aria-valuemax={max}
+        aria-valuenow={Math.min(value, max)}
+        aria-valuetext={valueText}
       >
-        <div className={`h-full rounded-full ${tone}`} style={{ width: `${value}%` }} />
-      </div>
+        <circle cx="24" cy="24" r={r} className="fill-none stroke-muted" strokeWidth="5" />
+        <circle
+          cx="24"
+          cy="24"
+          r={r}
+          className={cn('fill-none transition-[stroke-dasharray]', tone)}
+          strokeWidth="5"
+          strokeLinecap="round"
+          strokeDasharray={`${c * share} ${c}`}
+          transform="rotate(-90 24 24)"
+        />
+        <text
+          x="24"
+          y="28"
+          textAnchor="middle"
+          className="fill-foreground text-[12px] font-semibold tabular-nums"
+        >
+          {value}
+        </text>
+      </svg>
+      <span className="text-xs text-muted-foreground">{label}</span>
     </div>
   );
 }
 
-/** Under HP and prayer: run energy and special attack, then poison and the wilderness as badges. */
-export function StatusMeters({ status }: { status: StatusState }) {
+type Meter = { current: number; max: number } | null;
+
+/**
+ * HP, prayer, run energy and special attack as four orbs, as on the game's minimap (Red's pick); the
+ * HP orb turns green when poisoned and teal when venomed, as the game's does. Then poison and the
+ * wilderness as badges.
+ */
+export function StatusOrbs({
+  status,
+  hp,
+  prayer,
+}: {
+  status: StatusState;
+  hp: Meter;
+  prayer: Meter;
+}) {
   const badges = status.poison.type !== 'none' || status.wildernessLevel !== null;
+  const hpTone =
+    status.poison.type === 'venom'
+      ? 'stroke-teal-700 dark:stroke-teal-400'
+      : status.poison.type === 'poison'
+        ? 'stroke-green-600 dark:stroke-green-500'
+        : 'stroke-red-600 dark:stroke-red-500';
   return (
-    <>
-      <PercentMeter
-        label="Run energy"
-        icon={<FootprintsIcon aria-hidden className="size-4 text-amber-600 dark:text-amber-400" />}
-        value={status.runEnergy}
-        note={status.running ? undefined : 'walking'}
-        tone="bg-amber-500 dark:bg-amber-400"
-      />
-      <PercentMeter
-        label="Special attack"
-        icon={<SwordsIcon aria-hidden className="size-4 text-cyan-700 dark:text-cyan-400" />}
-        value={status.specialAttack}
-        tone="bg-cyan-600 dark:bg-cyan-500"
-      />
+    <div className="flex flex-col gap-3">
+      <div className="grid grid-cols-4 gap-1">
+        {hp && (
+          <Orb
+            label="Hitpoints"
+            value={hp.current}
+            max={hp.max}
+            tone={hpTone}
+            valueText={`${hp.current} of ${hp.max}`}
+          />
+        )}
+        {prayer && (
+          <Orb
+            label="Prayer"
+            value={prayer.current}
+            max={prayer.max}
+            tone="stroke-sky-600 dark:stroke-sky-500"
+            valueText={`${prayer.current} of ${prayer.max}`}
+          />
+        )}
+        <Orb
+          label={status.running ? 'Run' : 'Walk'}
+          value={status.runEnergy}
+          max={100}
+          tone="stroke-amber-500 dark:stroke-amber-400"
+          valueText={`${status.runEnergy}%, ${status.running ? 'running' : 'walking'}`}
+        />
+        <Orb
+          label="Special"
+          value={status.specialAttack}
+          max={100}
+          tone="stroke-cyan-600 dark:stroke-cyan-500"
+          valueText={`${status.specialAttack}%`}
+        />
+      </div>
       {badges && (
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap justify-center gap-1.5">
           <PoisonBadge poison={status.poison} />
           <WildernessBadge level={status.wildernessLevel} />
         </div>
       )}
-    </>
+    </div>
   );
 }
 
@@ -157,7 +213,7 @@ export function StatusEffects({ status, renderedAt }: { status: StatusState; ren
       {running.length === 0 ? (
         <span className="text-sm text-muted-foreground">None</span>
       ) : (
-        <ul className="flex flex-wrap gap-2" aria-label="Effects">
+        <ul className="flex flex-wrap justify-center gap-2" aria-label="Effects">
           {running.map((e) => {
             const ends = new Date(e.endsAt).toLocaleTimeString([], {
               hour: '2-digit',

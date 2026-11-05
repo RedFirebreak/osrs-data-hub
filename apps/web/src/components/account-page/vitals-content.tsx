@@ -83,11 +83,14 @@ function ActivePrayers({ prayers }: { prayers: readonly string[] }) {
 
 export function VitalsContent({
   vitals,
+  meters = true,
   afterMeters,
   afterPrayers,
 }: {
   vitals: Vitals;
-  /** Under HP and prayer: run energy and special attack (D-143). */
+  /** false: HP and prayer are drawn elsewhere (the status orbs, D-143). */
+  meters?: boolean;
+  /** Under HP and prayer: the status orbs and badges (D-143). */
   afterMeters?: React.ReactNode;
   /** Under the active prayers: the running effects (D-143). */
   afterPrayers?: React.ReactNode;
@@ -97,7 +100,7 @@ export function VitalsContent({
   }
   return (
     <div className="flex flex-col gap-4">
-      {vitals.hp && (
+      {meters && vitals.hp && (
         <Meter
           label="Hitpoints"
           icon={<HeartIcon aria-hidden className="size-4 text-red-600 dark:text-red-400" />}
@@ -106,7 +109,7 @@ export function VitalsContent({
           tone="bg-red-600 dark:bg-red-500"
         />
       )}
-      {vitals.prayer && (
+      {meters && vitals.prayer && (
         <Meter
           label="Prayer"
           icon={<SparklesIcon aria-hidden className="size-4 text-sky-600 dark:text-sky-400" />}

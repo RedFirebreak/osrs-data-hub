@@ -38,7 +38,7 @@ import { LocationContent } from '@/components/account-page/location-content';
 import { PLAYTIME_DAYS, PlaytimeCard } from '@/components/account-page/playtime-card';
 import { WealthCard } from '@/components/account-page/wealth-card';
 import { SlayerCard } from '@/components/account-page/slayer-card';
-import { StatusEffects, StatusMeters } from '@/components/account-page/status-content';
+import { StatusEffects, StatusOrbs } from '@/components/account-page/status-content';
 import { SkillsPanel } from '@/components/account-page/skills-panel';
 import { VitalsContent } from '@/components/account-page/vitals-content';
 import { WeekSummary } from '@/components/account-page/week-summary';
@@ -391,7 +391,10 @@ function rightNowSection({ page, now, renderedAt }: SectionContext) {
           (vitals.shared ? (
             <VitalsContent
               vitals={vitals.data}
-              afterMeters={live && <StatusMeters status={live} />}
+              meters={live === null}
+              afterMeters={
+                live && <StatusOrbs status={live} hp={vitals.data.hp} prayer={vitals.data.prayer} />
+              }
               afterPrayers={
                 live && <StatusEffects status={live} renderedAt={renderedAt.getTime()} />
               }
