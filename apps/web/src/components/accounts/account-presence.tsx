@@ -28,27 +28,38 @@ export interface AccountPresenceProps {
   className?: string;
 }
 
-interface ShownPresence {
+export interface ShownPresence {
   online: boolean;
   world: number | null;
   specialWorld: boolean;
   lastSeen: string | null;
 }
 
-export function AccountPresence({ publicId, presence, now, className }: AccountPresenceProps) {
+/**
+ * The presence to show: the server-rendered state or the live one, whichever is newer. null when the
+ * viewer can't see it (not visible) or neither was sent.
+ */
+export function useShownPresence(
+  publicId: string,
+  presence: Section<Presence>,
+): ShownPresence | null {
   const live = useLivePresence(publicId);
   if (!presence.visible) return null;
-
   const server = presence.shared ? presence.data : null;
-  let shown: ShownPresence | null = server;
   if (live && (server === null || liveIsNewer(live, server.lastSeen))) {
-    shown = {
+    return {
       online: live.online,
       world: live.world,
       specialWorld: live.specialWorld,
       lastSeen: live.lastSeen,
     };
   }
+  return server;
+}
+
+export function AccountPresence({ publicId, presence, now, className }: AccountPresenceProps) {
+  const shown = useShownPresence(publicId, presence);
+  if (!presence.visible) return null;
   if (shown === null) return <NotSharedBadge what="online status" className={className} />;
 
   return (

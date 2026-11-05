@@ -17,12 +17,13 @@
  * Live: presence follows the LiveProvider (AccountPresence), new events are prepended to the
  * timeline, and the server-rendered numbers refresh every minute (AutoRefresh).
  */
-import { DAY_MS, formatGp, formatNumber, itemsValue, relativeTime } from '@hub/core';
+import { DAY_MS, formatGp, formatNumber, itemsValue, mapLinkHref, relativeTime } from '@hub/core';
 import type { Viewer } from '@hub/core';
 import { getDb } from '@hub/db';
 import {
   getAccountPage,
   getEquipmentHistory,
+  getMapLink,
   getUserSettings,
   type AccountPage,
 } from '@hub/server';
@@ -35,6 +36,7 @@ import { EquipmentGrid, GearTrips } from '@/components/account-page/equipment-co
 import { HiscoresContent, hiscoresDescription } from '@/components/account-page/hiscores-content';
 import { InventoryContent } from '@/components/account-page/inventory-content';
 import { LocationContent } from '@/components/account-page/location-content';
+import { SeeOnMapButton } from '@/components/account-page/see-on-map-button';
 import { PLAYTIME_DAYS, PlaytimeCard } from '@/components/account-page/playtime-card';
 import { WealthCard } from '@/components/account-page/wealth-card';
 import { SlayerCard } from '@/components/account-page/slayer-card';
@@ -69,8 +71,11 @@ const loadAccount = cache(async (publicId: string) => {
   const { db } = getDb();
   const { timezone } = await getUserSettings(db, user.id);
   const renderedAt = new Date();
-  const page = await getAccountPage(db, viewer, publicId, { now: renderedAt, timezone });
-  return { viewer, timezone, renderedAt, page };
+  const [page, mapLink] = await Promise.all([
+    getAccountPage(db, viewer, publicId, { now: renderedAt, timezone }),
+    getMapLink(db),
+  ]);
+  return { viewer, timezone, renderedAt, page, mapHref: mapLinkHref(mapLink) };
 });
 
 export interface CharacterViewProps {
@@ -78,13 +83,22 @@ export interface CharacterViewProps {
 }
 
 export async function CharacterView({ publicId }: CharacterViewProps) {
-  const { viewer, timezone, renderedAt, page } = await loadAccount(publicId);
+  const { viewer, timezone, renderedAt, page, mapHref } = await loadAccount(publicId);
   // Hidden since the route's check a moment ago (rare): the not-found UI, if no longer a 404 status.
   if (!page) notFound();
   const now = renderedAt.toISOString();
   // Without `activity` (presence hidden), skills, equipment and inventory carry only the day (D-50).
   const dayOnlyIn = page.presence.visible ? undefined : timezone;
-  const ctx: SectionContext = { viewer, publicId, page, now, timezone, renderedAt, dayOnlyIn };
+  const ctx: SectionContext = {
+    viewer,
+    publicId,
+    page,
+    now,
+    timezone,
+    renderedAt,
+    dayOnlyIn,
+    mapHref,
+  };
   const own = await loadOwnAccounts();
   const isOwn = own.some((account) => account.publicId === publicId);
   // getSharingSettings admits exactly these viewers (the settings page shows the panel).
@@ -179,6 +193,8 @@ interface SectionContext {
   renderedAt: Date;
   /** The viewer's time zone when section times are day-only (D-50), else undefined. */
   dayOnlyIn: string | undefined;
+  /** The live map's address while an admin has its link on (D-115), else null. */
+  mapHref: string | null;
 }
 
 // --- Main column ---------------------------------------------------------------------------------
@@ -364,9 +380,10 @@ function slayerSection({ page, viewer, publicId, renderedAt }: SectionContext) {
 /**
  * Where the character is and how it stands: the live location; HP, prayer and spellbook; and the
  * status (run energy, special attack, poison, the wilderness level and the running effects, D-143)
- * once the plugin sent it.
+ * once the plugin sent it. With the live map linked, the location is a "see on map" button instead
+ * of coordinates (D-144).
  */
-function rightNowSection({ page, now, renderedAt }: SectionContext) {
+function rightNowSection({ page, now, renderedAt, publicId, mapHref }: SectionContext) {
   const { location, vitals, status } = page;
   if (!location.visible && !vitals.visible) return null;
   const shared = [location, vitals, status].filter((s) => s.visible && s.shared);
@@ -383,7 +400,11 @@ function rightNowSection({ page, now, renderedAt }: SectionContext) {
       <div className="flex flex-col gap-5">
         {location.visible &&
           (location.shared ? (
-            <LocationContent location={location.data} />
+            mapHref !== null ? (
+              <SeeOnMapButton publicId={publicId} presence={page.presence} href={mapHref} />
+            ) : (
+              <LocationContent location={location.data} />
+            )
           ) : (
             <NotSent what="the location" />
           ))}
