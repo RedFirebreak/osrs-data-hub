@@ -4,6 +4,7 @@ import { INT32_MAX, INT32_MIN, SMALLINT_MAX, SMALLINT_MIN } from '../ints';
 import { stripNul } from '../json';
 import { OVERALL } from '../skills';
 import { SLAYER_STREAKS, type SlayerState } from '../slayer';
+import { POISON_TYPES, type StatusState } from '../status';
 import type { ParseResult, PlayerSnapshot, RawEvent, SkillValue } from './types';
 
 /** Cap on listed sections/reasons, so a hostile body can't bloat raw_payloads.meta. */
@@ -32,6 +33,13 @@ const PRAYER_NAME = /^[A-Z0-9_]{1,64}$/;
  * ("Catacombs of Kourend", "TzHaar-Ket-Rak's challenges"), well under 100 characters.
  */
 const MAX_SLAYER_TEXT = 100;
+/**
+ * player.status limits (D-143): the plugin lists about two dozen effects (its registry), each id
+ * RuneLite's GameTimer name in lower case.
+ */
+const MAX_STATUS_EFFECTS = 64;
+const STATUS_EFFECT_ID = /^[a-z0-9_]{1,64}$/;
+const percent = z.number().int().min(0).max(100);
 /** Names the plugin never puts in stats (plugin Skill.values()); accepting them corrupts the totals. */
 const RESERVED_SKILLS: ReadonlyMap<string, string> = new Map([
   [OVERALL, 'Overall is derived by the hub, never sent by the plugin'],
@@ -111,6 +119,26 @@ const PLAYER = {
       .looseObject(Object.fromEntries(SLAYER_STREAKS.map((s) => [s, nonNegInt32.optional()])))
       .optional(),
   }),
+  status: z.looseObject({
+    runEnergy: percent,
+    running: z.boolean().optional(),
+    specialAttack: percent,
+    poison: z
+      .looseObject({ type: z.enum(POISON_TYPES), damage: nonNegInt32.optional() })
+      .optional(),
+    wilderness: z.looseObject({ level: z.number().int().min(1).max(SMALLINT_MAX) }).optional(),
+    effects: z
+      .array(
+        z.looseObject({
+          id: z.string().regex(STATUS_EFFECT_ID, 'expected a GameTimer name in lower case'),
+          name: z.string().min(1).max(MAX_SLAYER_TEXT).optional(),
+          endsAt: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+          precision: z.number().int().min(0).max(INT32_MAX).optional(),
+        }),
+      )
+      .max(MAX_STATUS_EFFECTS, `more than ${MAX_STATUS_EFFECTS} effects`)
+      .optional(),
+  }),
   bank: z.looseObject({
     value: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
     readAt: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
@@ -156,7 +184,10 @@ const eventEnvelope = z.looseObject({
  *   is kept), bank ({value, readAt}: safe integers ≥ 0, plugin PR #50, D-124), slayer (after plugin
  *   1.6.2, PR #52, D-141: {task?, location?: string 1..100, remaining?, amount?: int 0..2^31−1,
  *   points: int 0..2^31−1, streaks?: {normal?, wilderness?, mortimer?: int 0..2^31−1}} → SlayerState:
- *   a task only when remaining > 0, its amount raised to remaining; other streak keys ignored), stats.skills
+ *   a task only when remaining > 0, its amount raised to remaining; other streak keys ignored), status
+ *   (after plugin 1.6.3, PR #54, D-143: {runEnergy, specialAttack: int 0..100, running?, poison?:
+ *   {type: none|poison|venom, damage?}, wilderness?: {level ≥ 1}, effects?: at most 64 {id: a-z 0-9 _
+ *   1..64, name?, endsAt: epoch ms, precision?}} → StatusState; one wrong effect drops the section), stats.skills
  *   (object of at most 64 entries {xp: integer 0..2^31−1, level: integer 0..32767}, more → section `player.stats`; an
  *   invalid ENTRY, or a name that is empty, longer than 64 characters, "Overall" (hub-derived),
  *   "Combat" (levelUp-only) or "__proto__", drops only that skill and records
@@ -238,6 +269,8 @@ function parsePlayer(value: unknown, skipped: Skipped): PlayerSnapshot | null {
   if (activePrayers !== undefined) player.activePrayers = activePrayers.prayers;
   const slayer = section('slayer', PLAYER.slayer);
   if (slayer !== undefined) player.slayer = toSlayerState(slayer);
+  const status = section('status', PLAYER.status);
+  if (status !== undefined) player.status = toStatusState(status);
   const bank = section('bank', PLAYER.bank);
   if (bank !== undefined) player.bank = { value: bank.value, readAt: bank.readAt };
   const skills = parseSkills(section('stats', PLAYER.stats), skipped);
@@ -269,6 +302,24 @@ function toSlayerState(s: z.infer<typeof PLAYER.slayer>): SlayerState {
       wilderness: streaks?.wilderness ?? null,
       mortimer: streaks?.mortimer ?? null,
     },
+  };
+}
+
+/** The plugin's status object as the hub keeps it (D-143). */
+function toStatusState(s: z.infer<typeof PLAYER.status>): StatusState {
+  const type = s.poison?.type ?? 'none';
+  return {
+    runEnergy: s.runEnergy,
+    running: s.running ?? false,
+    specialAttack: s.specialAttack,
+    poison: { type, damage: type === 'none' ? null : (s.poison?.damage ?? null) },
+    wildernessLevel: s.wilderness?.level ?? null,
+    effects: (s.effects ?? []).map((e) => ({
+      id: e.id,
+      name: e.name ?? e.id,
+      endsAt: e.endsAt,
+      precision: e.precision ?? 0,
+    })),
   };
 }
 

@@ -35,6 +35,7 @@ import {
   wireSection,
   wireSkills,
   wireSlayer,
+  wireStatus,
   wireVitals,
   wireWealthDay,
 } from './wire';
@@ -156,11 +157,12 @@ async function previousNames(db: Db, { account }: AccountWithAccess) {
  * day (D-50).
  */
 async function* stateFields(db: Db, entry: AccountWithAccess, now: Date): AsyncGenerator<Field> {
-  const { presence, vitals, slayer, skills, location, equipment, inventory } =
+  const { presence, vitals, slayer, status, skills, location, equipment, inventory } =
     await loadAccountSections(db, entry.account.id, entry.access.categories, now);
   if (presence) yield ['presence', wireSection(presence, wirePresence)];
   if (vitals) yield ['vitals', wireSection(vitals, wireVitals)];
   if (slayer) yield ['slayer', wireSection(slayer, wireSlayer)];
+  if (status) yield ['status', wireSection(status, wireStatus)];
   if (skills) yield ['skills', wireSection(skills, wireSkills)];
   if (location) yield ['location', wireSection(location, wireLocation)];
   if (equipment) yield ['equipment', wireSection(equipment, wireItems)];

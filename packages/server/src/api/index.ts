@@ -167,6 +167,7 @@ export type {
   ApiPresence,
   ApiSkills,
   ApiSlayer,
+  ApiStatus,
   ApiVitals,
 } from './state';
 export type { ApiItem, ApiOwner, ApiSection } from './types';

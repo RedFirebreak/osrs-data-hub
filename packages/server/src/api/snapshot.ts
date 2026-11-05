@@ -23,11 +23,13 @@ import {
   loadLatestRows,
   skillsOf,
   slayerOf,
+  statusOf,
   type ApiEquipment,
   type ApiInventory,
   type ApiLocation,
   type ApiSkills,
   type ApiSlayer,
+  type ApiStatus,
   type LatestRow,
 } from './state';
 import type { ApiAccountIdentity, ApiMeter } from './types';
@@ -82,6 +84,11 @@ export interface ApiSnapshotAccount extends ApiAccountIdentity {
   activePrayers?: string[] | null;
   /** `activity`: the slayer task, points and streaks (D-141); null until the plugin first sent them. */
   slayer?: ApiSlayer | null;
+  /**
+   * `activity`: run energy, special attack, poison, the wilderness level (with `location_live`) and the
+   * running effects (D-143); null until the plugin first sent them.
+   */
+  status?: ApiStatus | null;
   /** `location_live`: `stale` after 2 minutes without a location (D-74). */
   location?: ApiSnapshotLocation | null;
   /** `stats`: Overall first, then the in-game grid order. */
@@ -180,6 +187,7 @@ function snapshotAccount(
     out.spellbook = vitals?.spellbook ?? null;
     out.activePrayers = vitals?.activePrayers ?? null;
     out.slayer = row ? slayerOf(row, access.categories) : null;
+    out.status = row && presence ? statusOf(row, access.categories, presence.online, now) : null;
   }
   if (can('location_live')) {
     const location = row ? locationOf(row, now) : null;

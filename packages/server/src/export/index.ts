@@ -13,6 +13,7 @@ export {
   wireSection,
   wireSkills,
   wireSlayer,
+  wireStatus,
   wireVitals,
   wireWealthDay,
 } from './wire';

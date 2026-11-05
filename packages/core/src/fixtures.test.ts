@@ -20,6 +20,7 @@ import { parsePayload } from './payload/parse';
 import type { ParsedPayload } from './payload/types';
 import { KNOWN_SKILLS, OVERALL } from './skills';
 import type { SlayerState } from './slayer';
+import type { StatusState } from './status';
 import { payloadTime } from './time';
 
 // ---------------------------------------------------------------------------------------------
@@ -66,6 +67,16 @@ interface WirePlayer {
   equipment?: { items: WireItem[] };
   bank?: { value: number; readAt: number };
   slayer?: WireSlayer;
+  status?: WireStatus;
+}
+
+interface WireStatus {
+  runEnergy: number;
+  running: boolean;
+  specialAttack: number;
+  poison: { type: 'none' | 'poison' | 'venom'; damage?: number };
+  wilderness?: { level: number };
+  effects: { id: string; name: string; endsAt: number; precision: number }[];
 }
 
 interface WireSlayer {
@@ -103,6 +114,7 @@ const WIRE_PLAYER_KEYS = [
   'equipment',
   'bank',
   'slayer',
+  'status',
 ];
 
 function wire(name: FixtureName): WireBody {
@@ -322,6 +334,7 @@ const EXPECTED: Record<FixtureName, Expected> = {
   'snapshot-no-sections': snapshot('zezima'),
   'snapshot-normal': snapshot('zezima'),
   'snapshot-slayer': snapshot('zezima'),
+  'snapshot-status': snapshot('zezima'),
   'snapshot-world-hop': snapshot('zezima'),
   'special-world-seasonal': { ...withEvents('zezima', 'level_up'), special: true },
 };
@@ -359,11 +372,24 @@ function expectedPatch(w: WireBody, recv: Date, special: boolean): LatestStatePa
       activePrayersUpdatedAt: recv,
     }),
     ...(p.slayer && { slayer: expectedSlayer(p.slayer), slayerUpdatedAt: recv }),
+    ...(p.status && { status: expectedStatus(p.status), statusUpdatedAt: recv }),
     ...(p.location && { location: p.location, locationUpdatedAt: recv }),
     ...(p.stats && { skills: p.stats.skills, skillsUpdatedAt: recv }),
     ...(p.inventory && { inventory: p.inventory.items, inventoryUpdatedAt: recv }),
     ...(p.equipment && { equipment: p.equipment.items, equipmentUpdatedAt: recv }),
     ...expectedBank(w),
+  };
+}
+
+/** The status a payload carries (D-143): end times as sent, the fixtures' clocks being plausible. */
+function expectedStatus(s: WireStatus): StatusState {
+  return {
+    runEnergy: s.runEnergy,
+    running: s.running,
+    specialAttack: s.specialAttack,
+    poison: { type: s.poison.type, damage: s.poison.damage ?? null },
+    wildernessLevel: s.wilderness?.level ?? null,
+    effects: s.effects,
   };
 }
 

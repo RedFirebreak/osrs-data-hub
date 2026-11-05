@@ -9,6 +9,7 @@
  */
 import {
   KNOWN_EVENT_TYPES,
+  formatEffectLeft,
   formatGpChange,
   gearTrips,
   mainSlayerStreak,
@@ -232,6 +233,7 @@ const ACCOUNT_SECTIONS = [
   'stats',
   'presence',
   'slayer',
+  'status',
   'equipment',
   'inventory',
   'wealth',
@@ -241,7 +243,7 @@ const getAccount = tool({
   name: 'get_account',
   title: 'Get an account',
   description:
-    'One account now: levels ("stats"), online and world ("presence", needs "activity"), the slayer task, points and streaks ("slayer", needs "activity"; past tasks are the events slayer_task_assigned and slayer_task_complete), worn gear ("equipment"), inventory ("inventory") and wealth now (bank + inventory + gear, needs "inventory"; for how it changed over time use the wealth tool). Only the sections asked for; default stats and presence. Levels only, unless detail is true. REST: GET /api/v1/accounts/{id} and /accounts/{id}/wealth.',
+    'One account now: levels ("stats"), online and world ("presence", needs "activity"), the slayer task, points and streaks ("slayer", needs "activity"; past tasks are the events slayer_task_assigned and slayer_task_complete), run energy, special attack, poison or venom, wilderness level and the potions and other effects running now with when they end ("status", needs "activity"; the wilderness level also "location_live"), worn gear ("equipment"), inventory ("inventory") and wealth now (bank + inventory + gear, needs "inventory"; for how it changed over time use the wealth tool). Only the sections asked for; default stats and presence. Levels only, unless detail is true. REST: GET /api/v1/accounts/{id} and /accounts/{id}/wealth.',
   input: {
     account,
     sections: z.array(z.enum(ACCOUNT_SECTIONS)).min(1).max(ACCOUNT_SECTIONS.length).optional(),
@@ -324,6 +326,39 @@ const getAccount = tool({
             : 'no slayer task',
         );
         if (streak !== null) parts.push(`${slayerStreakLabel(streak.streak)} ${streak.value}`);
+      }
+    }
+    if (wanted.has('status')) {
+      const s = d.status;
+      if (!s) out.status = unavailable('activity');
+      else if (!s.shared) out.status = notSent;
+      else {
+        out.status = {
+          run_energy: s.runEnergy,
+          running: s.running,
+          special_attack: s.specialAttack,
+          poison:
+            s.poison.type === 'none'
+              ? 'none'
+              : `${s.poison.type} (next hit ${s.poison.damage ?? '?'})`,
+          ...(s.wildernessLevel === null ? {} : { wilderness_level: s.wildernessLevel }),
+          effects: s.effects.map((e) => ({
+            name: e.name,
+            ends_at: new Date(e.endsAt).toISOString(),
+            left: formatEffectLeft(e.endsAt, ctx.now.getTime()),
+          })),
+          updated_at: s.updatedAt,
+        };
+        parts.push(`run ${s.runEnergy}%, special attack ${s.specialAttack}%`);
+        if (s.poison.type !== 'none')
+          parts.push(s.poison.type === 'venom' ? 'venomed' : 'poisoned');
+        if (s.wildernessLevel !== null)
+          parts.push(`in the wilderness (level ${s.wildernessLevel})`);
+        parts.push(
+          s.effects.length === 0
+            ? 'no potion effects running'
+            : `running: ${s.effects.map((e) => `${e.name} (${formatEffectLeft(e.endsAt, ctx.now.getTime())} left)`).join(', ')}`,
+        );
       }
     }
     if (wanted.has('equipment')) {

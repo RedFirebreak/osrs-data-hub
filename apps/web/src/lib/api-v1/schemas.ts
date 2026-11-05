@@ -540,6 +540,53 @@ const slayerShape = {
 };
 const Slayer = z.object(slayerShape);
 
+const percentOf = (what: string) =>
+  int
+    .min(0)
+    .max(100)
+    .meta({ description: `${what}, whole percent 0..100.` });
+const StatusEffect = z
+  .object({
+    id: z.string().meta({
+      description:
+        'Fixed, `a-z 0-9 _`: RuneLite\'s GameTimer name in lower case ("stamina", "antifire", "divine_super_combat", "teleblock"). New ids can come with any plugin version: show an unknown one by its `name`.',
+    }),
+    name: z.string().meta({ description: 'Display name ("Stamina", "Divine super combat").' }),
+    ends_at: z.string().meta({
+      description:
+        "When it ends (ISO time, the player's clock unless that was plainly wrong). The real end can be up to `precision_ms` earlier.",
+    }),
+    precision_ms: nonNeg.meta({
+      description: 'How coarse `ends_at` is: the game counts most effects down in steps.',
+    }),
+  })
+  .meta({ description: 'An effect that is running: a potion, an imbued heart, a teleblock, …' });
+
+/** The status (D-143). */
+const statusShape = {
+  run_energy: percentOf('Run energy'),
+  running: z.boolean().meta({ description: 'Whether run is turned on.' }),
+  special_attack: percentOf('Special attack energy'),
+  poison: z
+    .object({
+      type: z.enum(['none', 'poison', 'venom']),
+      damage: nonNeg.nullable().meta({ description: 'The next hit; null with "none".' }),
+    })
+    .meta({
+      description:
+        'Poison or venom. Being immune is an effect (`antipoison`, `antivenom`), not a poison type. "none" while offline.',
+    }),
+  wilderness_level: int.min(1).nullable().meta({
+    description:
+      'The wilderness level; null outside the wilderness, while offline, and for a reader without `location_live`.',
+  }),
+  effects: z.array(StatusEffect).meta({
+    description:
+      "The effects running now, in the plugin's order; one whose end has passed is left out. [] while offline.",
+  }),
+};
+const Status = z.object(statusShape);
+
 const Region = z.string().nullable().meta({
   description:
     'The place, as the live map names it: a RuneLite region name ("Lumbridge", "Grand Exchange"), "Near …" for an unnamed region beside a named one, "Wilderness (level N)", "Ferox Enclave" or "An instance"; null where none applies. The names are in `/regions.json`.',
@@ -660,6 +707,10 @@ export const AccountDetail = z.object({
     slayerShape,
     '`activity`: the slayer task, points and streaks as the plugin last sent them (plugin after 1.6.2). A task stays assigned while the player is offline, so it is shown offline too.',
   ),
+  status: section(
+    statusShape,
+    '`activity`: run energy, special attack, poison or venom, the wilderness level and the running effects (potions, teleblock, …) as they stand now (plugin after 1.6.3). Offline only the run energy and special attack are kept.',
+  ),
   skills: section(
     skillsShape,
     '`stats`. Without `activity`, `updated_at` is cut to the UTC day (the exact time would be the last-seen time).',
@@ -700,6 +751,13 @@ export const SnapshotAccount = z.object({
   slayer: Slayer.nullable()
     .optional()
     .meta(inActivity('the slayer task, points and streaks; null until the plugin first sent them')),
+  status: Status.nullable()
+    .optional()
+    .meta(
+      inActivity(
+        'run energy, special attack, poison, the wilderness level and the running effects; null until the plugin first sent them',
+      ),
+    ),
   location: SnapshotLocation.nullable().optional().meta({
     description:
       '`location_live`: null when never sent, omitted without the category. `stale` after 2 minutes without a location.',

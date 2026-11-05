@@ -606,6 +606,71 @@ describe('parsePayload: activePrayers (D-119)', () => {
   });
 });
 
+describe('parsePayload: status (D-143)', () => {
+  const effect = { id: 'stamina', name: 'Stamina', endsAt: 1_790_000_120_000, precision: 6000 };
+
+  it('reads the meters, poison, the wilderness level and the effects', () => {
+    const p = normal(
+      (b) =>
+        (b.player.status = {
+          runEnergy: 73,
+          running: true,
+          specialAttack: 50,
+          poison: { type: 'venom', damage: 8 },
+          wilderness: { level: 23 },
+          effects: [effect],
+        }),
+    );
+    expect(p.skipped.sections).toEqual([]);
+    expect(p.player!.status).toEqual({
+      runEnergy: 73,
+      running: true,
+      specialAttack: 50,
+      poison: { type: 'venom', damage: 8 },
+      wildernessLevel: 23,
+      effects: [effect],
+    });
+  });
+
+  it('has no damage without poison, no level outside the wilderness, [] without effects', () => {
+    const p = normal(
+      (b) =>
+        (b.player.status = {
+          runEnergy: 0,
+          running: false,
+          specialAttack: 100,
+          poison: { type: 'none' },
+          effects: [],
+        }),
+    );
+    expect(p.player!.status).toEqual({
+      runEnergy: 0,
+      running: false,
+      specialAttack: 100,
+      poison: { type: 'none', damage: null },
+      wildernessLevel: null,
+      effects: [],
+    });
+  });
+
+  it('is absent when not shared', () => {
+    expect(normal().player).not.toHaveProperty('status');
+  });
+
+  it('drops the section for a wrong shape', () => {
+    for (const status of [
+      { runEnergy: 101, specialAttack: 0 },
+      { runEnergy: 5, specialAttack: 0, poison: { type: 'acid' } },
+      { runEnergy: 5, specialAttack: 0, effects: [{ ...effect, id: 'Stamina!' }] },
+      { runEnergy: 5, specialAttack: 0, effects: [{ id: 'stamina' }] },
+    ]) {
+      const p = normal((b) => (b.player.status = status));
+      expect(p.skipped.sections).toEqual(['player.status']);
+      expect(p.player).not.toHaveProperty('status');
+    }
+  });
+});
+
 describe('parsePayload: slayer (D-141)', () => {
   const streaks = { normal: 99, wilderness: 12, mortimer: 5 };
 

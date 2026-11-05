@@ -3170,6 +3170,142 @@
               }
             ]
           },
+          "status": {
+            "description": "`activity`: run energy, special attack, poison or venom, the wilderness level and the running effects (potions, teleblock, …) as they stand now (plugin after 1.6.3). Offline only the run energy and special attack are kept. `{ \"shared\": false, \"updated_at\": null }` when the player’s plugin never sent it; the key omitted when the key can’t read the category on this account.",
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "shared": {
+                    "type": "boolean",
+                    "const": true
+                  },
+                  "updated_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "When the hub last received this section."
+                  },
+                  "run_energy": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 100,
+                    "description": "Run energy, whole percent 0..100."
+                  },
+                  "running": {
+                    "type": "boolean",
+                    "description": "Whether run is turned on."
+                  },
+                  "special_attack": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 100,
+                    "description": "Special attack energy, whole percent 0..100."
+                  },
+                  "poison": {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "enum": [
+                          "none",
+                          "poison",
+                          "venom"
+                        ]
+                      },
+                      "damage": {
+                        "anyOf": [
+                          {
+                            "type": "integer",
+                            "minimum": 0
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "description": "The next hit; null with \"none\"."
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "damage"
+                    ],
+                    "description": "Poison or venom. Being immune is an effect (`antipoison`, `antivenom`), not a poison type. \"none\" while offline."
+                  },
+                  "wilderness_level": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "The wilderness level; null outside the wilderness, while offline, and for a reader without `location_live`."
+                  },
+                  "effects": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "description": "Fixed, `a-z 0-9 _`: RuneLite's GameTimer name in lower case (\"stamina\", \"antifire\", \"divine_super_combat\", \"teleblock\"). New ids can come with any plugin version: show an unknown one by its `name`."
+                        },
+                        "name": {
+                          "type": "string",
+                          "description": "Display name (\"Stamina\", \"Divine super combat\")."
+                        },
+                        "ends_at": {
+                          "type": "string",
+                          "description": "When it ends (ISO time, the player's clock unless that was plainly wrong). The real end can be up to `precision_ms` earlier."
+                        },
+                        "precision_ms": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "description": "How coarse `ends_at` is: the game counts most effects down in steps."
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "ends_at",
+                        "precision_ms"
+                      ],
+                      "description": "An effect that is running: a potion, an imbued heart, a teleblock, …"
+                    },
+                    "description": "The effects running now, in the plugin's order; one whose end has passed is left out. [] while offline."
+                  }
+                },
+                "required": [
+                  "shared",
+                  "updated_at",
+                  "run_energy",
+                  "running",
+                  "special_attack",
+                  "poison",
+                  "wilderness_level",
+                  "effects"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "shared": {
+                    "type": "boolean",
+                    "const": false
+                  },
+                  "updated_at": {
+                    "type": "null"
+                  }
+                },
+                "required": [
+                  "shared",
+                  "updated_at"
+                ]
+              }
+            ]
+          },
           "skills": {
             "description": "`stats`. Without `activity`, `updated_at` is cut to the UTC day (the exact time would be the last-seen time). `{ \"shared\": false, \"updated_at\": null }` when the player’s plugin never sent it; the key omitted when the key can’t read the category on this account.",
             "oneOf": [
@@ -3645,6 +3781,118 @@
                   "task",
                   "points",
                   "streaks"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "description": "`activity`: run energy, special attack, poison, the wilderness level and the running effects; null until the plugin first sent them. Omitted without it.",
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "run_energy": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 100,
+                    "description": "Run energy, whole percent 0..100."
+                  },
+                  "running": {
+                    "type": "boolean",
+                    "description": "Whether run is turned on."
+                  },
+                  "special_attack": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 100,
+                    "description": "Special attack energy, whole percent 0..100."
+                  },
+                  "poison": {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "enum": [
+                          "none",
+                          "poison",
+                          "venom"
+                        ]
+                      },
+                      "damage": {
+                        "anyOf": [
+                          {
+                            "type": "integer",
+                            "minimum": 0
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "description": "The next hit; null with \"none\"."
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "damage"
+                    ],
+                    "description": "Poison or venom. Being immune is an effect (`antipoison`, `antivenom`), not a poison type. \"none\" while offline."
+                  },
+                  "wilderness_level": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "The wilderness level; null outside the wilderness, while offline, and for a reader without `location_live`."
+                  },
+                  "effects": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "description": "Fixed, `a-z 0-9 _`: RuneLite's GameTimer name in lower case (\"stamina\", \"antifire\", \"divine_super_combat\", \"teleblock\"). New ids can come with any plugin version: show an unknown one by its `name`."
+                        },
+                        "name": {
+                          "type": "string",
+                          "description": "Display name (\"Stamina\", \"Divine super combat\")."
+                        },
+                        "ends_at": {
+                          "type": "string",
+                          "description": "When it ends (ISO time, the player's clock unless that was plainly wrong). The real end can be up to `precision_ms` earlier."
+                        },
+                        "precision_ms": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "description": "How coarse `ends_at` is: the game counts most effects down in steps."
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "ends_at",
+                        "precision_ms"
+                      ],
+                      "description": "An effect that is running: a potion, an imbued heart, a teleblock, …"
+                    },
+                    "description": "The effects running now, in the plugin's order; one whose end has passed is left out. [] while offline."
+                  }
+                },
+                "required": [
+                  "run_energy",
+                  "running",
+                  "special_attack",
+                  "poison",
+                  "wilderness_level",
+                  "effects"
                 ]
               },
               {

@@ -82,6 +82,7 @@ describe('GET /api/v1/snapshot', () => {
       // snapshot-normal has no activePrayers section: readable, never sent.
       active_prayers: null,
       slayer: null,
+      status: null,
       location: { x: 3164, y: 3487, plane: 0, is_on_boat: false, stale: false },
     });
     expect(main?.skills?.skills[0]?.skill).toBe('Overall');
@@ -128,6 +129,7 @@ describe('GET /api/v1/snapshot', () => {
         'owner',
         'prayer',
         'slayer',
+        'status',
         'special_world',
         'spellbook',
         'type',
