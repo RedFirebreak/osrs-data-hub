@@ -1,4 +1,4 @@
-# Toolchain and libraries
+# Toolchain
 
 Build, lint, test and package tooling (TypeScript, ESLint, Prettier, pnpm, tsup, shadcn, Playwright, Docker base images, Git line endings) and the pg-boss, prom-client and zod libraries.
 

@@ -1,4 +1,4 @@
-# HA Exporter plugin protocol
+# Plugin
 
 The HA Exporter v1.5 wire protocol as seen from the hub (payload shapes, Gson serialization, the OkHttp transport, status handling, the retry queue, the pairing panel).
 

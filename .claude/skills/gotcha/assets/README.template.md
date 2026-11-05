@@ -30,11 +30,18 @@ defeats the point of them being separate.
 from docs and not yet confirmed in practice. <!-- FILL: keep, rename or add keys for this project, then
 delete this marker -->
 
-**Adding one.** IDs are permanent: a new entry takes the next free number in its prefix, and nothing is
-ever renumbered. Put it in the area file in ID order, add its row to that file's table and one row to the
-index below under its file's group, with the symptom text identical in both, and correct the count in the
-first sentence of this file and in the file table. Then `python tools/check_gotchas.py` must print `OK`.
-The `gotcha` skill walks this, including a trap that fits no existing file.
+**Adding one.** IDs are permanent: a new entry takes the next free number in its prefix
+(`python3 tools/check_gotchas.py next PREFIX`), and nothing is ever renumbered. Put it in the area file in
+ID order, opening with its bold symptom sentence: that entry is the one statement of the trap. The area
+file's table, the index below, the count in the first sentence of this file and the file table's counts
+are written from the entries by `python3 tools/check_gotchas.py write`, in the same change. Then
+`python3 tools/check_gotchas.py` must print `OK`. The `gotcha` skill walks this, including a trap that
+fits no existing file, which does need a row in the file table above by hand.
+
+**Citations.** Cite an entry by its ID wherever the trap is worked around: a code comment
+(`// See PREFIX-N: what the trap is`), a commit message, another doc. The check reads every file git tracks
+and fails on a retired ID cited anywhere, except in `.claude/skills/gotcha/` (the skill's own examples
+belong to no project).
 
 ## Index
 

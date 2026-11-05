@@ -34,33 +34,41 @@ defeats the point of them being separate.
 `` `OBSERVED` `` = seen live, which says where and on what date. An entry without `` `OBSERVED` `` is read
 from docs and not yet confirmed in practice.
 
-**Adding one.** IDs are permanent: a new entry takes the next free number in its prefix, and nothing is
-ever renumbered. Put it in the area file in ID order, add its row to that file's table and one row to the
-index below under its file's group, with the symptom text identical in both, and correct the count in the
-first sentence of this file and in the file table. Then `python tools/check_gotchas.py` must print `OK`.
-The `gotcha` skill walks this, including a trap that fits no existing file.
+**Adding one.** IDs are permanent: a new entry takes the next free number in its prefix
+(`python3 tools/check_gotchas.py next PREFIX`), and nothing is ever renumbered. Put it in the area file in
+ID order, opening with its bold symptom sentence: that entry is the one statement of the trap. The area
+file's table, the index below, the count in the first sentence of this file and the file table's counts
+are written from the entries by `python3 tools/check_gotchas.py write`, in the same change. Then
+`python3 tools/check_gotchas.py` must print `OK` (CI runs it, and a hook after every edit here). The
+`gotcha` skill walks this, including a trap that fits no existing file, which does need a row in the file
+table above by hand.
+
+**Citations.** Cite an entry by its ID wherever the trap is worked around: a code comment
+(`// See PREFIX-N: what the trap is`), a commit message, another doc. The check reads every file git tracks
+and fails on a retired ID cited anywhere, except in `.claude/skills/gotcha/` (the skill's own examples
+belong to no project).
 
 ## Index
 
 | ID | Area | Symptom |
 |---|---|---|
 | **[auth.md](auth.md)** | | |
-| [AUTH-1](auth.md#auth-1) | Better Auth | Every auth request (sign-in, callback, `get-session`) fails with 500 and `SchemaMismatchError` (`SCHEMA_MISMATCH`). |
-| [AUTH-2](auth.md#auth-2) | Better Auth | Expiry checks in raw SQL (`expires_at > now()`) are off by the server's UTC offset, or sign-in throws because two `account` rows match one Discord id. |
-| [AUTH-3](auth.md#auth-3) | Better Auth | Discord sign-in comes back with `?error=email_not_found`, or Discord's consent screen asks for the user's email although only `identify guilds.members.read` is configured. |
-| [AUTH-4](auth.md#auth-4) | Better Auth | The `account` table holds users' Discord access and refresh tokens in plaintext, and `POST /api/auth/get-access-token` hands them to the browser. |
-| [AUTH-5](auth.md#auth-5) | Better Auth | Fields returned from `mapProfileToUser` or `getUserInfo` (`discordId`, `roles`, …) end up null, or OAuth sign-up fails with `?error=MISSING_FIELD&error_description=<field>+is+required`. |
-| [AUTH-6](auth.md#auth-6) | Better Auth | A user rejected at sign-in (not in the guild) still leaves `users` and `account` rows behind, with a fresh token written. |
-| [AUTH-7](auth.md#auth-7) | Better Auth | After a sign-up that failed halfway, a `users` row exists without its `account` row. |
-| [AUTH-8](auth.md#auth-8) | Better Auth | A session deleted from the database (sign-out everywhere, offboarding) keeps working in the browser for up to 5 minutes. |
-| [AUTH-9](auth.md#auth-9) | Better Auth | Behind the reverse proxy, Better Auth rate-limits all users together: one busy client gets everyone 429s. |
-| [AUTH-10](auth.md#auth-10) | Better Auth | A signed-in user renames themselves with `POST /api/auth/update-user`, overriding the name that comes from Discord. |
-| [AUTH-11](auth.md#auth-11) | Better Auth | A cross-origin `POST /api/auth/sign-out` (or any cookie-carrying POST to Better Auth) succeeds in vitest with a foreign or missing `Origin`, although production answers 403. |
-| [AUTH-12](auth.md#auth-12) | Better Auth | Signed-in users who use the hub every day are still signed out about 7 days after signing in; the `session` row's `expires_at` keeps moving forward, the browser's cookie doesn't. |
-| [AUTH-13](auth.md#auth-13) | Better Auth | While the database is down, every signed-in route answers 500 instead of 503, and the log shows `[Better Auth]: INTERNAL_SERVER_ERROR DrizzleQueryError: Failed query: select … from "session" … params: <session token>`. |
-| [AUTH-14](auth.md#auth-14) | Better Auth | A member allows an MCP client on the consent page and the hub answers 401 `{"error":"invalid_request","error_description":"request not found"}`, or the provider's authorize answers 200 with `{"redirect":true,"url":…}` instead of redirecting. |
-| [AUTH-15](auth.md#auth-15) | Better Auth | Every Better Auth route (`/api/auth/ok`, sign-in, `get-session`) answers 500 with an empty body and nothing in the log, while the rest of the hub works. |
-| [DISCORD-1](auth.md#discord-1) | Discord | Re-verification marks every member, or a large share of them, as having left the guild in a single run. |
+| [AUTH-1](auth.md#auth-1) | Auth | Every auth request (sign-in, callback, `get-session`) fails with 500 and `SchemaMismatchError` (`SCHEMA_MISMATCH`). |
+| [AUTH-2](auth.md#auth-2) | Auth | Expiry checks in raw SQL (`expires_at > now()`) are off by the server's UTC offset, or sign-in throws because two `account` rows match one Discord id. |
+| [AUTH-3](auth.md#auth-3) | Auth | Discord sign-in comes back with `?error=email_not_found`, or Discord's consent screen asks for the user's email although only `identify guilds.members.read` is configured. |
+| [AUTH-4](auth.md#auth-4) | Auth | The `account` table holds users' Discord access and refresh tokens in plaintext, and `POST /api/auth/get-access-token` hands them to the browser. |
+| [AUTH-5](auth.md#auth-5) | Auth | Fields returned from `mapProfileToUser` or `getUserInfo` (`discordId`, `roles`, …) end up null, or OAuth sign-up fails with `?error=MISSING_FIELD&error_description=<field>+is+required`. |
+| [AUTH-6](auth.md#auth-6) | Auth | A user rejected at sign-in (not in the guild) still leaves `users` and `account` rows behind, with a fresh token written. |
+| [AUTH-7](auth.md#auth-7) | Auth | After a sign-up that failed halfway, a `users` row exists without its `account` row. |
+| [AUTH-8](auth.md#auth-8) | Auth | A session deleted from the database (sign-out everywhere, offboarding) keeps working in the browser for up to 5 minutes. |
+| [AUTH-9](auth.md#auth-9) | Auth | Behind the reverse proxy, Better Auth rate-limits all users together: one busy client gets everyone 429s. |
+| [AUTH-10](auth.md#auth-10) | Auth | A signed-in user renames themselves with `POST /api/auth/update-user`, overriding the name that comes from Discord. |
+| [AUTH-11](auth.md#auth-11) | Auth | A cross-origin `POST /api/auth/sign-out` (or any cookie-carrying POST to Better Auth) succeeds in vitest with a foreign or missing `Origin`, although production answers 403. |
+| [AUTH-12](auth.md#auth-12) | Auth | Signed-in users who use the hub every day are still signed out about 7 days after signing in; the `session` row's `expires_at` keeps moving forward, the browser's cookie doesn't. |
+| [AUTH-13](auth.md#auth-13) | Auth | While the database is down, every signed-in route answers 500 instead of 503, and the log shows `[Better Auth]: INTERNAL_SERVER_ERROR DrizzleQueryError: Failed query: select … from "session" … params: <session token>`. |
+| [AUTH-14](auth.md#auth-14) | Auth | A member allows an MCP client on the consent page and the hub answers 401 `{"error":"invalid_request","error_description":"request not found"}`, or the provider's authorize answers 200 with `{"redirect":true,"url":…}` instead of redirecting. |
+| [AUTH-15](auth.md#auth-15) | Auth | Every Better Auth route (`/api/auth/ok`, sign-in, `get-session`) answers 500 with an empty body and nothing in the log, while the rest of the hub works. |
+| [DISCORD-1](auth.md#discord-1) | Auth | Re-verification marks every member, or a large share of them, as having left the guild in a single run. |
 | **[database.md](database.md)** | | |
 | [DB-1](database.md#db-1) | Database | An insert fails with `22P02 invalid input syntax for type json` or `unsupported Unicode escape sequence` (`\u0000 cannot be converted to text`), or a lookup by a URL path segment containing `%00` fails with `22021 invalid byte sequence for encoding "UTF8": 0x00`. |
 | [DB-2](database.md#db-2) | Database | A resent event is stored twice although the insert uses `ON CONFLICT … DO NOTHING` on a unique key. |
@@ -77,19 +85,19 @@ The `gotcha` skill walks this, including a trap that fits no existing file.
 | [DB-13](database.md#db-13) | Database | `pg_notify` fails with `22023 payload string too long` and takes the transaction it was called in down with it. |
 | [DB-14](database.md#db-14) | Database | Node logs `DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated`, from code that runs several queries with `Promise.all` inside `db.transaction`. |
 | [DB-15](database.md#db-15) | Database | A newest-first query (`WHERE account_id = … ORDER BY occurred_at DESC LIMIT n`) gets slower as the table grows although an index on exactly those columns exists; `EXPLAIN` shows a top-N Sort over every matching row, a Seq Scan, or a walk of another index with the account as a `Filter`, instead of an ordered index scan. |
-| [TSDB-1](database.md#tsdb-1) | Timescale | Hourly or daily XP history older than the raw retention disappears from `xp_hourly`/`xp_daily` after a refresh. |
-| [TSDB-2](database.md#tsdb-2) | Timescale | After deleting an account, its rows are still in `xp_hourly`/`xp_daily`, and `DELETE FROM xp_hourly` fails with `55000 cannot delete from view`. |
-| [TSDB-3](database.md#tsdb-3) | Timescale | A changed retention or compression setting has no effect after restart; the log only shows `WARNING: … A policy already exists with different arguments`. |
-| [TSDB-4](database.md#tsdb-4) | Timescale | `CREATE DATABASE x TEMPLATE tpl` fails after about 5 s with `55006 source database "tpl" is being accessed by other users`, intermittently. |
-| [TSDB-5](database.md#tsdb-5) | Timescale | Raw payloads configured to live 72 hours are still there after three days, up to about four. |
-| [TSDB-6](database.md#tsdb-6) | Timescale | The database container exits (1) at start with `Error: in 18+, these Docker images are configured to store database data in a format which is compatible with "pg_ctlcluster"…`. |
-| [TSDB-7](database.md#tsdb-7) | Timescale | A new continuous aggregate returns 0 rows, or a recent hour in `xp_hourly` shows an older value than `xp_samples` holds. |
-| [TSDB-8](database.md#tsdb-8) | Timescale | A unique-violation error names a constraint like `1_location_samples_account_ts_uq` on a table like `_hyper_2_1_chunk`, not the one you declared. |
-| [TSDB-9](database.md#tsdb-9) | Timescale | Compression, `CREATE MATERIALIZED VIEW … WITH (timescaledb.continuous)` or `add_retention_policy` fail with `functionality not supported under the current "apache" license`. |
-| [TSDB-10](database.md#tsdb-10) | Timescale | Timescale jobs (retention, compression, refresh) silently stop running in some databases, and the server log says `TimescaleDB background worker limit of 16 exceeded`. |
-| [TSDB-11](database.md#tsdb-11) | Timescale | A drizzle-kit-generated migration fails on a hypertable with `operation not supported on hypertables with compressed chunks` or `cannot add column with NOT NULL constraint without default to a hypertable that has columnstore enabled`. |
-| [TSDB-12](database.md#tsdb-12) | Timescale | Concurrent ingest transactions fail with `40P01 deadlock detected` around a chunk boundary (midnight, a new week); one of them waits for a `ShareRowExclusiveLock` on a plain table while inserting into a hypertable. |
-| [TSDB-13](database.md#tsdb-13) | Timescale | A "last value at or before t" lookup (`ORDER BY bucket DESC LIMIT 1`) on `xp_hourly`/`xp_daily` gets slower as history grows; `EXPLAIN` shows a Sort over an Append of the materialized hypertable instead of an index scan. |
+| [TSDB-1](database.md#tsdb-1) | Database | Hourly or daily XP history older than the raw retention disappears from `xp_hourly`/`xp_daily` after a refresh. |
+| [TSDB-2](database.md#tsdb-2) | Database | After deleting an account, its rows are still in `xp_hourly`/`xp_daily`, and `DELETE FROM xp_hourly` fails with `55000 cannot delete from view`. |
+| [TSDB-3](database.md#tsdb-3) | Database | A changed retention or compression setting has no effect after restart; the log only shows `WARNING: … A policy already exists with different arguments`. |
+| [TSDB-4](database.md#tsdb-4) | Database | `CREATE DATABASE x TEMPLATE tpl` fails after about 5 s with `55006 source database "tpl" is being accessed by other users`, intermittently. |
+| [TSDB-5](database.md#tsdb-5) | Database | Raw payloads configured to live 72 hours are still there after three days, up to about four. |
+| [TSDB-6](database.md#tsdb-6) | Database | The database container exits (1) at start with `Error: in 18+, these Docker images are configured to store database data in a format which is compatible with "pg_ctlcluster"…`. |
+| [TSDB-7](database.md#tsdb-7) | Database | A new continuous aggregate returns 0 rows, or a recent hour in `xp_hourly` shows an older value than `xp_samples` holds. |
+| [TSDB-8](database.md#tsdb-8) | Database | A unique-violation error names a constraint like `1_location_samples_account_ts_uq` on a table like `_hyper_2_1_chunk`, not the one you declared. |
+| [TSDB-9](database.md#tsdb-9) | Database | Compression, `CREATE MATERIALIZED VIEW … WITH (timescaledb.continuous)` or `add_retention_policy` fail with `functionality not supported under the current "apache" license`. |
+| [TSDB-10](database.md#tsdb-10) | Database | Timescale jobs (retention, compression, refresh) silently stop running in some databases, and the server log says `TimescaleDB background worker limit of 16 exceeded`. |
+| [TSDB-11](database.md#tsdb-11) | Database | A drizzle-kit-generated migration fails on a hypertable with `operation not supported on hypertables with compressed chunks` or `cannot add column with NOT NULL constraint without default to a hypertable that has columnstore enabled`. |
+| [TSDB-12](database.md#tsdb-12) | Database | Concurrent ingest transactions fail with `40P01 deadlock detected` around a chunk boundary (midnight, a new week); one of them waits for a `ShareRowExclusiveLock` on a plain table while inserting into a hypertable. |
+| [TSDB-13](database.md#tsdb-13) | Database | A "last value at or before t" lookup (`ORDER BY bucket DESC LIMIT 1`) on `xp_hourly`/`xp_daily` gets slower as history grows; `EXPLAIN` shows a Sort over an Append of the materialized hypertable instead of an index scan. |
 | **[nextjs.md](nextjs.md)** | | |
 | [NEXT-1](nextjs.md#next-1) | Next.js | Changing `basePath` or an `APP_URL` path prefix at runtime has no effect: the app still answers on the prefix it was built with and 404s on the new one. |
 | [NEXT-2](nextjs.md#next-2) | Next.js | Redirects and absolute URLs built in a route handler point at `http://0.0.0.0:3000/…` or `localhost` instead of the public host. |
@@ -124,9 +132,9 @@ The `gotcha` skill walks this, including a trap that fits no existing file.
 | [PLUGIN-13](plugin.md#plugin-13) | Plugin | In the plugin's pairing panel, Submit does nothing: no dialog, no request reaches the hub, and the button stays disabled. |
 | [PLUGIN-14](plugin.md#plugin-14) | Plugin | One player's location trail holds a stretch twice, the same tiles again some seconds later, although it was walked once; or the stretch walked during an outage lies some seconds late in the trail, interleaved with what was walked after it. |
 | **[toolchain.md](toolchain.md)** | | |
-| [PGBOSS-1](toolchain.md#pgboss-1) | pg-boss | pg-boss throws `Queue <name> does not exist` (or `not found`) on send or schedule, a worker never runs while `error` events repeat every poll, or a handler finds `job.data` undefined. |
-| [PGBOSS-2](toolchain.md#pgboss-2) | pg-boss | After changing a queue's `policy` in code, `getQueue()` still reports the old one, and `updateQueue(name, { policy })` throws `queue policy cannot be changed after creation`. |
-| [PROM-1](toolchain.md#prom-1) | prom-client | A counter-based alert or `increase()` panel misses the first event after a restart (the first job failure, the first breaker trip), while `/metrics` does show the series at 1. |
+| [PGBOSS-1](toolchain.md#pgboss-1) | Toolchain | pg-boss throws `Queue <name> does not exist` (or `not found`) on send or schedule, a worker never runs while `error` events repeat every poll, or a handler finds `job.data` undefined. |
+| [PGBOSS-2](toolchain.md#pgboss-2) | Toolchain | After changing a queue's `policy` in code, `getQueue()` still reports the old one, and `updateQueue(name, { policy })` throws `queue policy cannot be changed after creation`. |
+| [PROM-1](toolchain.md#prom-1) | Toolchain | A counter-based alert or `increase()` panel misses the first event after a restart (the first job failure, the first breaker trip), while `/metrics` does show the series at 1. |
 | [TOOL-1](toolchain.md#tool-1) | Toolchain | After `pnpm add -D typescript` or an update to TypeScript 7, `pnpm lint` dies with `Error: typescript-eslint does not support TS 7.0` or Next's type check breaks; or `tsc` fails with `TS2591 Cannot find name 'node:crypto'`, `TS5101` (baseUrl) or `TS5107` (moduleResolution node). |
 | [TOOL-2](toolchain.md#tool-2) | Toolchain | `shadcn init` in a script exits 0 having created nothing, or `next build` fails offline with `next/font: error … fonts.googleapis.com`. |
 | [TOOL-3](toolchain.md#tool-3) | Toolchain | ESLint crashes with `TypeError: Error while loading rule 'react/display-name': contextOrFilename.getFilename is not a function`. |
@@ -140,7 +148,7 @@ The `gotcha` skill walks this, including a trap that fits no existing file.
 | [TOOL-11](toolchain.md#tool-11) | Toolchain | On Windows every `docker` command fails with `failed to connect to the docker API at npipe:////./pipe/dockerDesktopLinuxEngine` (or hangs), `pnpm test` reports `Cannot reach the test database`, and Docker Desktop shows a crash dialog on start instead of its dashboard. |
 | [TOOL-12](toolchain.md#tool-12) | Toolchain | `pnpm install` fails with `ERR_PNPM_IGNORED_BUILDS … Ignored build scripts: esbuild@…, unrs-resolver@…` although `pnpm-workspace.yaml` names those packages, or a Docker build stops at `pnpm fetch --frozen-lockfile` with `error: unexpected argument '--frozen-lockfile' found`. |
 | [TOOL-13](toolchain.md#tool-13) | Toolchain | Every `pnpm` command dies with `Error: Cannot find module '…\corepack\v1\pnpm\12.7.0\bin\pnpm.cjs'` (`MODULE_NOT_FOUND`), and still does after corepack or Node is updated. |
-| [ZOD-1](toolchain.md#zod-1) | zod | Unknown or new fields in a plugin payload vanish after parsing: stored event data lacks keys the plugin sent. |
+| [ZOD-1](toolchain.md#zod-1) | Toolchain | Unknown or new fields in a plugin payload vanish after parsing: stored event data lacks keys the plugin sent. |
 
 ## Retired IDs
 

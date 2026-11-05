@@ -1,6 +1,6 @@
-# <Area title>
+# <!-- FILL: area title, a word or two; the index shows it as the area -->
 
-<One line: what this file covers. Keep it in step with the `Covers` cell in README.md.>
+<!-- FILL: one line on what this file covers; keep it in step with the `Covers` cell in README.md -->
 
 | ID | Symptom |
 |---|---|
