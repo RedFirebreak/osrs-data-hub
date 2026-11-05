@@ -194,6 +194,41 @@ export function StatusOrbs({
   );
 }
 
+/**
+ * A square card with a game icon and, when given, a line under it; the tooltip says the rest. Used
+ * for the effects and the active prayers, so the two rows look alike (Red, 2026-11-05).
+ */
+export function IconCard({
+  icon,
+  caption,
+  label,
+  tooltip,
+}: {
+  icon: React.ReactNode;
+  caption?: React.ReactNode;
+  /** What a screen reader says for the card. */
+  label: string;
+  tooltip: React.ReactNode;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div
+          tabIndex={0}
+          aria-label={label}
+          className="flex min-h-15 w-15 cursor-help flex-col items-center justify-center gap-1 rounded-lg border bg-muted/40 px-1 py-1.5 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+        >
+          {icon}
+          {caption !== undefined && (
+            <span className="text-xs font-semibold tabular-nums">{caption}</span>
+          )}
+        </div>
+      </TooltipTrigger>
+      <TooltipContent>{tooltip}</TooltipContent>
+    </Tooltip>
+  );
+}
+
 /** How coarse an end time is, as words: "to the tick", "to within 6 s". */
 function precisionLabel(ms: number): string {
   return ms <= 600 ? 'to the tick' : `to within ${Math.round(ms / 1000)} seconds`;
@@ -209,9 +244,9 @@ export function StatusEffects({ status, renderedAt }: { status: StatusState; ren
   const running = status.effects.filter((e) => e.endsAt > now);
   return (
     <div className="flex flex-col gap-1.5">
-      <span className="text-sm text-muted-foreground">Effects</span>
+      <span className="text-center text-sm text-muted-foreground">Effects</span>
       {running.length === 0 ? (
-        <span className="text-sm text-muted-foreground">None</span>
+        <span className="text-center text-sm text-muted-foreground">None</span>
       ) : (
         <ul className="flex flex-wrap justify-center gap-2" aria-label="Effects">
           {running.map((e) => {
@@ -222,20 +257,11 @@ export function StatusEffects({ status, renderedAt }: { status: StatusState; ren
             const left = formatEffectLeft(e.endsAt, now);
             return (
               <li key={e.id}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div
-                      tabIndex={0}
-                      className="flex w-15 cursor-help flex-col items-center gap-1 rounded-lg border bg-muted/40 px-1 py-1.5 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
-                    >
-                      <EffectIcon id={e.id} className="h-8 w-9" />
-                      <span className="text-xs font-semibold tabular-nums">{left}</span>
-                      <span className="sr-only">
-                        {e.name}, {left} left, ends {ends}
-                      </span>
-                    </div>
-                  </TooltipTrigger>
-                  <TooltipContent>
+                <IconCard
+                  icon={<EffectIcon id={e.id} className="h-8 w-9" />}
+                  caption={left}
+                  label={`${e.name}, ${left} left, ends ${ends}`}
+                  tooltip={
                     <span className="flex flex-col gap-0.5">
                       <span className="font-semibold">{e.name}</span>
                       <span>
@@ -243,8 +269,8 @@ export function StatusEffects({ status, renderedAt }: { status: StatusState; ren
                       </span>
                       <span className="opacity-70">Exact {precisionLabel(e.precision)}</span>
                     </span>
-                  </TooltipContent>
-                </Tooltip>
+                  }
+                />
               </li>
             );
           })}

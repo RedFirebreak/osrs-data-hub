@@ -7,6 +7,7 @@ import type { Vitals } from '@hub/server';
 import { HeartIcon, SparklesIcon } from 'lucide-react';
 import { PrayerIcon } from '@/components/icons/osrs-icon';
 import { meterFill, spellbookLabel } from './items';
+import { IconCard } from './status-content';
 
 function Meter({
   label,
@@ -55,24 +56,32 @@ function Meter({
 }
 
 /**
- * The prayers that are on (D-119), as the prayer book's lit icons with their names; "None" when no
- * prayer is on, which is also what an offline player has (logging out turns them all off).
+ * The prayers that are on (D-119), as centred cards with the prayer book's lit icons, the name on
+ * hover, like the effects under them (D-143); "None" when no prayer is on, which is also what an
+ * offline player has (logging out turns them all off).
  */
 function ActivePrayers({ prayers }: { prayers: readonly string[] }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <span className="text-sm text-muted-foreground">Active prayers</span>
+      <span className="text-center text-sm text-muted-foreground">Active prayers</span>
       {prayers.length === 0 ? (
-        <span className="text-sm text-muted-foreground">None</span>
+        <span className="text-center text-sm text-muted-foreground">None</span>
       ) : (
-        <ul className="flex flex-wrap gap-1.5" aria-label="Active prayers">
+        <ul className="flex flex-wrap justify-center gap-2" aria-label="Active prayers">
           {prayers.map((prayer) => (
-            <li
-              key={prayer}
-              className="flex items-center gap-1.5 rounded-full border bg-muted/40 py-0.5 pr-2.5 pl-1 text-sm"
-            >
-              <PrayerIcon prayer={prayer} className="size-5" holdSpace />
-              <span className="font-medium">{prayerLabel(prayer)}</span>
+            <li key={prayer}>
+              <IconCard
+                icon={
+                  <PrayerIcon
+                    prayer={prayer}
+                    className="size-8"
+                    holdSpace
+                    fallback={<span className="text-xs">{prayerLabel(prayer)}</span>}
+                  />
+                }
+                label={prayerLabel(prayer)}
+                tooltip={<span className="font-semibold">{prayerLabel(prayer)}</span>}
+              />
             </li>
           ))}
         </ul>
