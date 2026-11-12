@@ -118,6 +118,20 @@ describe('requireApiUser', () => {
 });
 
 describe('/api/auth/[...all]', () => {
+  it("sends Discord sign-in through Discord's Authorize screen, asking for two scopes", async () => {
+    const res = await authPOST(
+      ctx.request('/api/auth/sign-in/social', {
+        method: 'POST',
+        json: { provider: 'discord', callbackURL: '/', errorCallbackURL: '/login' },
+      }),
+    );
+    expect(res.status).toBe(200);
+    const url = new URL(((await res.json()) as { url: string }).url);
+    // `prompt=none` (Better Auth's default) skipped the screen for a returning member.
+    expect(url.searchParams.get('prompt')).toBe('consent');
+    expect(url.searchParams.get('scope')).toBe('identify guilds.members.read');
+  });
+
   it('serves get-session for the signed-in cookie', async () => {
     const userId = await ctx.seedUser({ name: 'Lynx Titan' });
     const cookie = await ctx.signIn(userId);

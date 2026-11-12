@@ -136,6 +136,11 @@ function createAuth(config: HubConfig) {
         // Exactly `identify guilds.members.read`: the provider adds `email` unless told not to (AUTH-3).
         disableDefaultScope: true,
         scope: ['identify', 'guilds.members.read'],
+        // Discord's own "Authorize" screen on every sign-in. Better Auth's default is `prompt=none`,
+        // which skips it for someone who allowed the hub before: Discord flashes past and the
+        // browser is back on the hub before the member pressed anything, the silent hand-over that
+        // consent phishing relies on. One click buys a sign-in that shows who asks for what.
+        prompt: 'consent',
         async getUserInfo(tokens) {
           if (!tokens.accessToken) return null;
           const me = await fetchCurrentUser(tokens.accessToken);
