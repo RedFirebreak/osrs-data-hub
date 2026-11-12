@@ -176,7 +176,15 @@ The protocol facts the hub relies on:
   clients that connect by signing in (Claude.ai). Better Auth's `oauth-provider` plugin; issuer
   `<APP_URL>/api/auth`, discovery under `/.well-known/`; the member signs in with Discord as usual,
   then allows the client on `/oauth/consent`, which makes an ordinary user key the client's tokens act
-  as, on the MCP endpoint only.
+  as, on the MCP endpoint only. Clients register without an account, so `/api/auth/*` never sends a
+  browser to another site with an error: such an answer goes to `/login?error=<code>` instead
+  (`lib/auth-redirects.ts`, AUTH-16). The only ways off the site are Discord, a client's redirect_uri
+  with a code after the member allowed it, and Deny on the consent page. Otherwise the provider is an
+  open redirect any self-registered client can use, and Google Safe Browsing listed `/api/auth/` as
+  deceptive (2026-11-12).
+- **Discord shows its Authorize screen on every sign-in** (`prompt=consent`, AUTH-17): Better Auth's
+  default `prompt=none` skipped it for a returning member, so Discord flashed past and the browser was
+  back before the member pressed anything. One click, and members always see who asks for what.
 
 ## 5. Devices and pairing
 

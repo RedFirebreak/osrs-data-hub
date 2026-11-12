@@ -2,7 +2,9 @@
  * The MCP endpoint's sign-in for assistants that only connect with OAuth (D-137), end to end inside
  * one process: discovery from the 401, dynamic registration, authorization with a member signed in,
  * the consent page's answer, the token exchange, and the token acting as the key the consent made,
- * on the MCP endpoint only. Deny, a forged request, and revoking the key on the API keys page.
+ * on the MCP endpoint only. Deny, a forged request, and revoking the key on the API keys page. And
+ * no open redirect: a self-registered client can't use the hub to bounce a browser to its site
+ * (AUTH-16).
  */
 import { createHash, randomBytes } from 'node:crypto';
 import { AI_ASSISTANT_CATEGORIES } from '@hub/core';
@@ -10,6 +12,7 @@ import { apiKeys } from '@hub/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as authServerRoute from '@/app/.well-known/oauth-authorization-server/[[...path]]/route';
+import * as authRoute from '@/app/api/auth/[...all]/route';
 import * as resourceRoute from '@/app/.well-known/oauth-protected-resource/[[...path]]/route';
 import * as keyRoute from '@/app/api/app/api-keys/[id]/route';
 import * as consentRoute from '@/app/api/app/oauth/consent/route';
@@ -267,5 +270,103 @@ describe('connecting', () => {
       }),
     );
     expect(crossSite.status).toBe(403);
+  });
+});
+
+describe('no open redirect (AUTH-16)', () => {
+  const EVIL = 'https://evil.example/cb';
+
+  async function evilClient(): Promise<string> {
+    const res = await auth('/oauth2/register', {
+      method: 'POST',
+      sameOrigin: false,
+      json: {
+        client_name: 'Discord',
+        redirect_uris: [EVIL],
+        token_endpoint_auth_method: 'none',
+        grant_types: ['authorization_code'],
+        response_types: ['code'],
+      },
+    });
+    expect(res.status).toBe(201);
+    return ((await res.json()) as { client_id: string }).client_id;
+  }
+
+  function authorizeUrl(clientId: string, extra: Record<string, string>): string {
+    const params = new URLSearchParams({
+      response_type: 'code',
+      client_id: clientId,
+      redirect_uri: EVIL,
+      state: 'st8',
+      scope: 'mcp',
+      code_challenge: createHash('sha256').update('v'.repeat(43)).digest('base64url'),
+      code_challenge_method: 'S256',
+      resource,
+      ...extra,
+    });
+    return `/api/auth/oauth2/authorize?${params}`;
+  }
+
+  const navigate = { accept: 'text/html', 'sec-fetch-mode': 'navigate' };
+
+  it('Better Auth alone sends a signed-out browser straight to the client with prompt=none', async () => {
+    // The trap itself: if this starts failing, the provider stopped doing it and AUTH-16 can say so.
+    const url = authorizeUrl(await evilClient(), { prompt: 'none' });
+    const res = await auth(url.replace('/api/auth', ''), {
+      sameOrigin: false,
+      headers: navigate,
+    });
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toMatch(
+      /^https:\/\/evil\.example\/cb\?error=login_required/,
+    );
+  });
+
+  it('through the hub, prompt=none signed out lands on the login page', async () => {
+    const res = await authRoute.GET(
+      ctx.request(authorizeUrl(await evilClient(), { prompt: 'none' }), {
+        sameOrigin: false,
+        headers: navigate,
+      }),
+    );
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe(`${ctx.config.appOrigin}/login?error=login_required`);
+  });
+
+  it('through the hub, a bad scope signed in lands on the login page', async () => {
+    const res = await authRoute.GET(
+      ctx.request(authorizeUrl(await evilClient(), { scope: 'nope' }), {
+        cookie,
+        sameOrigin: false,
+        headers: navigate,
+      }),
+    );
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe(`${ctx.config.appOrigin}/login?error=invalid_scope`);
+  });
+
+  it('through the hub, a request without PKCE lands on the login page', async () => {
+    const url = new URL(authorizeUrl(await evilClient(), {}), ctx.config.appOrigin);
+    url.searchParams.delete('code_challenge');
+    url.searchParams.delete('code_challenge_method');
+    const res = await authRoute.GET(
+      ctx.request(`${url.pathname}${url.search}`, { sameOrigin: false, headers: navigate }),
+    );
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe(`${ctx.config.appOrigin}/login?error=invalid_request`);
+  });
+
+  it('through the hub, a good request still reaches the consent page', async () => {
+    const res = await authRoute.GET(
+      ctx.request(authorizeUrl(await evilClient(), {}), {
+        cookie,
+        sameOrigin: false,
+        headers: navigate,
+      }),
+    );
+    expect(res.status).toBe(302);
+    expect(new URL(res.headers.get('location') ?? '', ctx.config.appOrigin).pathname).toBe(
+      '/oauth/consent',
+    );
   });
 });

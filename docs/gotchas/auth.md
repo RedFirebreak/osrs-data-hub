@@ -22,6 +22,8 @@ Better Auth paths are relative to the installed packages: `better-auth/dist`, `@
 | [AUTH-13](#auth-13) | While the database is down, every signed-in route answers 500 instead of 503, and the log shows `[Better Auth]: INTERNAL_SERVER_ERROR DrizzleQueryError: Failed query: select … from "session" … params: <session token>`. |
 | [AUTH-14](#auth-14) | A member allows an MCP client on the consent page and the hub answers 401 `{"error":"invalid_request","error_description":"request not found"}`, or the provider's authorize answers 200 with `{"redirect":true,"url":…}` instead of redirecting. |
 | [AUTH-15](#auth-15) | Every Better Auth route (`/api/auth/ok`, sign-in, `get-session`) answers 500 with an empty body and nothing in the log, while the rest of the hub works. |
+| [AUTH-16](#auth-16) | Google Safe Browsing (Chrome's red "Dangerous site" page) lists the hub's `/api/auth/` addresses, the Discord callback among them, while `/` and `/login` stay fine; or a link to `/api/auth/oauth2/authorize?client_id=…` lands on another site without showing a hub page. |
+| [AUTH-17](#auth-17) | Discord's "Authorize" screen flashes past and the browser is back on the site before the user pressed anything; it looks as if the button was pressed for them. |
 | [DISCORD-1](#discord-1) | Re-verification marks every member, or a large share of them, as having left the guild in a single run. |
 
 ### AUTH-1
@@ -194,6 +196,36 @@ auth instance once in a test or a script when changing its options (apps/web `li
 `storeClientSecret` at its default (encrypted) with `disableJwtPlugin`.
 
 *Source: `OBSERVED` (dev stack, @better-auth/oauth-provider 1.7.15, 2026-11-02)*
+
+### AUTH-16
+**Google Safe Browsing (Chrome's red "Dangerous site" page) lists the hub's `/api/auth/` addresses, the Discord callback among them, while `/` and `/login` stay fine; or a link to `/api/auth/oauth2/authorize?client_id=…` lands on another site without showing a hub page.**
+The OAuth provider plugin is an open redirect once registration is open
+(`allowUnauthenticatedClientRegistration`, which MCP clients need): anyone registers a client with any
+`redirect_uris`, and `authorizeEndpoint` delivers most errors to that redirect_uri at once, before a
+page of the hub is shown and before any sign-in: `prompt=none` without a session (`login_required`), a
+missing PKCE challenge (`invalid_request`), an unknown scope, a bad `resource`. Spec-conform (RFC 6749
+§4.1.2.1 only forbids it for an unregistered redirect_uri), but with self-registration "registered"
+means nothing, and phishing mails use exactly such links on a trusted host. Safe Browsing lists by host
+and path prefix, so the whole of `/api/auth/` goes red, including the Discord callback every member
+passes. `validateRedirectUri` doesn't help: it can only refuse hosts, and MCP clients' hosts aren't
+known in advance. Fix: wrap the handler and turn every answer that sends the browser to another origin
+with `error` in its query (a 3xx `Location`, or the `{redirect:true,url}` JSON a fetch gets, AUTH-14) into
+`/login?error=<code>` (apps/web `lib/auth-redirects.ts`, used by `app/api/auth/[...all]/route.ts`). A
+code still goes to the client after consent, and Deny on the consent page still answers
+`access_denied` (that route calls the handler itself). Then ask Google for a review in Search Console.
+
+*Source: `SOURCE` (oauth-provider 1.7.17 authorize-*.mjs `authorizeEndpoint`, `redirectWithPromptNoneError`); `OBSERVED` (in tests, `mcp-oauth.test.ts`, and the transparency report listing scapekeeper.com as partly deceptive while the hub's own pages answer clean, 2026-11-12)*
+
+### AUTH-17
+**Discord's "Authorize" screen flashes past and the browser is back on the site before the user pressed anything; it looks as if the button was pressed for them.**
+Better Auth's Discord provider sends `prompt=none` unless told otherwise (@better-auth/core
+`social-providers/discord`: `prompt: options.prompt || "none"`), and Discord then skips its screen for
+anyone who authorized the app before. Harmless in itself, but a silent hand-over of a Discord login is
+also what consent-phishing pages do, and members can't see who is asking for what. Fix: `prompt:
+'consent'` in the provider's options (apps/web `lib/auth.ts`); Discord then shows its screen every
+sign-in, one click.
+
+*Source: `SOURCE` (@better-auth/core 1.7.17 discord provider); `OBSERVED` (newdutchies hub, `/api/auth/sign-in/social` answering `prompt=none`, 2026-11-12)*
 
 ### DISCORD-1
 **Re-verification marks every member, or a large share of them, as having left the guild in a single run.**

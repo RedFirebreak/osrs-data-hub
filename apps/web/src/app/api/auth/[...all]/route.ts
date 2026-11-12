@@ -2,10 +2,13 @@
  * Better Auth's endpoints (Discord sign-in, callback, get-session, sign-out). The client IP for
  * Better Auth's rate limiter comes from our own X-Forwarded-For rule (TRUST_PROXY_HOPS, D-42), handed
  * over in CLIENT_IP_HEADER; whatever a client sent in that header is overwritten or removed first, so
- * it can't pick its own rate-limit bucket (see AUTH-9).
+ * it can't pick its own rate-limit bucket (see AUTH-9). An answer that would send the browser to
+ * another site with an error goes to /login instead (keepErrorsOnSite, see AUTH-16).
  */
+import { getConfig } from '@hub/core';
 import { clientIp } from '@/lib/http';
 import { CLIENT_IP_HEADER, getAuth } from '@/lib/auth';
+import { keepErrorsOnSite } from '@/lib/auth-redirects';
 
 function withClientIp(request: Request): Request {
   const headers = new Headers(request.headers);
@@ -24,10 +27,15 @@ function withClientIp(request: Request): Request {
   } as RequestInit);
 }
 
+async function handle(request: Request): Promise<Response> {
+  const response = await getAuth().handler(withClientIp(request));
+  return keepErrorsOnSite(request, response, getConfig().appOrigin);
+}
+
 export async function GET(request: Request): Promise<Response> {
-  return getAuth().handler(withClientIp(request));
+  return handle(request);
 }
 
 export async function POST(request: Request): Promise<Response> {
-  return getAuth().handler(withClientIp(request));
+  return handle(request);
 }
