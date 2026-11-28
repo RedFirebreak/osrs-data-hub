@@ -16,7 +16,7 @@
     "@hub/db": "workspace:*",
     "@hub/server": "workspace:*",
     "drizzle-orm": "0.45.4",
-    "pg-boss": "12.38.2",
+    "pg-boss": "12.39.0",
     "pino": "10.4.0"
   },
   "devDependencies": {
